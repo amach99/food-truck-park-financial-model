@@ -101,7 +101,9 @@ LOC_MONTHLY_INTEREST = round(LOC_AMOUNT * LOC_INTEREST_RATE / 12)  # assumes ful
 
 # --- Land / Site ---
 LAND_ACRES = 4.5
-LAND_VALUE = 1_400_000           # same land as The Cube / FTP+RV plans (owned, not financed here)
+LAND_PURCHASE_PRICE = 1_400_000  # what the owner actually paid (owned outright, not financed here)
+LAND_ASSESSED_VALUE = 300_000    # county tax assessment - basis for the ~$4K/yr property tax bill
+LAND_VALUE = LAND_PURCHASE_PRICE  # kept for reference; not used in any calculation
 # Dedicated 3-acre lot within the property, laid out for COTA event parking.
 # Owner estimate: fits 240-300 cars -> using the midpoint.
 EVENT_PARKING_SPACES = 270       # spaces available for COTA event parking
@@ -249,52 +251,58 @@ COTA_EVENT_BEER_PRICE = 12.00
 COTA_EVENT_SHOT_PRICE = 5.00
 COTA_EVENT_AVG_CHECK = DRINKS_PER_VISIT * (BEER_MIX_PCT * COTA_EVENT_BEER_PRICE
                                             + SHOT_MIX_PCT * COTA_EVENT_SHOT_PRICE)  # $15.375
+# Multi-day weekends build up rather than selling out flat every day - e.g.
+# F1 Friday is a practice-only day with a fraction of Sunday race-day
+# traffic. "daily_occupancy" is one fraction per event day (Fri, Sat, Sun,
+# ...); the last entry is the peak/marquee day and matches what the tier
+# used to model as a single flat occupancy. ESTIMATE - validate against a
+# real event's actual day-by-day sell-through once you have one on record.
 COTA_EVENT_TIERS = {
     "tier1_f1": {
         "name": "F1 US Grand Prix",
-        "parking_price": 80, "parking_occupancy": 1.00, "parking_days": 3,
+        "parking_price": 80, "daily_occupancy": [0.45, 0.75, 1.00],  # Fri practice / Sat quali / Sun race
         "bar_uplift_per_weekend": 10_165,
         "incremental_cost": 10_800,
     },
     "tier2_motogp": {
         "name": "MotoGP Grand Prix of the Americas",
-        "parking_price": 55, "parking_occupancy": 0.93, "parking_days": 3,
+        "parking_price": 55, "daily_occupancy": [0.40, 0.70, 0.93],  # Fri practice / Sat quali / Sun race
         "bar_uplift_per_weekend": 4_545,
         "incremental_cost": 6_300,
     },
     "tier2_nascar": {
         "name": "NASCAR Cup Series (EchoPark Grand Prix)",
-        "parking_price": 50, "parking_occupancy": 0.80, "parking_days": 2,
+        "parking_price": 50, "daily_occupancy": [0.55, 0.80],  # Sat support races / Sun race
         "bar_uplift_per_weekend": 2_545,
         "incremental_cost": 4_500,
     },
     "tier3_wec": {
         "name": "WEC 6 Hours of COTA",
-        "parking_price": 35, "parking_occupancy": 0.70, "parking_days": 2,
+        "parking_price": 35, "daily_occupancy": [0.45, 0.70],
         "bar_uplift_per_weekend": 1_520,
         "incremental_cost": 2_160,
     },
     "tier3_gt_transam": {
         "name": "GT World Challenge / TransAm / Other Races",
-        "parking_price": 25, "parking_occupancy": 0.35, "parking_days": 2,
+        "parking_price": 25, "daily_occupancy": [0.25, 0.35],
         "bar_uplift_per_weekend": 775,
         "incremental_cost": 900,
     },
     "tier3_concert": {
         "name": "Major Concert (Germania Amphitheater)",
-        "parking_price": 30, "parking_occupancy": 0.55, "parking_days": 1,
+        "parking_price": 30, "daily_occupancy": [0.55],
         "bar_uplift_per_weekend": 510,
         "incremental_cost": 720,
     },
     "tier3_festival": {
         "name": "Festival (FoodieLand, etc.)",
-        "parking_price": 30, "parking_occupancy": 0.45, "parking_days": 2,
+        "parking_price": 30, "daily_occupancy": [0.35, 0.45],
         "bar_uplift_per_weekend": 425,
         "incremental_cost": 720,
     },
     "tier4_trackday": {
         "name": "Track Day / Car Club / Bike Night",
-        "parking_price": 0, "parking_occupancy": 0.10, "parking_days": 1,
+        "parking_price": 0, "daily_occupancy": [0.10],
         "bar_uplift_per_weekend": 265,
         "incremental_cost": 180,
     },
@@ -343,7 +351,7 @@ FIXED_COSTS = {
     "pos_tech_subscriptions": 120,   # actual: Clover POS
     "licenses_permits": 300,         # TABC beer/liquor retailer + health permit renewals (estimate)
     "maintenance_reserve": 400,      # supplies/materials only, not labor (estimate)
-    "property_tax": 333,             # actual: owner-reported $4,000/yr property tax bill, /12
+    "property_tax": 333,             # actual: $4,000/yr bill / 12 (county assesses land at $300K, not the $1.4M purchase price)
     "loc_interest": LOC_MONTHLY_INTEREST,  # 12.5% interest-only on the LOC draw
 }
 MONTHLY_NUT = sum(FIXED_COSTS.values())
@@ -356,6 +364,16 @@ ANNUAL_COST_INFLATION = 0.03
 
 # --- Working Capital / Cash Reserve ---
 OPENING_CASH_RESERVE = 15_000    # operating buffer held back beyond the $75K buildout
+
+# --- Income Tax ---
+# Texas has no state income tax, but the park's profit is still federal
+# taxable income to the owner (pass-through: self-employment + federal
+# income tax). 28% is a blended effective-rate ESTIMATE for profit in the
+# $150K-$250K range - the real rate depends on entity structure, other
+# household income, and deductions (Section 179 on the buildout, LOC
+# interest, etc.). Confirm with a CPA. Applied to positive annual NOI only;
+# pre-tax figures remain the primary operating metrics.
+EFFECTIVE_INCOME_TAX_RATE = 0.28
 
 # --- Market context ---
 LOCAL_HOUSEHOLDS = 8_754
@@ -442,7 +460,9 @@ def calc_seasonal_event_revenue(month, year_month=None, seasonal_pct=1.0):
 
 def calc_cota_event_revenue(event_list, parking_spaces=None):
     """
-    COTA event weekends: paid parking + bar uplift.
+    COTA event weekends: paid parking + bar uplift. Parking is summed
+    day-by-day using each tier's daily_occupancy curve (lighter early days,
+    peak on the marquee day) rather than one flat rate x days.
     event_list: list of tier keys, e.g. ["tier1_f1", "tier3_concert"].
     """
     spaces = parking_spaces if parking_spaces is not None else EVENT_PARKING_SPACES
@@ -455,8 +475,9 @@ def calc_cota_event_revenue(event_list, parking_spaces=None):
     total_cost = 0
     for tier_key in event_list:
         tier = COTA_EVENT_TIERS.get(tier_key, COTA_EVENT_TIERS["tier3_gt_transam"])
-        cars = int(spaces * tier["parking_occupancy"])
-        total_parking += cars * tier["parking_price"] * tier["parking_days"]
+        for day_occupancy in tier["daily_occupancy"]:
+            cars = int(spaces * day_occupancy)
+            total_parking += cars * tier["parking_price"]
         total_bar += tier["bar_uplift_per_weekend"]
         total_cost += tier["incremental_cost"]
 
@@ -590,7 +611,13 @@ def run_annual_projection(weekday_customers=None, weekend_customers=None, year=1
 
 
 def summarize_annual(months):
-    """Build the annual summary dict from 12 monthly results."""
+    """Build the annual summary dict from 12 monthly results.
+    Includes after-tax views: income_tax applies EFFECTIVE_INCOME_TAX_RATE
+    to positive annual NOI (pass-through federal tax; TX has no state income
+    tax). Pre-tax NOI remains the primary operating metric."""
+    total_noi = sum(m["noi"] for m in months)
+    income_tax = max(0.0, total_noi) * EFFECTIVE_INCOME_TAX_RATE
+    after_tax_noi = total_noi - income_tax
     return {
         "total_gross": sum(m["total_gross_revenue"] for m in months),
         "total_trucks": sum(m["truck_gross"] for m in months),
@@ -605,13 +632,16 @@ def summarize_annual(months):
         "total_bartender_share": sum(m["bartender_share"] for m in months),
         "total_cc_processing": sum(m["cc_processing"] for m in months),
         "total_shrinkage": sum(m["shrinkage"] for m in months),
-        "total_noi": sum(m["noi"] for m in months),
+        "total_noi": total_noi,
         "total_net_cash": sum(m["net_cash_flow"] for m in months),
+        "income_tax": income_tax,
+        "after_tax_noi": after_tax_noi,
+        "after_tax_fcf_yield": after_tax_noi / TOTAL_PROJECT_COST,
         "avg_monthly_nut_coverage": sum(m["monthly_nut_coverage"] for m in months) / 12,
         "min_monthly_nut_coverage": min(m["monthly_nut_coverage"] for m in months),
         "max_monthly_nut_coverage": max(m["monthly_nut_coverage"] for m in months),
         "annual_nut": ANNUAL_NUT,
-        "fcf_yield": sum(m["noi"] for m in months) / TOTAL_PROJECT_COST,
+        "fcf_yield": total_noi / TOTAL_PROJECT_COST,
     }
 
 
@@ -652,6 +682,10 @@ def run_multi_year_projection(base_weekday_customers=None, base_weekend_customer
             annual["total_net_cash"] -= inflation_penalty
             annual["cost_inflation_adj"] = inflation_penalty
             annual["fcf_yield"] = annual["total_noi"] / TOTAL_PROJECT_COST
+            # Recompute after-tax figures on the inflation-adjusted NOI
+            annual["income_tax"] = max(0.0, annual["total_noi"]) * EFFECTIVE_INCOME_TAX_RATE
+            annual["after_tax_noi"] = annual["total_noi"] - annual["income_tax"]
+            annual["after_tax_fcf_yield"] = annual["after_tax_noi"] / TOTAL_PROJECT_COST
         else:
             annual["cost_inflation_adj"] = 0
 
@@ -831,6 +865,7 @@ def run_scenario_comparison():
         ("Annual NOI", lambda n: f"${scenario_results[n]['total_noi']:>14,.0f}"),
         ("Free Cash Flow", lambda n: f"${scenario_results[n]['total_net_cash']:>14,.0f}"),
         ("FCF Yield on Total Cost", lambda n: f"{scenario_results[n]['fcf_yield']:>15.1%}"),
+        ("After-Tax NOI", lambda n: f"${scenario_results[n]['after_tax_noi']:>14,.0f}"),
         ("Nut Coverage", lambda n: f"{scenario_results[n]['avg_monthly_nut_coverage']:>15.2f}x"),
     ]
     for label, fmt in metrics:
@@ -1118,9 +1153,11 @@ def print_owner_summary():
     print(f"  {'':>25} {'Conservative':>16} {'Base Case':>16}")
     print("  " + "-" * 58)
     print(f"  {'Annual Revenue':<25} ${conservative['total_gross']:>15,.0f} ${base['total_gross']:>15,.0f}")
-    print(f"  {'Annual NOI':<25} ${conservative['total_noi']:>15,.0f} ${base['total_noi']:>15,.0f}")
-    print(f"  {'Free Cash Flow':<25} ${conservative['total_net_cash']:>15,.0f} ${base['total_net_cash']:>15,.0f}")
-    print(f"  {'FCF Yield on Total Cost':<25} {conservative['fcf_yield']:>15.1%} {base['fcf_yield']:>15.1%}")
+    print(f"  {'Annual NOI (pre-tax)':<25} ${conservative['total_noi']:>15,.0f} ${base['total_noi']:>15,.0f}")
+    print(f"  {'Est. Income Tax (28%)':<25} ${conservative['income_tax']:>15,.0f} ${base['income_tax']:>15,.0f}")
+    print(f"  {'After-Tax NOI':<25} ${conservative['after_tax_noi']:>15,.0f} ${base['after_tax_noi']:>15,.0f}")
+    print(f"  {'FCF Yield (pre-tax)':<25} {conservative['fcf_yield']:>15.1%} {base['fcf_yield']:>15.1%}")
+    print(f"  {'FCF Yield (after-tax)':<25} {conservative['after_tax_fcf_yield']:>15.1%} {base['after_tax_fcf_yield']:>15.1%}")
 
     print(f"\n  REVENUE STREAMS (Base Case, Year 1)")
     print(f"  {'Food Trucks (rent + share)':<32} ${base['total_trucks']:>14,.0f}")
@@ -1167,8 +1204,10 @@ def print_annual_summary(months, annual, label=""):
           f"${cota_total:>8,.0f} ${annual['total_noi']:>9,.0f} "
           f"{annual['avg_monthly_nut_coverage']:>6.2f}x")
     print(f"\n  Annual Nut:              ${ANNUAL_NUT:,.0f}")
-    print(f"  Free Cash Flow:          ${annual['total_net_cash']:,.0f}")
-    print(f"  FCF Yield on Total Cost: {annual['fcf_yield']:.1%}")
+    print(f"  Free Cash Flow (pre-tax): ${annual['total_net_cash']:,.0f}")
+    print(f"  Est. Income Tax ({EFFECTIVE_INCOME_TAX_RATE:.0%}):   ${annual['income_tax']:,.0f}")
+    print(f"  After-Tax Cash Flow:     ${annual['after_tax_noi']:,.0f}")
+    print(f"  FCF Yield pre/after tax: {annual['fcf_yield']:.1%} / {annual['after_tax_fcf_yield']:.1%}")
 
 
 def main():

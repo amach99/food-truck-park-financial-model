@@ -177,9 +177,18 @@ tabs = st.tabs([
 with tabs[0]:
     c1, c2, c3, c4 = st.columns(4)
     c1.metric("Annual Revenue", fmt_dollar(annual["total_gross"]))
-    c2.metric("FCF Yield", fmt_pct(annual["fcf_yield"] * 100))
-    c3.metric("Free Cash Flow", fmt_dollar(annual["total_net_cash"]))
+    c2.metric("FCF Yield (pre-tax)", fmt_pct(annual["fcf_yield"] * 100))
+    c3.metric("Free Cash Flow (pre-tax)", fmt_dollar(annual["total_net_cash"]))
     c4.metric("Min Monthly Nut Coverage", f"{annual['min_monthly_nut_coverage']:.2f}x")
+
+    t1, t2, t3, t4 = st.columns(4)
+    t1.metric("Est. Income Tax (28%)", fmt_dollar(annual["income_tax"]),
+              help="Blended effective federal + self-employment rate estimate "
+                   "on pass-through profit. TX has no state income tax. "
+                   "Confirm actual rate with a CPA.")
+    t2.metric("After-Tax FCF Yield", fmt_pct(annual["after_tax_fcf_yield"] * 100))
+    t3.metric("After-Tax Cash Flow", fmt_dollar(annual["after_tax_noi"]))
+    t4.metric("Monthly Nut", fmt_dollar(model.MONTHLY_NUT))
 
     col_left, col_right = st.columns(2)
     with col_left:
@@ -707,16 +716,19 @@ with tabs[7]:
     cota_cost = annual["total_cota_cost"]
     bartender_share = annual["total_bartender_share"]
     fixed_ex = model.ANNUAL_NUT
-    free_cf = (gross - cogs - grt - cc - shrinkage - utility_cost - parking_cost
-               - cota_cost - bartender_share - fixed_ex)
+    pre_tax_cf = (gross - cogs - grt - cc - shrinkage - utility_cost - parking_cost
+                  - cota_cost - bartender_share - fixed_ex)
+    income_tax = max(0.0, pre_tax_cf) * model.EFFECTIVE_INCOME_TAX_RATE
+    free_cf = pre_tax_cf - income_tax
 
     labels = ["Gross Revenue", f"COGS ({model.COGS_RATE:.0%})", "TX GRT (6.7%)",
               "CC Processing", "Shrinkage", "Utility Pass-Thru", "Parking Upkeep",
               "COTA Costs", "Bartender Share", "Fixed Costs (Nut)",
-              "Free Cash Flow"]
+              f"Income Tax ({model.EFFECTIVE_INCOME_TAX_RATE:.0%})",
+              "After-Tax Cash Flow"]
     values = [gross, -cogs, -grt, -cc, -shrinkage, -utility_cost, -parking_cost,
-              -cota_cost, -bartender_share, -fixed_ex, 0]
-    measures = ["absolute"] + ["relative"] * 9 + ["total"]
+              -cota_cost, -bartender_share, -fixed_ex, -income_tax, 0]
+    measures = ["absolute"] + ["relative"] * 10 + ["total"]
 
     fig_wf = go.Figure(go.Waterfall(
         x=labels, y=values, measure=measures,
@@ -736,10 +748,10 @@ with tabs[7]:
     st.subheader("Margin Analysis")
     c1, c2, c3 = st.columns(3)
     core_rev = gross - annual["total_utility_billed"]
-    c1.metric("Free CF Margin (core revenue)",
+    c1.metric("After-Tax CF Margin (core revenue)",
               f"{free_cf / core_rev * 100:.1f}%" if core_rev else "n/a")
-    c2.metric("Free Cash Flow", fmt_dollar(free_cf))
-    c3.metric("FCF Yield",
+    c2.metric("After-Tax Cash Flow", fmt_dollar(free_cf))
+    c3.metric("After-Tax FCF Yield",
               f"{free_cf / model.TOTAL_PROJECT_COST * 100:.1f}%")
 
 
@@ -793,13 +805,20 @@ with tabs[8]:
     with perf_l:
         st.markdown("**Conservative** (4 trucks @ 88% occ, soft bar)")
         st.metric("Revenue", fmt_dollar(conservative["total_gross"]))
-        st.metric("Free Cash Flow", fmt_dollar(conservative["total_net_cash"]))
-        st.metric("FCF Yield", f"{conservative['fcf_yield']:.1%}")
+        st.metric("Free Cash Flow (pre-tax)", fmt_dollar(conservative["total_net_cash"]))
+        st.metric("After-Tax Cash Flow", fmt_dollar(conservative["after_tax_noi"]))
+        st.metric("FCF Yield (pre / after tax)",
+                  f"{conservative['fcf_yield']:.0%} / {conservative['after_tax_fcf_yield']:.0%}")
     with perf_r:
         st.markdown("**Base Case** (4 trucks @ 90% occ, 20 wkday / 58 wkend bar)")
         st.metric("Revenue", fmt_dollar(base["total_gross"]))
-        st.metric("Free Cash Flow", fmt_dollar(base["total_net_cash"]))
-        st.metric("FCF Yield", f"{base['fcf_yield']:.1%}")
+        st.metric("Free Cash Flow (pre-tax)", fmt_dollar(base["total_net_cash"]))
+        st.metric("After-Tax Cash Flow", fmt_dollar(base["after_tax_noi"]))
+        st.metric("FCF Yield (pre / after tax)",
+                  f"{base['fcf_yield']:.0%} / {base['after_tax_fcf_yield']:.0%}")
+    st.caption(f"After-tax figures apply a {model.EFFECTIVE_INCOME_TAX_RATE:.0%} blended "
+               "effective federal + self-employment rate estimate on pass-through "
+               "profit (TX has no state income tax). Confirm with a CPA.")
 
     st.markdown("---")
     st.subheader("Risk Mitigants")
@@ -856,9 +875,9 @@ with tabs[9]:
              "weekend customers/evening averaging 1.5 drinks (~$9.00 check)",
              "~$7-9K/mo", "~58% after COGS + GRT"),
             ("3. COTA Events", "270-space event parking (dedicated 3-acre "
-             "lot) + bar uplift at "
-             "premium event pricing ($12 beer / $5 shot) on race/concert "
-             "weekends", "Event months", "~90-95%"),
+             "lot), day-by-day occupancy building to the marquee day (F1: "
+             "45% Fri / 75% Sat / 100% Sun) + bar uplift at premium event "
+             "pricing ($12 beer / $5 shot)", "Event months", "~90-95%"),
             ("4. Seasonal Events", "Super Bowl / March Madness / NYE watch "
              "parties on the big TVs", "~$2.7K/yr", "~58%"),
             ("5. Utility Pass-Through", "Sub-metered truck power/water/waste "
