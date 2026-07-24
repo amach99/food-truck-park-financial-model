@@ -4,9 +4,9 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What this is
 
-A financial feasibility model for a food truck park + limited bar (prepackaged
-canned/bottled beer and liquor shots poured into sealed plastic shot glasses
-only — no cocktails, no RV park) on the same 4.5-acre property at 13901 FM
+A financial feasibility model for a food truck park + bar & beverage stand
+(evening beer/liquor-shot bar plus an all-day soda/juice/water/coffee stand
+— no cocktails, no RV park) on the same 4.5-acre property at 13901 FM
 812, Del Valle, TX as the earlier "The Cube" sports bar plan and the
 food-truck-+-RV-park alternative. This is the leanest of the three concepts:
 ~$75,000 startup cost, financed via a personal line of credit (LOC) at 12.5%
@@ -49,18 +49,20 @@ Two files, strict separation of concerns:
   business assumptions live here as module-level constants (Section 1),
   followed by revenue/cost functions (Section 2), annual/multi-year
   projection runners (Section 3), a Monte Carlo simulator (Section 4), named
-  scenarios (Section 5), break-even/sensitivity analysis (Section 6), and a
-  cash-reserve tracker + LOC payoff schedule (Section 7). Section 8 is a
-  plain `input()`-driven CLI menu (`main()`) for running the same analyses
-  from a terminal.
+  scenarios (Section 5), break-even/sensitivity analysis (Section 6), a
+  cash-reserve tracker + LOC payoff schedule (Section 7), and a tax-strategy
+  analysis (depreciation + S-corp election, Section 8). Section 9 is a plain
+  `input()`-driven CLI menu (`main()`) for running the same analyses from a
+  terminal.
 - **`streamlit_app_ftp.py`** — imports `food_truck_park_model` as `model` and
-  wraps it in a 10-tab dashboard (Dashboard, Annual Projection, Sensitivity,
+  wraps it in an 11-tab dashboard (Dashboard, Annual Projection, Sensitivity,
   Break-Even, Monte Carlo, Scenarios, Multi-Year, Waterfall, Owner Summary,
-  Model Overview). All sidebar sliders default to the module's constants
-  (e.g. `model.TRUCK_SLOTS`, `model.BAR_DAILY_CUSTOMERS`), and
-  `@st.cache_data`-wrapped wrapper functions (`get_annual`, `get_multi_year`,
-  `get_monte_carlo`, `get_scenario_results`) call straight into the model's
-  `run_*` functions — the dashboard has no calculation logic of its own.
+  Tax Strategies, Model Overview). All sidebar sliders default to the
+  module's constants (e.g. `model.TRUCK_SLOTS`, `model.BAR_DAILY_CUSTOMERS`),
+  and `@st.cache_data`-wrapped wrapper functions (`get_annual`,
+  `get_multi_year`, `get_monte_carlo`, `get_scenario_results`) call straight
+  into the model's `run_*` functions — the dashboard has no calculation
+  logic of its own.
 
 ### Financing: revolving LOC, not a term loan
 
@@ -95,33 +97,40 @@ the $75K was actually financed.
 
 ### Staffing: two people, no fixed labor line in the nut
 
-The park runs on exactly two people: a park manager who lives on-site
-rent-free in exchange for running day-to-day operations (cleaning,
-maintenance, general oversight), and one bartender. Neither shows up as a
-line item in `FIXED_COSTS`:
+The park runs on exactly two people, both living on-site rent-free: a park
+manager who runs day-to-day operations (cleaning, maintenance, general
+oversight), and one bartender. Neither shows up as a line item in
+`FIXED_COSTS`:
 - The manager's compensation is in-kind (free housing), not a cash expense,
   so there's no "maintenance/cleaning labor" cost in the nut — only
   `maintenance_reserve` for supplies/materials.
-- The bartender is paid via a 5% revenue share on bar-like revenue (see
-  `VARIABLE_COST_RATE`/`bartender_share` in `calc_monthly_total`), a
-  variable cost, not a salary — and is the only bartender at all times,
-  including COTA/major-event days. There is no second-bartender or
-  event-labor cost anywhere in the model. If staffing assumptions change
-  (e.g. hiring a second bartender for big events, or the manager arrangement
-  changes), that needs a new fixed or variable cost line, not a revival of
-  the old `EXTRA_BARTENDER_COST`/`BIG_EVENT_MONTHS` mechanism (removed).
+- The bartender is paid via `BARTENDER_SHARE_RATE` (5%) of combined bar-like
+  + daytime-beverage revenue (see `calc_monthly_total`), a variable cost,
+  not a salary — and is the only bartender at all times, covering both the
+  evening alcohol bar AND the all-day non-alcohol beverage window (see
+  "Daytime beverage stream" below), including COTA/major-event days. Living
+  on-site is what makes the longer combined day feasible without a second
+  hire. There is no second-bartender or event-labor cost anywhere in the
+  model. If staffing assumptions change (e.g. hiring a second bartender for
+  big events, or either on-site arrangement changes), that needs a new
+  fixed or variable cost line, not a revival of the old
+  `EXTRA_BARTENDER_COST`/`BIG_EVENT_MONTHS` mechanism (removed).
 
 ### Revenue model shape
 
-Every monthly calculation (`calc_monthly_total`) composes five independent
-streams: food truck pad rent + revenue share, limited bar sales, COTA
-(Circuit of the Americas) event weekends (parking + bar uplift), seasonal
-one-off watch parties, and an at-cost utility pass-through (net-zero by
+Every monthly calculation (`calc_monthly_total`) composes seven independent
+streams: food truck pad rent + revenue share, evening bar (alcohol) sales,
+COTA (Circuit of the Americas) event weekends (parking + bar uplift),
+seasonal one-off watch parties, an at-cost utility pass-through (net-zero by
 design — Texas PUC resale rules require sub-metered utilities to be billed
-at cost, no markup). `run_annual_projection` sums 12 months; Year 1 applies
-ramp schedules (`TRUCK_Y1_RAMP`, `BAR_Y1_RAMP`) for gradual fill-up, Year 2+
-runs at steady state. `run_multi_year_projection` layers on annual
-growth/rent escalation/cost inflation on top of that.
+at cost, no markup), daytime beverages (soda/juice/water/coffee — see
+below), and tobacco & nicotine (cigarettes/vapes/Zyn — see below). The
+evening bar + daytime beverages + tobacco/nicotine together make up the
+"Bar & Beverage Stand" shown in the dashboard's overall naming.
+`run_annual_projection` sums 12 months; Year 1 applies ramp schedules
+(`TRUCK_Y1_RAMP`, `BAR_Y1_RAMP`) for gradual fill-up, Year 2+ runs at steady
+state. `run_multi_year_projection` layers on annual growth/rent
+escalation/cost inflation on top of that.
 
 Two independent axes drive most of the complexity:
 - **Seasonality** (`SEASONALITY` dict, per-month multiplier) applies to
@@ -152,6 +161,98 @@ from the earlier mixed-drink models. Don't apply the reduced-customer-count
 logic to event-day figures — that would double-count the hours restriction,
 and don't forget the premium-pricing multiplier if these numbers are
 re-derived.
+
+### Daytime beverage stream (important, easy to regress)
+
+`calc_daytime_beverage_revenue` models all-day soda/juice/water/coffee sales
+that extend the bar's window from evening-only alcohol service to an
+all-day non-alcohol offering (~11am-close). It is sized off implied
+food-truck customer traffic — `trucks["truck_total_sales"] / AVG_TRUCK_TICKET
+× DAYTIME_BEVERAGE_ATTACH_RATE × DAYTIME_BEVERAGE_AVG_PRICE` — **not** an
+independent daytime headcount, since food trucks are the park's only real
+daytime foot-traffic driver. This has two consequences that are easy to
+miss when touching truck or bar params:
+- It scales automatically with `truck_slots`/`truck_avg_sales`/
+  `truck_occupancy` (more/bigger/fuller trucks → more implied daytime
+  customers → more beverage revenue), but is **independent of**
+  `weekday_customers`/`weekend_customers` (the evening alcohol bar's
+  traffic). A "no bar" test must pass `daytime_beverage_attach_rate=0.0`
+  separately to zero it out — see `run_breakeven_analysis`'s Zero-Bar Test
+  and Min-Bar-Traffic search, both of which do this explicitly.
+- It carries its **own** COGS/tax treatment
+  (`DAYTIME_BEVERAGE_COGS_RATE` + `DAYTIME_BEVERAGE_SALES_TAX_RATE`,
+  ~30% combined), separate from the alcohol bar's `VARIABLE_COST_RATE`
+  (`COGS_RATE` + the Mixed Beverage `GRT_RATE`, ~42%) — these aren't
+  alcoholic beverages, so standard TX sales tax applies instead of the
+  Mixed Beverage GRT. `calc_monthly_total` computes each separately, then
+  combines them only for `bartender_share`/`cc_processing` (both variable
+  costs that apply to *all* beverage revenue, not just alcohol).
+
+This revenue depends on vendor leases restricting food trucks to **food
+only** (specialty drinks like a truck's own agua fresca/lemonade are still
+allowed, but generic soda/juice/water/coffee is reserved for the park's
+bar) — without that restriction the demand would leak to truck-sold drinks
+instead. As of this model version no truck contracts had been signed yet,
+so the restriction applies from Day 1 with no phase-in (contrast with the
+truck-count Worst Case/Stress Test scenarios, which model *existing*
+vendors churning out gradually).
+
+On COTA event days, `calc_cota_event_revenue` also derives a
+**daytime-beverage uplift** and a **tobacco/nicotine uplift** directly from
+the same day-by-day parking attendance used for parking revenue (`cars x
+PEOPLE_PER_CAR x attach rate x price`, one calc per product) rather than
+separate hardcoded per-tier numbers — a packed event-day lot obviously
+sells more water/soda/cigarettes than a normal day. Both uplifts
+(`cota_daytime_bev_uplift`, `cota_tobacco_uplift`) are additive with their
+everyday truck-traffic-driven baselines, not a replacement for them. **Any
+UI code that reconstructs a "COTA total" from `cota_parking` +
+`cota_bar_uplift` must also add `cota_daytime_bev_uplift` AND
+`cota_tobacco_uplift`**, or it will silently undercount vs.
+`total_gross_revenue` (which already includes both via `cota["gross"]`) —
+this class of bug already bit 7+ separate call sites twice (dashboard tabs
++ CLI prints, once when daytime beverages was added and again when tobacco
+was) before being centralized.
+
+### Tobacco & nicotine stream (thinner margin, real nearby competition)
+
+`calc_tobacco_revenue` mirrors `calc_daytime_beverage_revenue` exactly (same
+truck-traffic-derived customer count, same all-day window, same on-site
+bartender covering it - she already cards for alcohol, so Tobacco 21 age
+verification adds no new labor), but with materially different economics:
+- `TOBACCO_ATTACH_RATE` (12%) is much lower than
+  `DAYTIME_BEVERAGE_ATTACH_RATE` (35%) - nicotine use is a smaller slice of
+  the population than "wants a drink," and it's set low deliberately
+  because **Dollar General next door (~30 sec walk) already sells
+  cigarettes**, directly undercutting the one-stop-shop pitch for that
+  specific product. Vapes/nicotine pouches are less consistently stocked at
+  Dollar General, so the real edge is narrower than the beverage stand's,
+  not zero.
+- `TOBACCO_COGS_RATE` (68%) is much higher than any beverage stream's -
+  cigarette retail margin is famously thin (~15-18%), dragging down the
+  blended margin even though vapes/Zyn run better (~40-50%).
+- Requires a **separate regulatory permit** from the TABC alcohol permit -
+  TX Comptroller cigarette/tobacco + e-cigarette retailer permits
+  (`TOBACCO_PERMIT_MONTHLY` in `FIXED_COSTS["tobacco_permit"]`, estimate,
+  confirm actual fee with the Comptroller).
+
+If real operating data later shows Dollar General does NOT carry vapes/Zyn
+(only cigarettes), consider splitting the attach rate/price by sub-product
+instead of one blended `TOBACCO_*` set - not done here to avoid adding a
+third pricing axis before there's real sales data to calibrate it against.
+
+### Cost totals: use the summarized fields, don't recompute from rates
+
+`summarize_annual` exposes fully-summed variable-cost fields
+(`total_cogs`, `total_grt`, `total_daytime_beverage_cogs`,
+`total_daytime_beverage_tax`, `total_tobacco_cogs`, `total_tobacco_tax`,
+`total_cc_processing`, `total_shrinkage`, `total_bartender_share`,
+`total_cota_parking_upkeep` (`PARKING_UPKEEP_RATE`, 5% of COTA parking
+revenue), `total_cota_cost`, `total_utility_cost`) so the dashboard's Owner
+Summary and Waterfall tabs read them directly instead of re-deriving `rate x
+revenue` locally in multiple places. Prefer reading these fields over
+recomputing - see the COTA-total note above for what goes wrong when a
+derived total is duplicated across call sites instead of computed once in
+the engine.
 
 ### Scenario / sensitivity / Monte Carlo relationship
 
