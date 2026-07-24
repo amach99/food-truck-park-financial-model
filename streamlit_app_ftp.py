@@ -803,7 +803,7 @@ with tabs[8]:
     _, base = model.run_scenario_projection(model.SCENARIOS["Base Case"])
     perf_l, perf_r = st.columns(2)
     with perf_l:
-        st.markdown("**Conservative** (4 trucks @ 88% occ, soft bar)")
+        st.markdown("**Conservative** (3 trucks @ 88% occ, soft bar)")
         st.metric("Revenue", fmt_dollar(conservative["total_gross"]))
         st.metric("Free Cash Flow (pre-tax)", fmt_dollar(conservative["total_net_cash"]))
         st.metric("After-Tax Cash Flow", fmt_dollar(conservative["after_tax_noi"]))

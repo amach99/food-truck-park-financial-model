@@ -776,32 +776,33 @@ def run_monte_carlo(n_simulations=10_000, seed=42,
 # SECTION 5: SCENARIOS
 # =============================================================================
 
-# Truck count is held at the actual current fleet (4, TRUCK_SLOTS) in every
-# scenario except "Upside," which explores a hypothetical future expansion
-# to 6 hubs (not currently budgeted). Rent/share are also fixed at the
-# actual contracted terms ($500 + 10%) throughout. Only bar traffic/check,
-# COTA turnout, and seasonal strength vary across the other four scenarios.
+# Truck count varies by scenario to reflect vendor attrition risk in the
+# downside cases: "Worst Case" assumes only 2 of the 4 built hubs stay
+# occupied, and "Stress Test"/"Conservative" assume 3 of 4. Only "Base
+# Case" holds the full current fleet (4, TRUCK_SLOTS); "Upside" explores a
+# hypothetical future expansion to 6 hubs (not currently budgeted). Rent/
+# share are fixed at the actual contracted terms ($500 + 10%) throughout.
 SCENARIOS = {
     "Worst Case": {
-        "desc": "4 trucks (current fleet), 75% occ, weak bar, no COTA",
+        "desc": "2 trucks (severe vendor attrition), 75% occ, weak bar, no COTA",
         "weekday_customers": 12, "weekend_customers": 34, "avg_check": 7.45,
-        "truck_slots": TRUCK_SLOTS, "truck_rent": TRUCK_PAD_RENT, "truck_share_rate": TRUCK_REV_SHARE_RATE,
+        "truck_slots": 2, "truck_rent": TRUCK_PAD_RENT, "truck_share_rate": TRUCK_REV_SHARE_RATE,
         "truck_occupancy": 0.75,
         "cota_events": {m: [] for m in range(1, 13)},
         "seasonal_pct": 0.5,
     },
     "Stress Test": {
-        "desc": "4 trucks (current fleet), 83% occ, soft bar, big-3 COTA events only",
+        "desc": "3 trucks (partial vendor attrition), 83% occ, soft bar, big-3 COTA events only",
         "weekday_customers": 15, "weekend_customers": 43, "avg_check": 8.05,
-        "truck_slots": TRUCK_SLOTS, "truck_rent": TRUCK_PAD_RENT, "truck_share_rate": TRUCK_REV_SHARE_RATE,
+        "truck_slots": 3, "truck_rent": TRUCK_PAD_RENT, "truck_share_rate": TRUCK_REV_SHARE_RATE,
         "truck_occupancy": 0.83,
         "cota_events": {m: [] for m in range(1, 13)},  # filled below
         "seasonal_pct": 0.75,
     },
     "Conservative": {
-        "desc": "4 trucks (current fleet), 88% occ, full COTA calendar",
+        "desc": "3 trucks (partial vendor attrition), 88% occ, full COTA calendar",
         "weekday_customers": 17, "weekend_customers": 48, "avg_check": 8.55,
-        "truck_slots": TRUCK_SLOTS, "truck_rent": TRUCK_PAD_RENT, "truck_share_rate": TRUCK_REV_SHARE_RATE,
+        "truck_slots": 3, "truck_rent": TRUCK_PAD_RENT, "truck_share_rate": TRUCK_REV_SHARE_RATE,
         "truck_occupancy": 0.88,
         "cota_events": None,
         "seasonal_pct": 0.75,

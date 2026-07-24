@@ -69,7 +69,7 @@ The $75,000 buildout is drawn from a personal line of credit at 12.5%,
 principal-and-interest payment or amortization schedule. The model handles
 this in two places that must stay consistent when either changes:
 
-1. **`FIXED_COSTS["loc_interest"]`** (`LOC_MONTHLY_INTEREST`, ~$781/mo) is a
+1. **`FIXED_COSTS["loc_interest"]`** (`LOC_MONTHLY_INTEREST`, ~$793/mo) is a
    conservative, constant interest-only carrying cost baked into
    `MONTHLY_NUT`/`ANNUAL_NUT`, computed by assuming the *full* $75K balance
    stays drawn indefinitely. Every sensitivity/scenario/Monte Carlo/
