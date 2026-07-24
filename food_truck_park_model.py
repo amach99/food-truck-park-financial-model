@@ -1179,7 +1179,198 @@ def print_owner_summary():
 
 
 # =============================================================================
-# SECTION 8: CLI MENU
+# SECTION 8: TAX STRATEGY ANALYSIS
+# =============================================================================
+# Two independent, stackable levers an owner can use on top of the flat
+# EFFECTIVE_INCOME_TAX_RATE (28%) estimate used everywhere else in this file:
+#
+#   1. Depreciation - the Phase 0.5 buildout is a real capital asset. Written
+#      off over its useful life (or immediately via Section 179 / bonus
+#      depreciation), depreciation is a non-cash deduction: it lowers
+#      taxable income without reducing actual cash NOI.
+#   2. S-corp election - a sole prop / single-member LLC (the default
+#      assumed elsewhere in this model) owes self-employment (SE) tax on
+#      100% of net profit. Electing S-corp status lets the owner split
+#      profit into a "reasonable salary" (subject to payroll tax, the
+#      SE-tax equivalent) and distributions (federal income tax only, no
+#      SE/payroll tax) - saving 15.3% on the distribution portion.
+#
+# This section builds a more granular income-tax + SE-tax breakdown than
+# the blended 28% shorthand, so the two levers are visible; at the profit
+# levels this model projects, FEDERAL_INCOME_TAX_RATE_ONLY + a real SE-tax
+# calc lands close to that same ~28% baseline (a rough internal-consistency
+# check, not a coincidence). None of this changes the pre-tax NOI reported
+# elsewhere - it only estimates incremental tax savings. Illustrative only;
+# confirm entity choice, reasonable-compensation level, and depreciation
+# elections with a CPA before filing.
+
+# --- Depreciation: classify the real Phase 0.5 buildout into MACRS-style
+# classes (IRS Pub 946): 5-year for equipment/electronics/fixtures, 15-year
+# for land improvements (fencing, lighting, drainage, grading). Inventory,
+# permits, and contingency are excluded - not depreciable capital assets.
+DEPRECIATION_5YR_ITEMS = [
+    "TVs", "TV Mounts", "TV encasing", "Security system",
+    "Sound System / Speakers", "StarLink Internet equipment",
+    "Mist Fans (pole-mounted)", "Refrigerators (bar coolers)",
+    "Bar shed - Walmart (fridges, shelves, POS)", "Benches",
+]
+DEPRECIATION_15YR_ITEMS = [
+    "Turf", "Sail Shades", "Gates", "Pole Lighting / String Lights",
+    "Signs", "Electrical", "Plumbing", "Telephone pole",
+    "Full land clearing", "Yard Multi-Purpose Poles (set & anchor)",
+    "Gravel", "Trash Cans", "Storage Shed (wooden, general)",
+]
+_use_of_funds_cost = {label: amt for label, amt, _ in USE_OF_FUNDS}
+DEPRECIABLE_BASIS_5YR = sum(_use_of_funds_cost[i] for i in DEPRECIATION_5YR_ITEMS)
+DEPRECIABLE_BASIS_15YR = sum(_use_of_funds_cost[i] for i in DEPRECIATION_15YR_ITEMS)
+TOTAL_DEPRECIABLE_BASIS = DEPRECIABLE_BASIS_5YR + DEPRECIABLE_BASIS_15YR
+NON_DEPRECIABLE_COST = TOTAL_PROJECT_COST - TOTAL_DEPRECIABLE_BASIS  # inventory, permits, contingency
+
+# Straight-line, no half-year convention (a CPA would apply the IRS
+# half-year/mid-quarter convention and could instead front-load the whole
+# basis via Section 179 / 100% bonus depreciation - modeled as "accelerated"
+# below, both well under the current-law annual expensing limits for a
+# business this size).
+ANNUAL_STRAIGHT_LINE_DEPRECIATION = (DEPRECIABLE_BASIS_5YR / 5) + (DEPRECIABLE_BASIS_15YR / 15)
+YEAR1_ACCELERATED_DEPRECIATION = TOTAL_DEPRECIABLE_BASIS  # Section 179/bonus: full basis in Year 1
+
+# --- Self-employment tax vs. S-corp salary/distribution split ---
+SE_TAXABLE_SHARE = 0.9235        # IRS Sch SE: only 92.35% of net earnings is subject to SE tax
+SOCIAL_SECURITY_WAGE_BASE = 176_100  # 2025 SS wage base - earnings above owe Medicare (2.9%) only
+ADDITIONAL_MEDICARE_THRESHOLD = 200_000  # single-filer 0.9% Medicare surtax threshold
+ADDITIONAL_MEDICARE_RATE = 0.009
+FEDERAL_INCOME_TAX_RATE_ONLY = 0.15  # estimate, excludes SE/payroll tax - see note above
+# Illustrative "reasonable compensation" for the S-corp salary split. Set
+# lower than a full-time operator's wage because the on-site manager and
+# bartender (see staffing section above) handle day-to-day labor; the
+# owner's role is closer to part-time oversight. A CPA reasonable-
+# compensation study should confirm the final number before electing S-corp.
+REASONABLE_OWNER_SALARY = 36_000
+
+
+def calc_se_tax(taxable_profit):
+    """Self-employment tax on 100% of net profit (sole prop / single-member LLC)."""
+    se_base = max(0.0, taxable_profit) * SE_TAXABLE_SHARE
+    tax = min(se_base, SOCIAL_SECURITY_WAGE_BASE) * 0.124 + se_base * 0.029
+    if se_base > ADDITIONAL_MEDICARE_THRESHOLD:
+        tax += (se_base - ADDITIONAL_MEDICARE_THRESHOLD) * ADDITIONAL_MEDICARE_RATE
+    return tax
+
+
+def calc_payroll_tax_on_salary(salary):
+    """Combined employee + employer FICA on an S-corp owner salary."""
+    salary = max(0.0, salary)
+    tax = min(salary, SOCIAL_SECURITY_WAGE_BASE) * 0.124 + salary * 0.029
+    if salary > ADDITIONAL_MEDICARE_THRESHOLD:
+        tax += (salary - ADDITIONAL_MEDICARE_THRESHOLD) * ADDITIONAL_MEDICARE_RATE
+    return tax
+
+
+def run_tax_strategy_analysis(annual_noi, owner_salary=None,
+                              accelerated_depreciation=False,
+                              apply_depreciation=True, apply_scorp=True):
+    """
+    Compare today's default tax posture (sole prop / single-member LLC, no
+    depreciation election called out) against depreciation and/or an S-corp
+    election, on a given year's pre-tax NOI.
+
+    Federal income tax applies to NOI net of depreciation either way (it's
+    an ordinary Schedule C/K-1 deduction regardless of entity choice), so
+    depreciation shields both federal income tax and SE tax equally. Only
+    the SE/payroll-tax base differs between sole-prop (SE tax on 100% of
+    taxable profit) and S-corp (payroll tax on salary only, no SE tax on
+    distributions).
+    """
+    salary = owner_salary if owner_salary is not None else REASONABLE_OWNER_SALARY
+    depreciation = (YEAR1_ACCELERATED_DEPRECIATION if accelerated_depreciation
+                    else ANNUAL_STRAIGHT_LINE_DEPRECIATION) if apply_depreciation else 0.0
+    depreciation = min(depreciation, max(0.0, annual_noi))
+    taxable_profit = max(0.0, annual_noi - depreciation)
+
+    federal_income_tax = taxable_profit * FEDERAL_INCOME_TAX_RATE_ONLY
+
+    baseline_se_tax = calc_se_tax(taxable_profit)
+    baseline_total_tax = federal_income_tax + baseline_se_tax
+    baseline_after_tax = annual_noi - baseline_total_tax
+
+    if apply_scorp:
+        salary = min(salary, taxable_profit)
+        distribution = taxable_profit - salary
+        strategy_se_tax = calc_payroll_tax_on_salary(salary)
+    else:
+        salary, distribution = 0.0, taxable_profit
+        strategy_se_tax = baseline_se_tax
+
+    strategy_total_tax = federal_income_tax + strategy_se_tax
+    strategy_after_tax = annual_noi - strategy_total_tax
+
+    # Reference-only: what today's flat blended-rate estimate would show,
+    # for comparison against this more granular breakdown.
+    blended_baseline_tax = max(0.0, annual_noi) * EFFECTIVE_INCOME_TAX_RATE
+
+    # NOTE: "baseline_*" fields below are the sole-prop/no-S-corp figures on
+    # this call's taxable_profit (i.e. after whatever this call's own
+    # apply_depreciation/accelerated_depreciation settings did to it) - they
+    # are NOT automatically the true zero-strategy baseline. To measure the
+    # dollar impact of a lever, diff two calls (e.g. a no-strategy call vs.
+    # a combined call), don't rely on a single call's baseline_* fields.
+    return {
+        "annual_noi": annual_noi,
+        "depreciation_expense": depreciation,
+        "taxable_profit": taxable_profit,
+        "federal_income_tax": federal_income_tax,
+        "owner_salary": salary,
+        "distribution": distribution,
+        "baseline_se_tax": baseline_se_tax,
+        "baseline_total_tax": baseline_total_tax,
+        "baseline_after_tax": baseline_after_tax,
+        "strategy_se_tax": strategy_se_tax,
+        "strategy_total_tax": strategy_total_tax,
+        "strategy_after_tax": strategy_after_tax,
+        "blended_baseline_tax": blended_baseline_tax,
+    }
+
+
+def print_tax_strategy_analysis(annual_noi=None):
+    """CLI view of the depreciation + S-corp tax strategy analysis, on Base Case Year 1 NOI by default."""
+    if annual_noi is None:
+        _, base = run_scenario_projection(SCENARIOS["Base Case"])
+        annual_noi = base["total_noi"]
+
+    no_strategy = run_tax_strategy_analysis(annual_noi, apply_depreciation=False, apply_scorp=False)
+    dep_only = run_tax_strategy_analysis(annual_noi, accelerated_depreciation=False, apply_scorp=False)
+    scorp_only = run_tax_strategy_analysis(annual_noi, apply_depreciation=False, apply_scorp=True)
+    combined = run_tax_strategy_analysis(annual_noi, accelerated_depreciation=True, apply_scorp=True)
+
+    print(f"\n{'=' * 70}")
+    print("  TAX STRATEGY ANALYSIS")
+    print(f"{'=' * 70}")
+    print(f"\n  Annual NOI (pre-tax): ${annual_noi:,.0f}")
+    print(f"\n  DEPRECIATION BASIS")
+    print(f"  {'5-Year (equipment/fixtures)':<32} ${DEPRECIABLE_BASIS_5YR:>10,.0f}")
+    print(f"  {'15-Year (land improvements)':<32} ${DEPRECIABLE_BASIS_15YR:>10,.0f}")
+    print(f"  {'Total depreciable basis':<32} ${TOTAL_DEPRECIABLE_BASIS:>10,.0f}")
+    print(f"  {'Straight-line annual expense':<32} ${ANNUAL_STRAIGHT_LINE_DEPRECIATION:>10,.0f}")
+    print(f"  {'Accelerated (Sec 179, Year 1)':<32} ${YEAR1_ACCELERATED_DEPRECIATION:>10,.0f}")
+
+    print(f"\n  {'':<24} {'No Strategy':>13} {'+Depreciation':>15} {'+S-Corp Only':>14} {'+Both (Combined)':>18}")
+    print("  " + "-" * 88)
+    print(f"  {'Total Tax':<24} ${no_strategy['strategy_total_tax']:>12,.0f} "
+          f"${dep_only['strategy_total_tax']:>14,.0f} ${scorp_only['strategy_total_tax']:>13,.0f} "
+          f"${combined['strategy_total_tax']:>17,.0f}")
+    print(f"  {'After-Tax Cash Flow':<24} ${no_strategy['strategy_after_tax']:>12,.0f} "
+          f"${dep_only['strategy_after_tax']:>14,.0f} ${scorp_only['strategy_after_tax']:>13,.0f} "
+          f"${combined['strategy_after_tax']:>17,.0f}")
+    combined_savings = no_strategy["strategy_total_tax"] - combined["strategy_total_tax"]
+    print(f"\n  Owner salary (S-corp split): ${combined['owner_salary']:,.0f} "
+          f"| Distributions: ${combined['distribution']:,.0f}")
+    print(f"  Total tax savings, combined vs. no-strategy baseline: "
+          f"${combined_savings:,.0f} "
+          f"({combined_savings / no_strategy['strategy_total_tax']:.0%})")
+
+
+# =============================================================================
+# SECTION 9: CLI MENU
 # =============================================================================
 
 def print_annual_summary(months, annual, label=""):
@@ -1224,6 +1415,7 @@ def main():
   6. Owner Summary
   7. Cash Reserve Tracker
   8. LOC Payoff Schedule
+  9. Tax Strategy Analysis
   0. Exit
 =================================================="""
     while True:
@@ -1262,6 +1454,8 @@ def main():
             run_cash_reserve_tracker()
         elif choice == "8":
             run_loc_payoff_schedule()
+        elif choice == "9":
+            print_tax_strategy_analysis()
         elif choice == "0":
             print("\n  Goodbye!")
             break

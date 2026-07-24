@@ -167,6 +167,7 @@ tabs = st.tabs([
     "Multi-Year",
     "Waterfall",
     "Owner Summary",
+    "Tax Strategies",
     "📖 Model Overview",
 ])
 
@@ -841,9 +842,142 @@ with tabs[8]:
 
 
 # =============================================================================
-# TAB 9: MODEL OVERVIEW
+# TAB 9: TAX STRATEGIES
 # =============================================================================
 with tabs[9]:
+    st.header("Tax Savings Strategies")
+    st.caption("Illustrative only — depreciation elections and entity choice "
+               "depend on the owner's full tax picture (other income, filing "
+               "status, state). Confirm with a CPA before filing. This tab "
+               "doesn't change the pre-tax NOI used elsewhere in the model — "
+               "it only estimates incremental tax savings.")
+
+    st.markdown("---")
+    st.subheader("NOI Basis")
+    noi_source = st.radio(
+        "Run the analysis on:",
+        ["Current Dashboard Inputs", "Base Case", "Conservative", "Custom"],
+        horizontal=True,
+    )
+    if noi_source == "Current Dashboard Inputs":
+        tax_noi = annual["total_noi"]
+        st.metric("Year 1 NOI (pre-tax, sidebar inputs)", fmt_dollar(tax_noi))
+    elif noi_source == "Custom":
+        tax_noi = st.slider("Annual NOI (pre-tax, $)", 0, 400_000,
+                            int(annual["total_noi"]), step=5_000, format="$%d")
+    else:
+        _, scen_ann = model.run_scenario_projection(model.SCENARIOS[noi_source])
+        tax_noi = scen_ann["total_noi"]
+        st.metric(f"{noi_source} Year 1 NOI (pre-tax)", fmt_dollar(tax_noi))
+
+    st.markdown("---")
+    st.subheader("1. Depreciation")
+    st.markdown(
+        f"The \\${model.TOTAL_DEPRECIABLE_BASIS:,.0f} capital buildout "
+        "(excludes inventory, permits, and contingency — see Owner Summary "
+        "for the full Use of Funds) can be written off against taxable "
+        "income. It's a **non-cash deduction**: it lowers the tax bill "
+        "without reducing actual cash NOI."
+    )
+    dep_l, dep_r = st.columns(2)
+    with dep_l:
+        st.metric("5-Year Basis (equipment/fixtures)", fmt_dollar(model.DEPRECIABLE_BASIS_5YR))
+        st.metric("Straight-Line Annual Expense", fmt_dollar(model.ANNUAL_STRAIGHT_LINE_DEPRECIATION))
+    with dep_r:
+        st.metric("15-Year Basis (land improvements)", fmt_dollar(model.DEPRECIABLE_BASIS_15YR))
+        st.metric("Accelerated (Sec 179/Bonus, Year 1)", fmt_dollar(model.YEAR1_ACCELERATED_DEPRECIATION))
+    accelerated = st.checkbox(
+        "Elect Section 179 / bonus depreciation (write off the full basis in Year 1, "
+        "vs. spreading it straight-line over 5/15 years)",
+        value=True,
+    )
+
+    st.markdown("---")
+    st.subheader("2. Owner Salary vs. Distributions (S-Corp Election)")
+    st.markdown(
+        "A sole proprietorship / single-member LLC (today's default "
+        "structure elsewhere in this model) owes **self-employment tax "
+        "(15.3%)** on 100% of net profit. Electing **S-corp** status lets "
+        "the owner split profit into a \"reasonable salary\" (subject to "
+        "payroll tax, the SE-tax equivalent) and distributions (income tax "
+        "only — no SE/payroll tax on that portion)."
+    )
+    owner_salary = st.slider(
+        "Reasonable Owner Salary ($/yr)", 0, 100_000,
+        model.REASONABLE_OWNER_SALARY, step=1_000, format="$%d",
+    )
+    st.caption("Default reflects a part-time oversight role — the on-site "
+               "manager (free housing in exchange for day-to-day ops) and "
+               "bartender (see Owner Summary) handle the actual labor. A "
+               "CPA reasonable-compensation study should confirm this "
+               "number before electing S-corp status.")
+
+    st.markdown("---")
+    st.subheader("Combined Financial Impact")
+    no_strategy = model.run_tax_strategy_analysis(tax_noi, apply_depreciation=False, apply_scorp=False)
+    dep_only = model.run_tax_strategy_analysis(tax_noi, accelerated_depreciation=accelerated, apply_scorp=False)
+    scorp_only = model.run_tax_strategy_analysis(tax_noi, apply_depreciation=False,
+                                                 apply_scorp=True, owner_salary=owner_salary)
+    combined = model.run_tax_strategy_analysis(tax_noi, accelerated_depreciation=accelerated,
+                                               apply_scorp=True, owner_salary=owner_salary)
+
+    compare_df = pd.DataFrame([
+        {"Strategy": "No Strategy (today)", "Total Tax": no_strategy["strategy_total_tax"],
+         "After-Tax Cash Flow": no_strategy["strategy_after_tax"]},
+        {"Strategy": "+ Depreciation Only", "Total Tax": dep_only["strategy_total_tax"],
+         "After-Tax Cash Flow": dep_only["strategy_after_tax"]},
+        {"Strategy": "+ S-Corp Election Only", "Total Tax": scorp_only["strategy_total_tax"],
+         "After-Tax Cash Flow": scorp_only["strategy_after_tax"]},
+        {"Strategy": "+ Both Combined", "Total Tax": combined["strategy_total_tax"],
+         "After-Tax Cash Flow": combined["strategy_after_tax"]},
+    ])
+
+    fig_tax = go.Figure()
+    fig_tax.add_trace(go.Bar(x=compare_df["Strategy"], y=compare_df["Total Tax"],
+                             name="Total Tax", marker_color="#E15759"))
+    fig_tax.add_trace(go.Bar(x=compare_df["Strategy"], y=compare_df["After-Tax Cash Flow"],
+                             name="After-Tax Cash Flow", marker_color="#59A14F"))
+    fig_tax.update_layout(
+        barmode="group",
+        yaxis=dict(title="Dollars ($)", tickformat="$,.0f"),
+        legend=dict(orientation="h", yanchor="bottom", y=1.02),
+        margin=dict(t=60, b=40),
+    )
+    st.plotly_chart(fig_tax, use_container_width=True)
+
+    disp_df = compare_df.copy()
+    disp_df["Total Tax"] = disp_df["Total Tax"].apply(fmt_dollar)
+    disp_df["After-Tax Cash Flow"] = disp_df["After-Tax Cash Flow"].apply(fmt_dollar)
+    st.dataframe(disp_df, use_container_width=True, hide_index=True)
+
+    combined_savings = no_strategy["strategy_total_tax"] - combined["strategy_total_tax"]
+    cf_uplift = combined["strategy_after_tax"] - no_strategy["strategy_after_tax"]
+    sm1, sm2, sm3, sm4 = st.columns(4)
+    sm1.metric(
+        "Combined Tax Savings", fmt_dollar(combined_savings),
+        f"{combined_savings / no_strategy['strategy_total_tax']:.0%} lower tax bill"
+        if no_strategy["strategy_total_tax"] else None,
+    )
+    sm2.metric("Owner Salary", fmt_dollar(combined["owner_salary"]))
+    sm3.metric("Distributions", fmt_dollar(combined["distribution"]))
+    sm4.metric("After-Tax Cash Flow Uplift", fmt_dollar(cf_uplift))
+
+    st.caption(
+        f"Federal income tax is estimated at {model.FEDERAL_INCOME_TAX_RATE_ONLY:.0%} of taxable "
+        "profit (NOI after depreciation) in every column above — only the "
+        "self-employment/payroll-tax base changes by strategy. For "
+        f"reference, the flat blended-rate estimate used elsewhere in the "
+        f"model ({model.EFFECTIVE_INCOME_TAX_RATE:.0%}) implies "
+        f"{fmt_dollar(no_strategy['blended_baseline_tax'])} of tax on this NOI — close to the "
+        "\"No Strategy\" column here, which breaks that same estimate into "
+        "its income-tax and self-employment-tax components."
+    )
+
+
+# =============================================================================
+# TAB 10: MODEL OVERVIEW
+# =============================================================================
+with tabs[10]:
     st.header("📊 How The Model Works")
     st.caption("Leanest concept on the Del Valle land: food truck park + a "
                "limited beer/shots bar, financed via a personal line of "
