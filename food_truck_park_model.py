@@ -343,7 +343,7 @@ FIXED_COSTS = {
     "pos_tech_subscriptions": 120,   # actual: Clover POS
     "licenses_permits": 300,         # TABC beer/liquor retailer + health permit renewals (estimate)
     "maintenance_reserve": 400,      # supplies/materials only, not labor (estimate)
-    "property_tax": 4_000,           # actual: owner-reported monthly property tax bill
+    "property_tax": 333,             # actual: owner-reported $4,000/yr property tax bill, /12
     "loc_interest": LOC_MONTHLY_INTEREST,  # 12.5% interest-only on the LOC draw
 }
 MONTHLY_NUT = sum(FIXED_COSTS.values())
