@@ -55,11 +55,19 @@ truck_share = st.sidebar.slider("Revenue Share (%)", 5.0, 10.0,
 truck_sales = st.sidebar.slider("Avg Truck Sales ($/mo)", 10_000, 35_000,
                                 model.TRUCK_AVG_MONTHLY_SALES, step=1_000,
                                 format="$%d")
+truck_occupancy = st.sidebar.slider(
+    "Truck Occupancy (%)", 50, 100, int(round(model.TRUCK_OCCUPANCY * 100)),
+    step=5,
+    help="Expected fraction of built slots rented at any time. 6-month "
+         "contracts bound churn; a slot sits empty during re-leasing gaps. "
+         "100% = always full.") / 100
 
 st.sidebar.subheader("Limited Bar (6pm-close, beer + shots only)")
-bar_customers = st.sidebar.slider("Bar Customers/Evening (avg)", 10, 70,
-                                  model.BAR_DAILY_CUSTOMERS, step=2)
-avg_check = st.sidebar.slider("Avg Check ($)", 3.5, 8.0, model.BAR_AVG_CHECK,
+weekday_customers = st.sidebar.slider("Weekday Customers/Evening (Mon-Thu)", 5, 50,
+                                      model.BAR_WEEKDAY_CUSTOMERS, step=1)
+weekend_customers = st.sidebar.slider("Weekend Customers/Evening (Fri-Sun)", 15, 100,
+                                      model.BAR_WEEKEND_CUSTOMERS, step=2)
+avg_check = st.sidebar.slider("Avg Check ($)", 5.0, 15.0, model.BAR_AVG_CHECK,
                               step=0.25, format="$%.2f")
 
 st.sidebar.subheader("Other")
@@ -75,32 +83,32 @@ mc_sims = st.sidebar.selectbox("Simulations", [1000, 5000, 10000], index=1)
 # CACHED COMPUTATIONS
 # =============================================================================
 @st.cache_data
-def get_annual(custs, check, slots, t_rent, t_share, t_sales, seasonal, yr=1):
+def get_annual(wd_custs, we_custs, check, slots, t_rent, t_share, t_sales, t_occ, seasonal, yr=1):
     return model.run_annual_projection(
-        custs, year=yr, avg_check=check,
+        wd_custs, we_custs, year=yr, avg_check=check,
         truck_slots=slots, truck_rent=t_rent,
         truck_share_rate=t_share, truck_avg_sales=t_sales,
-        seasonal_pct=seasonal,
+        truck_occupancy=t_occ, seasonal_pct=seasonal,
     )
 
 
 @st.cache_data
-def get_multi_year(custs, check, slots, t_rent, t_share, t_sales, seasonal, years=3):
+def get_multi_year(wd_custs, we_custs, check, slots, t_rent, t_share, t_sales, t_occ, seasonal, years=3):
     return model.run_multi_year_projection(
-        custs, years=years, base_check=check,
+        wd_custs, we_custs, years=years, base_check=check,
         truck_slots=slots, truck_rent=t_rent,
         truck_share_rate=t_share, truck_avg_sales=t_sales,
-        seasonal_pct=seasonal,
+        truck_occupancy=t_occ, seasonal_pct=seasonal,
     )
 
 
 @st.cache_data
-def get_monte_carlo(n_sims, seed, custs, check, t_rent, t_share, seasonal):
+def get_monte_carlo(n_sims, seed, wd_custs, we_custs, check, t_rent, t_share, t_occ, seasonal):
     return model.run_monte_carlo(
         n_sims, seed,
-        base_customers=custs, base_check=check,
-        base_truck_rent=t_rent, base_truck_share=t_share,
-        base_seasonal_pct=seasonal,
+        base_weekday_customers=wd_custs, base_weekend_customers=we_custs,
+        base_check=check, base_truck_rent=t_rent, base_truck_share=t_share,
+        base_truck_occupancy=t_occ, base_seasonal_pct=seasonal,
     )
 
 
@@ -134,8 +142,9 @@ def months_to_df(months):
 
 
 # Shared computation for current sidebar inputs
-months, annual = get_annual(bar_customers, avg_check, truck_slots, truck_rent,
-                            truck_share, truck_sales, seasonal_pct)
+months, annual = get_annual(weekday_customers, weekend_customers, avg_check,
+                            truck_slots, truck_rent, truck_share, truck_sales,
+                            truck_occupancy, seasonal_pct)
 df = months_to_df(months)
 
 
@@ -249,12 +258,11 @@ with tabs[1]:
     )
     st.plotly_chart(fig_stack, use_container_width=True)
 
-    c1, c2, c3, c4, c5 = st.columns(5)
+    c1, c2, c3, c4 = st.columns(4)
     c1.metric("Total Revenue", fmt_dollar(annual["total_gross"]))
     c2.metric("FCF Yield", fmt_pct(annual["fcf_yield"] * 100))
     c3.metric("Free Cash Flow", fmt_dollar(annual["total_net_cash"]))
     c4.metric("Bartender Share (5%)", fmt_dollar(annual["total_bartender_share"]))
-    c5.metric("Event Labor", fmt_dollar(annual["total_event_labor"]))
 
     st.subheader("Revenue Streams")
     stream_data = {
@@ -294,9 +302,10 @@ with tabs[2]:
     slot_rows = []
     for slots in [2, 3, 4, 5, 6, 8, 10]:
         _, ann = model.run_annual_projection(
-            bar_customers, avg_check=avg_check,
+            weekday_customers, weekend_customers, avg_check=avg_check,
             truck_slots=slots, truck_rent=truck_rent,
             truck_share_rate=truck_share, truck_avg_sales=truck_sales,
+            truck_occupancy=truck_occupancy,
         )
         slot_rows.append({
             "Trucks": slots,
@@ -336,29 +345,52 @@ with tabs[2]:
         row = {"Avg Truck Sales": fmt_dollar(sales)}
         for slots in [3, 4, 5, 6, 8]:
             _, ann = model.run_annual_projection(
-                bar_customers, avg_check=avg_check,
+                weekday_customers, weekend_customers, avg_check=avg_check,
                 truck_slots=slots, truck_rent=truck_rent,
                 truck_share_rate=truck_share, truck_avg_sales=sales,
+                truck_occupancy=truck_occupancy,
             )
             row[f"{slots} trucks"] = f"{ann['avg_monthly_nut_coverage']:.2f}x"
         grid_rows.append(row)
     st.dataframe(pd.DataFrame(grid_rows), use_container_width=True, hide_index=True)
 
     st.subheader("3. Bar Traffic Impact")
+    st.caption("Scales weekday and weekend customer counts together, holding "
+               "their current ratio fixed.")
     bar_rows = []
-    for custs in [12, 21, 30, 36, 45, 54, 66]:
+    for mult in [0.33, 0.6, 0.83, 1.0, 1.25, 1.5, 1.83]:
+        wd = round(weekday_customers * mult)
+        we = round(weekend_customers * mult)
         _, ann = model.run_annual_projection(
-            custs, avg_check=avg_check,
+            wd, we, avg_check=avg_check,
             truck_slots=truck_slots, truck_rent=truck_rent,
             truck_share_rate=truck_share, truck_avg_sales=truck_sales,
+            truck_occupancy=truck_occupancy,
         )
         bar_rows.append({
-            "Bar Customers/Evening": custs,
+            "Weekday/Weekend Customers": f"{wd} / {we}",
             "Annual Revenue": fmt_dollar(ann["total_gross"]),
             "Free Cash Flow": fmt_dollar(ann["total_net_cash"]),
             "Nut Coverage": f"{ann['avg_monthly_nut_coverage']:.2f}x",
         })
     st.dataframe(pd.DataFrame(bar_rows), use_container_width=True, hide_index=True)
+
+    st.subheader("4. Truck Occupancy Impact (vendor vacancy / churn)")
+    occ_rows = []
+    for occ in [0.60, 0.70, 0.80, 0.90, 1.0]:
+        _, ann = model.run_annual_projection(
+            weekday_customers, weekend_customers, avg_check=avg_check,
+            truck_slots=truck_slots, truck_rent=truck_rent,
+            truck_share_rate=truck_share, truck_avg_sales=truck_sales,
+            truck_occupancy=occ,
+        )
+        occ_rows.append({
+            "Occupancy": f"{occ:.0%}",
+            "Annual Revenue": fmt_dollar(ann["total_gross"]),
+            "Free Cash Flow": fmt_dollar(ann["total_net_cash"]),
+            "Nut Coverage": f"{ann['avg_monthly_nut_coverage']:.2f}x",
+        })
+    st.dataframe(pd.DataFrame(occ_rows), use_container_width=True, hide_index=True)
 
 
 # =============================================================================
@@ -376,7 +408,7 @@ with tabs[3]:
     no_bar = be["no_bar_annual"]
 
     st.subheader("Zero-Bar Test")
-    st.caption("Can food truck rent + revenue share alone (6 trucks, no bar, "
+    st.caption("Can food truck rent + revenue share alone (4 trucks, no bar, "
                "no COTA) cover the monthly nut?")
     z1, z2, z3 = st.columns(3)
     z1.metric("Annual NOI (no bar)", fmt_dollar(no_bar["total_noi"]))
@@ -390,10 +422,10 @@ with tabs[3]:
     st.caption("Assumes a weak truck base (4 trucks @ \\$600 + 5%, no COTA) — "
                "worst-case support from the truck-rent stream")
     be_rows = []
-    for label, target, custs in be["bar_traffic_targets"]:
+    for label, target, wd, we in be["bar_traffic_targets"]:
         be_rows.append({
             "Nut Coverage Target": f"{label} ({target:.2f}x)",
-            "Min Bar Customers/Evening": f"~{custs:.0f}",
+            "Min Weekday/Weekend Customers": f"~{wd} / ~{we}",
         })
     st.dataframe(pd.DataFrame(be_rows), use_container_width=True, hide_index=True)
 
@@ -408,8 +440,9 @@ with tabs[3]:
 with tabs[4]:
     st.header(f"Monte Carlo Simulation ({mc_sims:,} scenarios)")
 
-    mc_results = get_monte_carlo(mc_sims, mc_seed, bar_customers, avg_check,
-                                 truck_rent, truck_share, seasonal_pct)
+    mc_results = get_monte_carlo(mc_sims, mc_seed, weekday_customers, weekend_customers,
+                                 avg_check, truck_rent, truck_share, truck_occupancy,
+                                 seasonal_pct)
 
     revenues = sorted(r["revenue"] for r in mc_results)
     covs = sorted(r["nut_coverage"] for r in mc_results)
@@ -468,10 +501,11 @@ with tabs[4]:
         st.plotly_chart(fig_cf, use_container_width=True)
 
     st.caption(
-        "Randomized: truck slots (base -2 to base), truck rent (\\$500-\\$1,000), "
-        "revenue share (5%-10%), truck sales (\\$10K-\\$35K/mo), bar customers/"
-        "evening (10-70), avg check (\\$3.50-\\$8), COTA events (8-15/yr), "
-        "seasonal strength (40%-150%)."
+        "Randomized: truck slots (base -2 to base), truck sales (\\$10K-\\$35K/mo), "
+        "bar customers/evening (10-70), avg check (\\$5-\\$13), COTA events "
+        "(8-15/yr), seasonal strength (40%-150%). Truck rent and revenue "
+        "share are held fixed across every simulation at the sidebar slider "
+        "values (they're actual contracted terms, not something to randomize)."
     )
 
 
@@ -488,8 +522,8 @@ with tabs[5]:
         params = model.SCENARIOS[name]
         rows.append({
             "Scenario": name,
-            "Trucks": params["truck_slots"],
-            "Bar Custs": params["bar_customers"],
+            "Truck Slots": params["truck_slots"],
+            "Bar Custs (Wkday/Wkend)": f"{params['weekday_customers']}/{params['weekend_customers']}",
             "Annual Revenue": ann["total_gross"],
             "Free Cash Flow": ann["total_net_cash"],
             "Nut Coverage": ann["avg_monthly_nut_coverage"],
@@ -540,8 +574,9 @@ with tabs[5]:
 with tabs[6]:
     st.header("Multi-Year Projection (Years 1-3)")
 
-    all_years = get_multi_year(bar_customers, avg_check, truck_slots, truck_rent,
-                               truck_share, truck_sales, seasonal_pct)
+    all_years = get_multi_year(weekday_customers, weekend_customers, avg_check,
+                               truck_slots, truck_rent, truck_share, truck_sales,
+                               truck_occupancy, seasonal_pct)
 
     my_rows = []
     for yr, months_data, ann in all_years:
@@ -671,18 +706,17 @@ with tabs[7]:
     parking_cost = annual["total_cota_parking"] * 0.05
     cota_cost = annual["total_cota_cost"]
     bartender_share = annual["total_bartender_share"]
-    event_labor = annual["total_event_labor"]
     fixed_ex = model.ANNUAL_NUT
     free_cf = (gross - cogs - grt - cc - shrinkage - utility_cost - parking_cost
-               - cota_cost - bartender_share - event_labor - fixed_ex)
+               - cota_cost - bartender_share - fixed_ex)
 
-    labels = ["Gross Revenue", "COGS (34%)", "TX GRT (6.7%)", "CC Processing",
-              "Shrinkage", "Utility Pass-Thru", "Parking Upkeep",
-              "COTA Costs", "Bartender Share", "Event Labor", "Fixed Costs (Nut)",
+    labels = ["Gross Revenue", f"COGS ({model.COGS_RATE:.0%})", "TX GRT (6.7%)",
+              "CC Processing", "Shrinkage", "Utility Pass-Thru", "Parking Upkeep",
+              "COTA Costs", "Bartender Share", "Fixed Costs (Nut)",
               "Free Cash Flow"]
     values = [gross, -cogs, -grt, -cc, -shrinkage, -utility_cost, -parking_cost,
-              -cota_cost, -bartender_share, -event_labor, -fixed_ex, 0]
-    measures = ["absolute"] + ["relative"] * 10 + ["total"]
+              -cota_cost, -bartender_share, -fixed_ex, 0]
+    measures = ["absolute"] + ["relative"] * 9 + ["total"]
 
     fig_wf = go.Figure(go.Waterfall(
         x=labels, y=values, measure=measures,
@@ -726,15 +760,17 @@ with tabs[8]:
 
     st.markdown("---")
     st.subheader("Use of Funds")
-    use_df = pd.DataFrame(model.USE_OF_FUNDS, columns=["Item", "Amount"])
+    status_labels = {"done": "✅ Done", "in_progress": "🔧 In Progress", "not_started": "⬜ Not Started"}
+    use_df = pd.DataFrame(model.USE_OF_FUNDS, columns=["Item", "Amount", "Status"])
+    use_df["Status"] = use_df["Status"].map(status_labels)
     use_df["Amount"] = use_df["Amount"].apply(fmt_dollar)
     st.dataframe(use_df, use_container_width=True, hide_index=True)
-    st.markdown(f"**Total: {fmt_dollar(sum(a for _, a in model.USE_OF_FUNDS))}**")
-    st.caption("Phase 0.5 lines are actuals from DM Remodeling invoices "
-               "(May–Jul 2026), already spent — the food truck park itself "
-               "already opened. The remaining ~"
-               f"{fmt_dollar(model.NEW_CASH_NEEDED)} funds the limited bar "
-               "buildout, fencing, restroom, wifi/cameras, and permits.")
+    st.markdown(f"**Total: {fmt_dollar(model.TOTAL_PROJECT_COST)}**")
+    st.caption("Sourced from the owner's real Phase 0.5 cost tracker — "
+               "itemized at actual vendor-quoted prices, not estimated "
+               "buckets. Planning-only line items that were never actually "
+               "implemented (generator, grease removal, propane tank "
+               "service) are excluded rather than estimated.")
 
     st.markdown("---")
     st.subheader("Monthly Operating Costs (The Nut)")
@@ -755,12 +791,12 @@ with tabs[8]:
     _, base = model.run_scenario_projection(model.SCENARIOS["Base Case"])
     perf_l, perf_r = st.columns(2)
     with perf_l:
-        st.markdown("**Conservative** (5 trucks, soft bar)")
+        st.markdown("**Conservative** (4 trucks @ 88% occ, soft bar)")
         st.metric("Revenue", fmt_dollar(conservative["total_gross"]))
         st.metric("Free Cash Flow", fmt_dollar(conservative["total_net_cash"]))
         st.metric("FCF Yield", f"{conservative['fcf_yield']:.1%}")
     with perf_r:
-        st.markdown("**Base Case** (6 trucks, 36 bar customers/evening)")
+        st.markdown("**Base Case** (4 trucks @ 90% occ, 20 wkday / 58 wkend bar)")
         st.metric("Revenue", fmt_dollar(base["total_gross"]))
         st.metric("Free Cash Flow", fmt_dollar(base["total_net_cash"]))
         st.metric("FCF Yield", f"{base['fcf_yield']:.1%}")
@@ -776,8 +812,6 @@ with tabs[8]:
         "not a cold start",
         "Simple beer + sealed-shot offering = minimal labor skill/speed "
         "requirements, low equipment cost",
-        f"Land (\\${model.LAND_VALUE:,.0f}) already owned outright, not "
-        "financed as part of this buildout",
         "Utilities sub-metered and billed at cost (PURA §39.107) — "
         "no utility margin risk",
         "COTA upside preserved: event parking + bar uplift on race weekends",
@@ -802,8 +836,9 @@ with tabs[9]:
         contracted monthly rent from food truck tenants forms a stable base,
         the limited bar adds beer and single-serve liquor shot sales, and
         COTA event weekends layer parking and bar upside on top. The
-        \\$75,000 buildout is financed through a personal line of credit at
-        {model.LOC_INTEREST_RATE:.1%} rather than a bank term loan — revolving,
+        \\${model.TOTAL_PROJECT_COST:,.0f} buildout (itemized from the owner's
+        real Phase 0.5 cost tracker) is financed through a personal line of
+        credit at {model.LOC_INTEREST_RATE:.1%} rather than a bank term loan — revolving,
         interest-only, no fixed amortization schedule. The model tracks the
         **monthly operating nut** (which includes the LOC's interest-only
         carrying cost) and **FCF yield on total cost** instead of a lender's
@@ -813,16 +848,19 @@ with tabs[9]:
 
     with st.expander("1. Revenue Streams", expanded=True):
         streams = pd.DataFrame([
-            ("1. Food Trucks", "6 slots: $500-$1,000 pad rent + 5-10% rev share "
-             "on ~$20K/mo truck sales", "~$13-14K/mo", "100%"),
-            ("2. Limited Bar", "6pm-close only, prepackaged beer + liquor "
-             "shots in plastic shot glasses (no cocktails, no mixed drinks): "
-             "36 customers/evening @ $5.75 check", "~$5-6K/mo",
-             "~59% after COGS + GRT"),
-            ("3. COTA Events", "150-space event parking + bar uplift on race/"
-             "concert weekends", "Event months", "~90-95%"),
+            ("1. Food Trucks", "4 trucks (fixed for Year 1, no more hubs "
+             "budgeted) at 90% occupancy: $500 pad rent + 10% rev share on "
+             "~$20K/mo truck sales", "~$12-13K/mo", "100%"),
+            ("2. Limited Bar", "6pm-close only, $7 beer + $3 shots in plastic "
+             "shot glasses (no cocktails, no mixed drinks): 20 weekday / 58 "
+             "weekend customers/evening averaging 1.5 drinks (~$9.00 check)",
+             "~$7-9K/mo", "~58% after COGS + GRT"),
+            ("3. COTA Events", "270-space event parking (dedicated 3-acre "
+             "lot) + bar uplift at "
+             "premium event pricing ($12 beer / $5 shot) on race/concert "
+             "weekends", "Event months", "~90-95%"),
             ("4. Seasonal Events", "Super Bowl / March Madness / NYE watch "
-             "parties on the big TVs", "~$1.7K/yr", "~59%"),
+             "parties on the big TVs", "~$2.7K/yr", "~58%"),
             ("5. Utility Pass-Through", "Sub-metered truck power/water/waste "
              "billed at cost (PURA §39.107)", "~$1.8K/mo", "0% (at-cost by law)"),
         ], columns=["Stream", "Description", "Steady-State Monthly", "Margin"])
@@ -841,9 +879,10 @@ with tabs[9]:
             ], columns=["Parameter", "Value"])
             st.dataframe(cap_df, use_container_width=True, hide_index=True)
         with col_r:
-            st.subheader("Ramps (Year 1)")
+            st.subheader("Ramps & Levers (Year 1)")
             ramp_df = pd.DataFrame([
-                ("Food trucks", "4 trucks (Phase 0.5) → 6 by month 7"),
+                ("Food trucks", "Flat at 4 (already built/running, no ramp)"),
+                ("Truck occupancy", f"{model.TRUCK_OCCUPANCY:.0%} (vacancy factor; 6-mo contracts)"),
                 ("Limited bar", "50% month 1 → 100% by month 8"),
             ], columns=["Stream", "Schedule"])
             st.dataframe(ramp_df, use_container_width=True, hide_index=True)
@@ -856,9 +895,13 @@ with tabs[9]:
             | Capital | \$300,000 SBA 7(a) term loan | \$75,000 personal LOC |
             | Rate / structure | 10.5%, 10-yr amortizing | 12.5%, revolving interest-only |
             | Financing cost | ~\$4,050/mo fixed P&I | ~\$781/mo interest (conservative; declines as paid down) |
-            | Monthly nut | ~\$15,200 | ~\$8,180 |
+            | Monthly nut | ~\$15,200 | ~\$7,000 |
             | RV pad rent | ~\$16-18K/mo | Removed entirely |
-            | Bar offering | Beer, prepackaged cocktails, shots | Beer + shots only (no cocktails) |
+            | Truck count | 6 slots, ramps up | 4 trucks, fixed for Year 1 (no more hubs budgeted) |
+            | Cost basis | Estimated buckets | Itemized from real Phase 0.5 cost tracker |
+            | Cleaning/maintenance labor | Part-time paid cleaner | Park manager lives on-site free, no labor cost |
+            | Event staffing | Extra bartender for big events | One bartender always, no extra hire |
+            | Bar offering | Beer, prepackaged cocktails, shots | $7 beer + $3 shots (no cocktails); $12/$5 during COTA events |
             | Coverage metric | DSCR (vs. debt service) | Nut Coverage (vs. fixed opex incl. LOC interest) |
             | Primary output | Lender summary | Owner summary + FCF yield + LOC payoff schedule |
             """

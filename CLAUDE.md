@@ -93,6 +93,24 @@ payment. `fcf_yield` (labeled "FCF Yield on Total Cost" in the UI) is annual
 NOI divided by `TOTAL_PROJECT_COST` — a returns metric independent of how
 the $75K was actually financed.
 
+### Staffing: two people, no fixed labor line in the nut
+
+The park runs on exactly two people: a park manager who lives on-site
+rent-free in exchange for running day-to-day operations (cleaning,
+maintenance, general oversight), and one bartender. Neither shows up as a
+line item in `FIXED_COSTS`:
+- The manager's compensation is in-kind (free housing), not a cash expense,
+  so there's no "maintenance/cleaning labor" cost in the nut — only
+  `maintenance_reserve` for supplies/materials.
+- The bartender is paid via a 5% revenue share on bar-like revenue (see
+  `VARIABLE_COST_RATE`/`bartender_share` in `calc_monthly_total`), a
+  variable cost, not a salary — and is the only bartender at all times,
+  including COTA/major-event days. There is no second-bartender or
+  event-labor cost anywhere in the model. If staffing assumptions change
+  (e.g. hiring a second bartender for big events, or the manager arrangement
+  changes), that needs a new fixed or variable cost line, not a revival of
+  the old `EXTRA_BARTENDER_COST`/`BIG_EVENT_MONTHS` mechanism (removed).
+
 ### Revenue model shape
 
 Every monthly calculation (`calc_monthly_total`) composes five independent
@@ -117,19 +135,23 @@ Two independent axes drive most of the complexity:
 ### Bar operating-model constraint (important, easy to regress)
 
 The bar is **evening-only** (6pm–close, ~4.5 hrs/day) and serves
-**prepackaged beer and liquor shots only** — canned/bottled beer and liquor
-poured/sealed into single-serve plastic shot glasses. **No cocktails, no
-mixed drinks made to order.** This caps both customer throughput
-(`BAR_DAILY_CUSTOMERS`) and average check size (`BAR_AVG_CHECK`, weighted
-75% beer / 25% shot) on normal days.
+**prepackaged beer and liquor shots only** — canned/bottled beer at
+`BEER_PRICE` ($7) and liquor poured/sealed into single-serve plastic shot
+glasses at `SHOT_PRICE` ($3). **No cocktails, no mixed drinks made to
+order.** `BAR_AVG_CHECK` is `DRINKS_PER_VISIT` (1.5) times the item mix
+(`BEER_MIX_PCT`/`SHOT_MIX_PCT`, 75%/25%) — **not** a single item's price;
+don't conflate "average check" with "price of one drink" when tuning this.
 
-On COTA/major-event days, the bar extends hours to capture the event crowd,
-so `COTA_EVENT_TIERS[...]["bar_uplift_per_weekend"]` and `SEASONAL_EVENTS`
-figures preserve the original (larger) customer-*volume* assumptions from
-the earlier mixed-drink models and only rescale the *check size* down
-(ratio: new `BAR_AVG_CHECK` / old $18 mixed-drink check ≈ 0.319). Do not
-apply the reduced-customer-count logic to event-day figures — that would
-double-count the hours restriction.
+On COTA/major-event days, the bar extends hours to capture the event crowd
+**and** charges premium event pricing (`COTA_EVENT_BEER_PRICE`/
+`COTA_EVENT_SHOT_PRICE`, $12/$5 vs. the normal $7/$3), so
+`COTA_EVENT_TIERS[...]["bar_uplift_per_weekend"]` values are the normal-
+check uplift scaled by `COTA_EVENT_AVG_CHECK / BAR_AVG_CHECK` (~1.71x) on
+top of the original (larger) customer-*volume* assumptions carried over
+from the earlier mixed-drink models. Don't apply the reduced-customer-count
+logic to event-day figures — that would double-count the hours restriction,
+and don't forget the premium-pricing multiplier if these numbers are
+re-derived.
 
 ### Scenario / sensitivity / Monte Carlo relationship
 
