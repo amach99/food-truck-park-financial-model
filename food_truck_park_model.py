@@ -6,14 +6,15 @@ the food-truck-+-RV-park alternative)
 
 Concept:
   - Food truck park (pad rent $500-$1,000 + 5-10% revenue share)
-  - Limited bar: prepackaged canned/bottled beer + liquor shots poured into
-    sealed plastic shot glasses only. NO mixed drinks, no cocktails, no RV
-    park.
+  - Bar & beverage stand: evening bar with prepackaged canned/bottled beer +
+    liquor shots in sealed plastic shot glasses only (NO mixed drinks, no
+    cocktails, no RV park), plus an all-day non-alcohol window selling
+    soda/juice/water/coffee and tobacco/nicotine (cigarettes/vapes/Zyn)
   - Power/water/waste/wifi for the truck hubs, sub-metered and billed at cost
     (Texas PUC utility-resale rules: PURA Sec. 39.107 - resale at cost, no
     markup)
 
-Startup cost: ~$75K, drawn entirely from a personal line of credit (LOC) at
+Startup cost: ~$76K, drawn entirely from a personal line of credit (LOC) at
 12.5% interest - not a bank term loan. USE_OF_FUNDS is sourced from the
 owner's actual "Phase 0.5 Master Plan" cost tracker (Notion), itemized with
 real vendor-quoted prices rather than estimated buckets, plus a few real
@@ -57,6 +58,15 @@ MONTH_NAMES = ["", "Jan", "Feb", "Mar", "Apr", "May", "Jun",
 # removal service, propane tank service. "Container Bar" (no price ever set
 # in the tracker) is replaced below by the actual plan: a $1,500 Walmart
 # shed fitted out with fridges, shelves, and a POS station.
+# The permits line was raised from the tracker's $1,500 placeholder to
+# $7,000 after checking real TABC pricing: a Mixed Beverage Permit (MB) -
+# required to sell liquor shots by the drink - is $5,300 for the first two
+# years alone (TABC two-year fee schedule, in force since Sept 2021), on top
+# of the health permit, business license, and the TX Comptroller tobacco
+# ($180/2yr) + e-cigarette ($90/2yr with a tobacco permit) retailer permits.
+# A new MB permittee may also have to post a conduct surety bond and a tax
+# security bond; only the annual premium would be an operating cost, and it
+# is NOT modeled - confirm bonding requirements with TABC.
 USE_OF_FUNDS = [
     # -- Done (already paid) --
     ("Turf", 1_500, "done"),
@@ -87,12 +97,12 @@ USE_OF_FUNDS = [
     ("Bar shed - Walmart (fridges, shelves, POS)", 1_500, "not_started"),
     ("Refrigerators (bar coolers)", 3_000, "not_started"),
     ("Initial beverage inventory (beer + liquor stock)", 3_600, "not_started"),
-    ("Permits & soft costs (TABC, health, business license)", 1_500, "not_started"),
+    ("Permits & soft costs (TABC MB permit, health, tobacco, business license)", 7_000, "not_started"),
     ("Contingency", 6_300, "not_started"),
 ]
-TOTAL_PROJECT_COST = sum(a for _, a, _ in USE_OF_FUNDS)  # ~$75,000
-ALREADY_SPENT = sum(a for _, a, status in USE_OF_FUNDS if status == "done")  # $10,763
-NEW_CASH_NEEDED = TOTAL_PROJECT_COST - ALREADY_SPENT                          # $58,737
+TOTAL_PROJECT_COST = sum(a for _, a, _ in USE_OF_FUNDS)  # $81,600
+ALREADY_SPENT = sum(a for _, a, status in USE_OF_FUNDS if status == "done")  # $39,181
+NEW_CASH_NEEDED = TOTAL_PROJECT_COST - ALREADY_SPENT                          # $42,419
 
 # --- Capital (financed via personal line of credit, not a bank term loan) ---
 LOC_AMOUNT = TOTAL_PROJECT_COST  # fully drawn to fund the buildout
@@ -104,6 +114,19 @@ LAND_ACRES = 4.5
 LAND_PURCHASE_PRICE = 1_400_000  # what the owner actually paid (owned outright, not financed here)
 LAND_ASSESSED_VALUE = 300_000    # county tax assessment - basis for the ~$4K/yr property tax bill
 LAND_VALUE = LAND_PURCHASE_PRICE  # kept for reference; not used in any calculation
+# The existing $4,000/yr bill taxes RAW LAND only. Once the buildout is
+# finished, Travis County adds the improvements (gravel lot, electrical,
+# plumbing, structures, shade, lighting) to the tax roll and the bill goes
+# up - a real recurring cost the model previously ignored. Conservatively
+# assume the FULL project cost becomes assessed value (some line items -
+# inventory, contingency, permits - arguably aren't taxable real property,
+# so this overstates rather than understates) at a 2.0% effective rate.
+# 2.0% is above the ~1.33% the owner's own land bill implies ($4,000 on a
+# $300K assessment) and above the ~1.54% Travis County median, chosen
+# deliberately on the "conservative = higher expense" rule.
+PROPERTY_TAX_IMPROVEMENT_RATE = 0.020
+PROPERTY_TAX_IMPROVEMENTS_MONTHLY = round(
+    TOTAL_PROJECT_COST * PROPERTY_TAX_IMPROVEMENT_RATE / 12)
 # Dedicated 3-acre lot within the property, laid out for COTA event parking.
 # Owner estimate: fits 240-300 cars -> using the midpoint.
 EVENT_PARKING_SPACES = 270       # spaces available for COTA event parking
@@ -116,14 +139,26 @@ PEOPLE_PER_CAR = 2.5
 # per-tier `incremental_cost` (staffing/porta-potty), which doesn't scale
 # with parking volume.
 PARKING_UPKEEP_RATE = 0.05
+# Motor vehicle parking is an explicitly TAXABLE SERVICE in Texas (34 TAC
+# 3.315) at the full combined Del Valle/Travis County rate. Event lots
+# charge a round cash price at the gate ($80 a spot, not $80 + tax), so the
+# tax comes out of that price rather than being added on top - the same
+# tax-inclusive logic used for the bar. This was missing entirely before;
+# on a full COTA calendar it is a real five-figure annual cost.
+PARKING_SALES_TAX_RATE = 0.0825
 
 # --- Food Truck Park ---
-# 4 utility hubs built and operating today. Owner plans to run with these 4
-# for at least a year - building more hubs (to get beyond 4) costs additional
-# capital that isn't budgeted, so there's no Year 1 ramp: all 4 are active
-# from month 1. TRUCK_SLOTS stays adjustable (via the slider/scenarios) for
-# exploring a future expansion, but the default reflects today's reality.
-TRUCK_SLOTS = 4                  # utility-hub slots built and active today
+# 4 utility hubs are being BUILT (the park is still under construction as of
+# this model version - it is not yet open and has no operating history).
+# Owner plans to run with these 4 for at least a year; building more hubs
+# costs additional capital that isn't budgeted. TRUCK_SLOTS stays adjustable
+# (via the slider/scenarios) for exploring a future expansion.
+#
+# IMPORTANT: no vendor contracts are signed yet. Six operators have
+# expressed interest, which is encouraging but is not the same as a signed
+# 6-month lease, so the model does NOT assume a full lot on day one - see
+# TRUCK_Y1_FILL_RAMP below.
+TRUCK_SLOTS = 4                  # utility-hub slots being built
 TRUCK_PAD_RENT = 500             # actual starting terms: $500 base rent
 TRUCK_REV_SHARE_RATE = 0.10      # actual starting terms: 10% revenue share
 # Per-truck gross sales. Vendors report ~$20K/mo TODAY from a poor location
@@ -134,12 +169,26 @@ TRUCK_REV_SHARE_RATE = 0.10      # actual starting terms: 10% revenue share
 # upside - adjust via the slider to test a busier-location premium.
 TRUCK_AVG_MONTHLY_SALES = 20_000  # per truck gross sales (conservative base)
 TRUCK_MARGIN = 1.0               # pure profit (trucks carry their own OpEx)
-# Expected fraction of built slots actually rented at any given time. Vendors
-# sign 6-month contracts, which bounds churn, but a vendor leaving at term
-# leaves a slot empty for a re-leasing gap (~1-1.5 mo/yr per slot at 90%).
-# 1.0 = always full / waitlist; lower = more vacancy. Applied as an expected-
-# value haircut on BOTH pad rent and revenue share.
-TRUCK_OCCUPANCY = 0.90
+# Expected fraction of built slots actually rented at any given time, once
+# the lot has reached its steady state. Vendors sign 6-month contracts,
+# which bounds churn, but a vendor leaving at term leaves a slot empty for a
+# re-leasing gap. 1.0 = always full / waitlist; lower = more vacancy.
+# Applied as an expected-value haircut on BOTH pad rent and revenue share.
+# Held at 0.85 rather than 0.90 because there is no leasing track record yet
+# to justify the tighter number (see TRUCK_Y1_FILL_RAMP) - re-tighten once
+# real renewal behavior is observed.
+TRUCK_OCCUPANCY = 0.85
+# Year 1 lease-up curve for the built slots, as a fraction of TRUCK_SLOTS.
+# With zero signed contracts at model time, assuming a full lot in month 1
+# would be the single least defensible assumption in the model. Six
+# interested operators plausibly converts to about half the lot at open,
+# filling over the first two to three quarters as the park proves it draws
+# traffic. Multiplied by TRUCK_OCCUPANCY on top, so month 1 is ~1.7
+# effective trucks out of 4 built - deliberately pessimistic.
+# Months 9+ = 1.0 (fully leased, subject only to the occupancy haircut).
+TRUCK_Y1_FILL_RAMP = {
+    1: 0.50, 2: 0.50, 3: 0.60, 4: 0.70, 5: 0.75, 6: 0.80, 7: 0.85, 8: 0.95,
+}
 
 # --- Opening Date ---
 # Operations begin September 2026 (owner's target: mid-Aug/early-Sep - using
@@ -185,11 +234,6 @@ BAR_WEEKEND_CUSTOMERS = 58        # Fri-Sun evening average
 # calendar lookup, consistent with how the rest of the model treats months.
 WEEKDAY_DAYS_PER_MONTH = 30.4 * 4 / 7   # ~17.37
 WEEKEND_DAYS_PER_MONTH = 30.4 * 3 / 7   # ~13.03
-# Blended average, for display/back-compat only - NOT used in revenue math.
-BAR_DAILY_CUSTOMERS = round(
-    (BAR_WEEKDAY_CUSTOMERS * WEEKDAY_DAYS_PER_MONTH
-     + BAR_WEEKEND_CUSTOMERS * WEEKEND_DAYS_PER_MONTH) / 30.4
-)  # ~36, same order of magnitude as the prior flat estimate
 # Unit pricing (owner-specified):
 BEER_PRICE = 7.00                 # per canned/bottled beer
 SHOT_PRICE = 3.00                 # per single-serve plastic shot glass
@@ -205,19 +249,49 @@ BAR_AVG_CHECK = DRINKS_PER_VISIT * AVG_ITEM_PRICE   # $9.00/visit
 _beer_rev_frac = (BEER_MIX_PCT * BEER_PRICE) / AVG_ITEM_PRICE   # 87.5% of $ revenue
 _shot_rev_frac = (SHOT_MIX_PCT * SHOT_PRICE) / AVG_ITEM_PRICE   # 12.5% of $ revenue
 COGS_RATE = _beer_rev_frac * 0.37 + _shot_rev_frac * 0.25        # 35.5%
-# NEEDS VERIFICATION: TX Mixed Beverage Gross Receipts Tax (GRT) applies to
-# mixed-beverage permit holders. Even single-serve shots dispensed by the
-# drink typically still fall under a TABC Mixed Beverage Permit (spirits
-# sold "by the drink," not by the sealed factory container, the way canned
-# beer is) - confirm with a TABC-savvy CPA before finalizing, since it
-# materially affects the variable cost rate below.
-GRT_RATE = 0.067                 # TX Mixed Beverage Gross Receipts Tax (verify applicability)
-VARIABLE_COST_RATE = COGS_RATE + GRT_RATE  # ~42.2% on bar revenue
+# --- Alcohol taxes: TWO separate Texas taxes, both apply ---
+# Selling liquor "by the drink" (shots poured/sealed on premises) requires a
+# TABC Mixed Beverage Permit (MB). Under an MB permit, EVERY alcoholic
+# beverage sold - including canned/bottled beer - falls under BOTH mixed
+# beverage taxes, not standard sales tax:
+#   1. Mixed Beverage Gross Receipts Tax, 6.7%. Statutorily the permittee's
+#      own liability; it may NOT be added to the menu price as a separate
+#      line or backed out of the amount received. Always a true cost.
+#   2. Mixed Beverage SALES Tax, 8.25%. Legally collected FROM the customer,
+#      so a bar that adds it on top of a posted price passes it through at
+#      zero cost. But bars overwhelmingly post tax-INCLUSIVE prices (a "$7
+#      beer" means the customer hands over $7), which makes the 8.25% come
+#      out of that $7 instead. This model assumes tax-inclusive pricing -
+#      the conservative read, and the one matching how BEER_PRICE/SHOT_PRICE
+#      are described above. If the bar instead posts prices pre-tax and adds
+#      8.25% at the register, set MB_SALES_TAX_RATE = 0.0 and revenue is
+#      unaffected.
+# Both were previously missing #2, which understated alcohol variable cost
+# by 8.25 points. Confirm the permit type and pricing convention with a
+# TABC-savvy CPA.
+GRT_RATE = 0.067                 # TX Mixed Beverage Gross Receipts Tax (permittee's own liability)
+MB_SALES_TAX_RATE = 0.0825       # TX Mixed Beverage Sales Tax (assumed tax-inclusive pricing)
+VARIABLE_COST_RATE = COGS_RATE + GRT_RATE + MB_SALES_TAX_RATE  # ~50.5% on alcohol revenue
 CC_PROCESSING_RATE = 0.028
 CC_CARD_USAGE_RATE = 0.85
 SHRINKAGE_RATE = 0.025           # of beverage COGS value (grab-and-go single-serve
                                   # items may be easier to pilfer than pours - watch this)
 BARTENDER_SHARE_RATE = 0.05      # bartender's variable-cost comp: 5% of bar-like revenue
+# Employer-side payroll burden on the bartender's comp. She works set hours
+# on the owner's premises under the owner's direction, so she is very likely
+# a W-2 EMPLOYEE rather than a 1099 contractor - which means the business
+# owes employer FICA (7.65%) plus federal and Texas unemployment insurance
+# on top of whatever she's paid. Revenue-share comp does not avoid this.
+# ~10% is a deliberately conservative blended estimate (FICA 7.65% + TX SUTA
+# new-employer rate + FUTA, the latter two capped at low wage bases so the
+# true blended figure lands a bit under 10%). Confirm classification with a
+# CPA - misclassification penalties are steep.
+# NOTE: the free on-site housing given to the manager and bartender is NOT
+# modeled as taxable wages here. IRC Sec. 119 excludes lodging furnished for
+# the employer's convenience on the business premises as a condition of
+# employment, which plausibly fits live-on-site caretakers - but it is a
+# fact-specific test and a CPA should confirm before relying on it.
+EMPLOYER_PAYROLL_BURDEN_RATE = 0.10
 
 # --- All-Day Beverages (soda, juice, water, coffee) ---
 # Extends the bar's operating window from evening-only (BAR_HOURS_PER_DAY)
@@ -297,10 +371,20 @@ TOBACCO_ATTACH_RATE = 0.12
 # with the Comptroller before budgeting.
 TOBACCO_PERMIT_MONTHLY = 15
 
-# Year 1 bar ramp (park already soft-opened June 2026 -> faster than a new build)
+# Year 1 ramp for every customer-facing revenue stream that has to be
+# DISCOVERED: the evening bar, daytime beverages, and tobacco/nicotine.
+# (Truck lease-up is separate - see TRUCK_Y1_FILL_RAMP.)
+#
+# An earlier version of this model used a faster curve on the theory that
+# the park had already soft-opened and had traffic to convert. That is not
+# the case: the park is still under construction with no operating history,
+# so this is a genuine cold start. Word-of-mouth in a semi-rural location
+# takes time, so the curve now starts lower (35% vs 50%) and reaches full
+# run-rate at month 10 rather than month 8.
 BAR_Y1_RAMP = {
-    1: 0.50, 2: 0.60, 3: 0.70, 4: 0.80, 5: 0.85, 6: 0.90, 7: 0.95,
-}  # months 8+ = 1.0
+    1: 0.35, 2: 0.45, 3: 0.55, 4: 0.65, 5: 0.72, 6: 0.80,
+    7: 0.86, 8: 0.92, 9: 0.96,
+}  # months 10+ = 1.0
 
 # --- Seasonality (outdoor venue, Austin climate) ---
 # Spring/fall patio weather peaks, winter cold + deep-summer heat dips.
@@ -309,11 +393,72 @@ SEASONALITY = {
     7: 0.85, 8: 0.85, 9: 0.95, 10: 1.00, 11: 0.90, 12: 0.70,
 }
 
+# --- Background sports-calendar density (the big TVs, everyday games) ---
+# Distinct from SEASONAL_EVENTS below, which models three specific
+# destination watch parties (Super Bowl, March Madness, NYE). This dict
+# captures the quieter, always-on effect: a bar with large TVs draws a
+# somewhat different evening crowd in a month packed with watchable games
+# than in a dead month, even with no marquee event on the calendar.
+#
+# Shape is taken from the owner's sports-schedule research, which analyzed
+# ~16,500 annual events across every major league:
+#   - OCTOBER is the variety peak (the "Sports Equinox" - the only time the
+#     Big 4 North American leagues all overlap with European soccer,
+#     NASCAR, F1, and major esports). Highest multiplier.
+#   - APRIL is the raw-volume peak (MLB fully active daily, NBA/NHL final
+#     regular-season stretch, European league run-ins).
+#   - FEBRUARY is the quietest month despite hosting the Super Bowl (MLB and
+#     MLS inactive, NFL plays exactly one game). The Super Bowl spike itself
+#     is already counted separately in SEASONAL_EVENTS, so this multiplier
+#     reflects the empty rest of the month.
+#   - JUNE-AUGUST is the "summer gap" - NBA, NFL, NHL, and European soccer
+#     all dark, with only MLB, MLS, esports, F1, and NASCAR carrying the
+#     calendar. July is the thinnest.
+#
+# Deliberately kept as a NARROW band (0.92-1.06) that averages to ~1.00, so
+# it redistributes evening bar traffic across the year rather than handing
+# the model a free revenue increase - consistent with the rule that
+# uncertain revenue assumptions should not be optimistic. Applied to the
+# evening bar only: the TVs are what make a sports-heavy month matter, and
+# daytime beverage/tobacco sales ride on food-truck lunch traffic that has
+# little to do with what's on screen.
+SPORTS_DENSITY = {
+    1: 1.03,   # NFL playoffs, NBA + NHL midseason, college hoops
+    2: 0.94,   # PDF's quietest month (Super Bowl handled in SEASONAL_EVENTS)
+    3: 1.03,   # MLB opens, NASCAR ramps, NBA/NHL push (Madness counted separately)
+    4: 1.05,   # PDF's highest-volume month
+    5: 1.02,   # NBA/NHL playoffs + MLB daily + European finals
+    6: 0.96,   # summer gap begins - MLB and MLS carry it
+    7: 0.92,   # thinnest month of the year
+    8: 0.94,   # still thin; NFL preseason only
+    9: 1.04,   # NFL returns, MLB pennant race, college football
+    10: 1.06,  # "Sports Equinox" - PDF's variety peak
+    11: 1.02,  # NFL/NBA/NHL/college football all live
+    12: 1.01,  # NFL stretch run, bowl season, NBA Christmas
+}
+
 # --- Seasonal one-off events (watch parties on the big TVs) ---
 # Bar opens EARLY / stays open full-day for these, so volume assumptions
 # hold from the original (larger) model - only the check size is rescaled
 # for the beer/shots-only offering: ratio = new BAR_AVG_CHECK ($9.00) /
 # old mixed-drink check ($18.00) = 0.50
+#
+# YEAR 1 CALENDAR CHECK (operating year Sep 2026 - Aug 2027), comparing the
+# owner's sports-schedule research against what actually falls in the window:
+#   - Super Bowl LXI: Sun Feb 14, 2027 (SoFi Stadium). IN WINDOW - modeled.
+#   - March Madness 2027: Mar-Apr 2027. IN WINDOW - modeled.
+#   - NYE: Dec 31, 2026. IN WINDOW - modeled.
+#   - FIFA World Cup 2026: ran Jun 11 - Jul 19, 2026 and is already OVER
+#     before this park opens. The research deck annualizes ~250 World Cup
+#     matches per year, but Year 1 gets NONE of them. No watch-party line
+#     is modeled for it, correctly.
+#   - Olympics: Milan-Cortina Winter was Feb 2026 (past); LA28 Summer is
+#     Jul 2028. NEITHER falls in Year 1, so the deck's ~500 annualized
+#     Olympic events also do not apply here.
+# Net: Year 1 is a comparatively quiet year for global mega-events, which
+# is another reason SPORTS_DENSITY above is kept neutral rather than
+# additive. Revisit for Year 3 (LA28 Summer Olympics + 2027 Rugby/Cricket
+# World Cups would all land in a later operating year).
 SEASONAL_EVENTS = {
     "super_bowl":    {"month": 2,  "rev_base": 985},
     "march_madness": {"month": 3,  "rev_base": 1_235},
@@ -437,6 +582,19 @@ COTA_EVENTS_BY_MONTH = {
 # electric_bill/septic have no vendor number yet (Notion shows them as real
 # but unpriced) so they're estimates pending an actual bill; "Merch" is
 # excluded entirely (no longer planned, no spend).
+#
+# `accounting_tax_prep` is a compliance cost this model previously omitted.
+# An MB permittee files MONTHLY mixed beverage GRT and mixed beverage sales
+# tax returns, plus sales tax on parking/beverages/tobacco, plus payroll
+# filings, plus the annual federal return and the Texas franchise-tax Public
+# Information Report. That is a real bookkeeper/CPA engagement, not
+# something to leave at $0.
+#
+# TEXAS FRANCHISE TAX: not a line item because none is owed. The 2026
+# no-tax-due threshold is $2.65M of annualized total revenue and this
+# business projects well under $1M, so franchise tax due is $0 - but the
+# entity must still file a Public Information Report or face a $50 penalty
+# and loss of good standing. That filing is covered by accounting_tax_prep.
 FIXED_COSTS = {
     "insurance": 900,                # GL + liquor liability (beer/shots only) + park liability (estimate)
     "water_bill": 150,               # estimate pending first bill
@@ -446,10 +604,12 @@ FIXED_COSTS = {
     "waste_service": 388,            # actual: porta-potty $268 (TX Disposal Systems) + dumpster $120
     "wifi_internet": 165,            # actual: StarLink
     "pos_tech_subscriptions": 120,   # actual: Clover POS
-    "licenses_permits": 300,         # TABC beer/liquor retailer + health permit renewals (estimate)
-    "tobacco_permit": TOBACCO_PERMIT_MONTHLY,  # TX Comptroller cigarette/tobacco + e-cig retailer permits (estimate)
+    "licenses_permits": 300,         # TABC MB permit renewal ($2,650/2yr = $110/mo) + health permit + business license
+    "tobacco_permit": TOBACCO_PERMIT_MONTHLY,  # TX Comptroller cigarette/tobacco + e-cig retailer permits
     "maintenance_reserve": 400,      # supplies/materials only, not labor (estimate)
-    "property_tax": 333,             # actual: $4,000/yr bill / 12 (county assesses land at $300K, not the $1.4M purchase price)
+    "property_tax": 333,             # actual: $4,000/yr bill / 12 (county assesses LAND at $300K, not the $1.4M purchase price)
+    "property_tax_improvements": PROPERTY_TAX_IMPROVEMENTS_MONTHLY,  # buildout gets added to the tax roll once complete
+    "accounting_tax_prep": 250,      # bookkeeping + monthly TX tax filings + annual returns (see note above)
     "loc_interest": LOC_MONTHLY_INTEREST,  # 12.5% interest-only on the LOC draw
 }
 MONTHLY_NUT = sum(FIXED_COSTS.values())
@@ -485,20 +645,31 @@ ANNUAL_COTA_VISITOR_SPENDING = 50  # avg spend per visitor at bar/parking
 
 def resolve_truck_count(year_month, max_slots):
     """
-    Trucks active in a given operating month. The 4 built hubs are already
-    running, so max_slots <= TRUCK_SLOTS (4) needs no ramp - all requested
-    slots are active from month 1. max_slots > TRUCK_SLOTS means exploring
-    a hypothetical future expansion (more hubs than are currently built);
-    those extra slots phase in gradually (construction time), reaching
-    max_slots by month 7 and holding.
+    Trucks leased in a given Year 1 operating month.
+
+    Two separate effects, both pointing the same direction:
+      1. LEASE-UP. No vendor contracts are signed yet, so the lot does not
+         open full. TRUCK_Y1_FILL_RAMP fills it from ~half to fully leased
+         over the first two to three quarters.
+      2. BUILD-OUT of hypothetical extra hubs. max_slots > TRUCK_SLOTS means
+         exploring an expansion beyond the 4 budgeted hubs; those extra
+         slots also need construction time, phasing in by month 7.
+
+    Returns a possibly-fractional slot count (the lease-up curve is an
+    expected value, not an integer headcount). Year 2+ passes
+    year_month=None and gets max_slots with no ramp.
     """
-    if max_slots <= TRUCK_SLOTS:
+    if year_month is None:
         return max_slots
-    if year_month >= 7:
-        return max_slots
-    extra_slots = max_slots - TRUCK_SLOTS
-    added = round(extra_slots * year_month / 7)
-    return min(max_slots, TRUCK_SLOTS + added)
+
+    built = min(max_slots, TRUCK_SLOTS)
+    if max_slots > TRUCK_SLOTS:
+        extra_slots = max_slots - TRUCK_SLOTS
+        added = extra_slots if year_month >= 7 else round(extra_slots * year_month / 7)
+        built = min(max_slots, TRUCK_SLOTS + added)
+
+    fill = TRUCK_Y1_FILL_RAMP.get(year_month, 1.0)
+    return built * fill
 
 
 def calc_truck_revenue(month, year_month=None, slots=None, pad_rent=None,
@@ -516,10 +687,7 @@ def calc_truck_revenue(month, year_month=None, slots=None, pad_rent=None,
     sales = avg_sales if avg_sales is not None else TRUCK_AVG_MONTHLY_SALES
     occ = occupancy if occupancy is not None else TRUCK_OCCUPANCY
 
-    if year_month is not None:
-        slots_active = resolve_truck_count(year_month, max_slots)
-    else:
-        slots_active = max_slots
+    slots_active = resolve_truck_count(year_month, max_slots)
 
     # Expected occupied trucks after vacancy haircut (may be fractional).
     trucks = slots_active * occ
@@ -538,17 +706,27 @@ def calc_truck_revenue(month, year_month=None, slots=None, pad_rent=None,
 
 
 def calc_bar_revenue(weekday_customers, weekend_customers, month,
-                     year_month=None, avg_check=None):
-    """Limited bar (beer + shots) monthly revenue with seasonality + Year 1
-    ramp. Weekday (Mon-Thu) and weekend (Fri-Sun) traffic are weighted by
-    their average day-counts per month (see WEEKDAY_DAYS_PER_MONTH /
-    WEEKEND_DAYS_PER_MONTH) rather than one flat daily average."""
+                     year_month=None, avg_check=None, sports_density=True):
+    """Evening bar (beer + shots) monthly revenue with seasonality, sports
+    density, and the Year 1 ramp. Weekday (Mon-Thu) and weekend (Fri-Sun)
+    traffic are weighted by their average day-counts per month (see
+    WEEKDAY_DAYS_PER_MONTH / WEEKEND_DAYS_PER_MONTH) rather than one flat
+    daily average.
+
+    Three independent monthly multipliers stack here:
+      - SEASONALITY: Austin patio weather (the big one, 0.65-1.00)
+      - SPORTS_DENSITY: how much watchable sport is on the TVs (0.92-1.06,
+        averages to ~1.00 so it redistributes rather than inflates)
+      - BAR_Y1_RAMP: cold-start discovery curve, Year 1 only
+    Pass sports_density=False to isolate the weather-only view.
+    """
     check = avg_check if avg_check is not None else BAR_AVG_CHECK
     season = SEASONALITY.get(month, 0.85)
+    sports = SPORTS_DENSITY.get(month, 1.0) if sports_density else 1.0
     ramp = BAR_Y1_RAMP.get(year_month, 1.0) if year_month else 1.0
     monthly_customers = (weekday_customers * WEEKDAY_DAYS_PER_MONTH
                          + weekend_customers * WEEKEND_DAYS_PER_MONTH)
-    return monthly_customers * check * season * ramp
+    return monthly_customers * check * season * sports * ramp
 
 
 def calc_daytime_beverage_revenue(truck_total_sales, year_month=None,
@@ -719,16 +897,18 @@ def calc_monthly_total(weekday_customers, weekend_customers, month, year_month=N
     tobacco_like = tobacco_rev + cota["tobacco_uplift"]
     cogs = bar_like * COGS_RATE
     grt = bar_like * GRT_RATE
+    mb_sales_tax = bar_like * MB_SALES_TAX_RATE
     daytime_bev_cogs = daytime_bev_like * DAYTIME_BEVERAGE_COGS_RATE
     daytime_bev_tax = daytime_bev_like * DAYTIME_BEVERAGE_SALES_TAX_RATE
     tobacco_cogs = tobacco_like * TOBACCO_COGS_RATE
     tobacco_tax = tobacco_like * TOBACCO_SALES_TAX_RATE
-    bar_variable_costs = cogs + grt
+    bar_variable_costs = cogs + grt + mb_sales_tax
     daytime_bev_variable_costs = daytime_bev_cogs + daytime_bev_tax
     tobacco_variable_costs = tobacco_cogs + tobacco_tax
     all_bev_rev = bar_like + daytime_bev_like + tobacco_like
 
     bartender_share = all_bev_rev * BARTENDER_SHARE_RATE
+    payroll_burden = bartender_share * EMPLOYER_PAYROLL_BURDEN_RATE
     cc_processing = all_bev_rev * CC_PROCESSING_RATE * CC_CARD_USAGE_RATE
     shrinkage = (bar_like * COGS_RATE * SHRINKAGE_RATE
                  + daytime_bev_like * DAYTIME_BEVERAGE_COGS_RATE * SHRINKAGE_RATE
@@ -737,9 +917,11 @@ def calc_monthly_total(weekday_customers, weekend_customers, month, year_month=N
     gross_margin = (bar_like * (1 - VARIABLE_COST_RATE)
                      + daytime_bev_like * (1 - DAYTIME_BEVERAGE_VARIABLE_COST_RATE)
                      + tobacco_like * (1 - TOBACCO_VARIABLE_COST_RATE))
-    bev_net = gross_margin - bartender_share - cc_processing - shrinkage
+    bev_net = (gross_margin - bartender_share - payroll_burden
+               - cc_processing - shrinkage)
     parking_upkeep = cota["parking"] * PARKING_UPKEEP_RATE
-    parking_net = cota["parking"] - parking_upkeep
+    parking_sales_tax = cota["parking"] * PARKING_SALES_TAX_RATE
+    parking_net = cota["parking"] - parking_upkeep - parking_sales_tax
 
     total_net_before_fixed = (bev_net + trucks["net"] + parking_net
                               + utilities["net"] - cota["incremental_cost"])
@@ -772,6 +954,7 @@ def calc_monthly_total(weekday_customers, weekend_customers, month, year_month=N
         "cota_daytime_bev_uplift": cota["daytime_bev_uplift"],
         "cota_tobacco_uplift": cota["tobacco_uplift"],
         "cota_parking_upkeep": parking_upkeep,
+        "cota_parking_sales_tax": parking_sales_tax,
         "cota_incremental_cost": cota["incremental_cost"],
         "utility_billed": utilities["billed"],
         "utility_cost": utilities["cost"],
@@ -779,7 +962,9 @@ def calc_monthly_total(weekday_customers, weekend_customers, month, year_month=N
         "bar_variable_costs": bar_variable_costs,
         "cogs": cogs,
         "grt": grt,
+        "mb_sales_tax": mb_sales_tax,
         "bartender_share": bartender_share,
+        "payroll_burden": payroll_burden,
         "cc_processing": cc_processing,
         "shrinkage": shrinkage,
         "fixed_costs": MONTHLY_NUT,
@@ -858,14 +1043,17 @@ def summarize_annual(months):
         "total_cota_daytime_bev": sum(m["cota_daytime_bev_uplift"] for m in months),
         "total_cota_tobacco": sum(m["cota_tobacco_uplift"] for m in months),
         "total_cota_parking_upkeep": sum(m["cota_parking_upkeep"] for m in months),
+        "total_cota_parking_sales_tax": sum(m["cota_parking_sales_tax"] for m in months),
         "total_cota_cost": sum(m["cota_incremental_cost"] for m in months),
         "total_utility_billed": sum(m["utility_billed"] for m in months),
         "total_utility_cost": sum(m["utility_cost"] for m in months),
         "total_bartender_share": sum(m["bartender_share"] for m in months),
+        "total_payroll_burden": sum(m["payroll_burden"] for m in months),
         "total_cc_processing": sum(m["cc_processing"] for m in months),
         "total_shrinkage": sum(m["shrinkage"] for m in months),
         "total_cogs": sum(m["cogs"] for m in months),
         "total_grt": sum(m["grt"] for m in months),
+        "total_mb_sales_tax": sum(m["mb_sales_tax"] for m in months),
         "total_daytime_beverage_cogs": sum(m["daytime_beverage_cogs"] for m in months),
         "total_daytime_beverage_tax": sum(m["daytime_beverage_tax"] for m in months),
         "total_tobacco_cogs": sum(m["tobacco_cogs"] for m in months),
@@ -949,15 +1137,24 @@ def run_multi_year_projection(base_weekday_customers=None, base_weekend_customer
 def run_monte_carlo(n_simulations=10_000, seed=42,
                     base_weekday_customers=None, base_weekend_customers=None,
                     base_check=None, base_truck_rent=None, base_truck_share=None,
-                    base_truck_occupancy=None, base_seasonal_pct=1.0):
+                    base_truck_occupancy=None, base_seasonal_pct=1.0,
+                    base_truck_slots=None, base_truck_avg_sales=None,
+                    base_daytime_beverage_attach_rate=None,
+                    base_daytime_beverage_avg_price=None,
+                    base_tobacco_attach_rate=None,
+                    base_tobacco_avg_price=None):
     """
     Randomized Year 1 scenarios. Varies: truck sales, truck occupancy
-    (vacancy), weekday/weekend bar traffic and check, COTA event mix, and
-    seasonal event strength. Truck count, rent, and revenue share are held
-    FIXED across every simulation (actual fleet + contracted terms, not
-    uncertain) - but still adjustable via the base_* args so sidebar sliders
-    keep working. Returns list of result dicts (revenue, noi, nut_coverage,
-    cash_flow).
+    (vacancy), weekday/weekend bar traffic and check, COTA event mix,
+    seasonal event strength, and the daytime-beverage / tobacco attach
+    rates. Truck COUNT, rent, and revenue share are held FIXED across every
+    simulation (built slots + contracted terms, not uncertain) - lease-up
+    risk is expressed through occupancy instead.
+
+    Every base_* argument mirrors a dashboard slider so the simulation
+    tracks whatever the user has dialed in; passing none of them reproduces
+    the module defaults. Returns a list of per-simulation result dicts
+    sorted by nut coverage.
     """
     _wd_custs = base_weekday_customers if base_weekday_customers is not None else BAR_WEEKDAY_CUSTOMERS
     _we_custs = base_weekend_customers if base_weekend_customers is not None else BAR_WEEKEND_CUSTOMERS
@@ -965,6 +1162,18 @@ def run_monte_carlo(n_simulations=10_000, seed=42,
     _trent = base_truck_rent if base_truck_rent is not None else TRUCK_PAD_RENT
     _tshare = base_truck_share if base_truck_share is not None else TRUCK_REV_SHARE_RATE
     _tocc = base_truck_occupancy if base_truck_occupancy is not None else TRUCK_OCCUPANCY
+    _tslots = base_truck_slots if base_truck_slots is not None else TRUCK_SLOTS
+    _tsales = base_truck_avg_sales if base_truck_avg_sales is not None else TRUCK_AVG_MONTHLY_SALES
+    _dbev_attach = (base_daytime_beverage_attach_rate
+                    if base_daytime_beverage_attach_rate is not None
+                    else DAYTIME_BEVERAGE_ATTACH_RATE)
+    _dbev_price = (base_daytime_beverage_avg_price
+                   if base_daytime_beverage_avg_price is not None
+                   else DAYTIME_BEVERAGE_AVG_PRICE)
+    _tob_attach = (base_tobacco_attach_rate if base_tobacco_attach_rate is not None
+                   else TOBACCO_ATTACH_RATE)
+    _tob_price = (base_tobacco_avg_price if base_tobacco_avg_price is not None
+                  else TOBACCO_AVG_PRICE)
 
     random.seed(seed)
     results = []
@@ -973,11 +1182,16 @@ def run_monte_carlo(n_simulations=10_000, seed=42,
         wd_custs = max(5, min(50, random.gauss(_wd_custs, 5)))
         we_custs = max(15, min(100, random.gauss(_we_custs, 12)))
         check = max(5.0, min(13.0, random.gauss(_check, 1.0)))
-        truck_sales = max(10_000, min(35_000, random.gauss(TRUCK_AVG_MONTHLY_SALES, 5_000)))
+        truck_sales = max(10_000, min(35_000, random.gauss(_tsales, 5_000)))
         # Truck vacancy is the real fleet risk (6-mo contracts bound it):
         # randomize occupancy rather than the integer slot count.
         truck_occ = max(0.60, min(1.0, random.gauss(_tocc, 0.08)))
         seasonal_pct = max(0.4, min(1.5, random.gauss(base_seasonal_pct, 0.2)))
+        # The two attach rates are the least-validated numbers in the whole
+        # model (no operating history, and Dollar General competes directly
+        # on cigarettes), so they get wide bands rather than being pinned.
+        dbev_attach = max(0.10, min(0.60, random.gauss(_dbev_attach, 0.08)))
+        tob_attach = max(0.02, min(0.30, random.gauss(_tob_attach, 0.04)))
 
         # COTA mix: big 4 fixed, concerts/festivals/GT variable
         n_concerts = random.choice([2, 3, 3, 4, 4, 4, 5, 6])
@@ -999,9 +1213,14 @@ def run_monte_carlo(n_simulations=10_000, seed=42,
         months, ann = run_annual_projection(
             int(wd_custs), int(we_custs), year=1, avg_check=check,
             cota_events_override=override,
+            truck_slots=_tslots,
             truck_rent=_trent, truck_share_rate=_tshare,
             truck_avg_sales=truck_sales, truck_occupancy=truck_occ,
             seasonal_pct=seasonal_pct,
+            daytime_beverage_attach_rate=dbev_attach,
+            daytime_beverage_avg_price=_dbev_price,
+            tobacco_attach_rate=tob_attach,
+            tobacco_avg_price=_tob_price,
         )
 
         results.append({
@@ -1012,6 +1231,8 @@ def run_monte_carlo(n_simulations=10_000, seed=42,
             "bar_custs_weekday": wd_custs,
             "bar_custs_weekend": we_custs,
             "truck_occupancy": truck_occ,
+            "daytime_beverage_attach_rate": dbev_attach,
+            "tobacco_attach_rate": tob_attach,
         })
 
     results.sort(key=lambda x: x["nut_coverage"])
@@ -1024,40 +1245,51 @@ def run_monte_carlo(n_simulations=10_000, seed=42,
 
 # Truck count varies by scenario to reflect vendor attrition risk in the
 # downside cases: "Worst Case" assumes only 2 of the 4 built hubs stay
-# occupied, and "Stress Test"/"Conservative" assume 3 of 4. Only "Base
-# Case" holds the full current fleet (4, TRUCK_SLOTS); "Upside" explores a
+# leased, and "Stress Test"/"Conservative" assume 3 of 4. Only "Base
+# Case" holds the full built fleet (4, TRUCK_SLOTS); "Upside" explores a
 # hypothetical future expansion to 6 hubs (not currently budgeted). Rent/
-# share are fixed at the actual contracted terms ($500 + 10%) throughout.
+# share are fixed at the actual intended terms ($500 + 10%) throughout.
+#
+# The daytime-beverage and tobacco attach rates ALSO move with the
+# scenario. A world where the bar is failing and vendors are churning is
+# not a world where the same share of remaining truck customers still buys
+# a soda and a pack of cigarettes - holding those rates flat while every
+# other lever degrades would quietly make the downside cases too kind.
 SCENARIOS = {
     "Worst Case": {
-        "desc": "2 trucks (severe vendor attrition), 75% occ, weak bar, no COTA",
+        "desc": "2 trucks (severe vendor attrition), 70% occ, weak bar, no COTA, weak attach rates",
         "weekday_customers": 12, "weekend_customers": 34, "avg_check": 7.45,
         "truck_slots": 2, "truck_rent": TRUCK_PAD_RENT, "truck_share_rate": TRUCK_REV_SHARE_RATE,
-        "truck_occupancy": 0.75,
+        "truck_occupancy": 0.70,
+        "daytime_beverage_attach_rate": 0.20, "tobacco_attach_rate": 0.06,
         "cota_events": {m: [] for m in range(1, 13)},
         "seasonal_pct": 0.5,
     },
     "Stress Test": {
-        "desc": "3 trucks (partial vendor attrition), 83% occ, soft bar, big-3 COTA events only",
+        "desc": "3 trucks (partial vendor attrition), 78% occ, soft bar, big-3 COTA events only",
         "weekday_customers": 15, "weekend_customers": 43, "avg_check": 8.05,
         "truck_slots": 3, "truck_rent": TRUCK_PAD_RENT, "truck_share_rate": TRUCK_REV_SHARE_RATE,
-        "truck_occupancy": 0.83,
+        "truck_occupancy": 0.78,
+        "daytime_beverage_attach_rate": 0.25, "tobacco_attach_rate": 0.08,
         "cota_events": {m: [] for m in range(1, 13)},  # filled below
         "seasonal_pct": 0.75,
     },
     "Conservative": {
-        "desc": "3 trucks (partial vendor attrition), 88% occ, full COTA calendar",
+        "desc": "3 trucks (partial vendor attrition), 83% occ, full COTA calendar",
         "weekday_customers": 17, "weekend_customers": 48, "avg_check": 8.55,
         "truck_slots": 3, "truck_rent": TRUCK_PAD_RENT, "truck_share_rate": TRUCK_REV_SHARE_RATE,
-        "truck_occupancy": 0.88,
+        "truck_occupancy": 0.83,
+        "daytime_beverage_attach_rate": 0.30, "tobacco_attach_rate": 0.10,
         "cota_events": None,
         "seasonal_pct": 0.75,
     },
     "Base Case": {
-        "desc": "4 trucks (current fleet) at $500 + 10%, 90% occ, 20 weekday / 58 weekend bar customers",
+        "desc": "4 trucks (all built hubs leased) at $500 + 10%, 85% occ, 20 weekday / 58 weekend bar customers",
         "weekday_customers": BAR_WEEKDAY_CUSTOMERS, "weekend_customers": BAR_WEEKEND_CUSTOMERS, "avg_check": 9.00,
         "truck_slots": TRUCK_SLOTS, "truck_rent": TRUCK_PAD_RENT, "truck_share_rate": TRUCK_REV_SHARE_RATE,
         "truck_occupancy": TRUCK_OCCUPANCY,
+        "daytime_beverage_attach_rate": DAYTIME_BEVERAGE_ATTACH_RATE,
+        "tobacco_attach_rate": TOBACCO_ATTACH_RATE,
         "cota_events": None,
         "seasonal_pct": 1.0,
     },
@@ -1066,6 +1298,7 @@ SCENARIOS = {
         "weekday_customers": 28, "weekend_customers": 82, "avg_check": 9.95,
         "truck_slots": 6, "truck_rent": TRUCK_PAD_RENT, "truck_share_rate": TRUCK_REV_SHARE_RATE,
         "truck_occupancy": 1.0,
+        "daytime_beverage_attach_rate": 0.45, "tobacco_attach_rate": 0.16,
         "cota_events": None,
         "seasonal_pct": 1.25,
     },
@@ -1084,6 +1317,8 @@ def run_scenario_projection(params):
         truck_share_rate=params["truck_share_rate"],
         truck_occupancy=params.get("truck_occupancy"),
         seasonal_pct=params.get("seasonal_pct", 1.0),
+        daytime_beverage_attach_rate=params.get("daytime_beverage_attach_rate"),
+        tobacco_attach_rate=params.get("tobacco_attach_rate"),
     )
 
 
@@ -1428,7 +1663,8 @@ def print_owner_summary():
     print(f"  - LOC is revolving/interest-only (no fixed amortization) - free cash "
           f"flow can sweep the ${LOC_AMOUNT:,.0f} balance down faster than the "
           f"conservative flat-interest nut assumes")
-    print(f"  - Phase 0.5 food truck park already operating (opened June 2026)")
+    print(f"  - Land owned outright - no rent/mortgage in the nut, and most of "
+          f"the buildout ({ALREADY_SPENT/TOTAL_PROJECT_COST:.0%}) is already paid for")
     print(f"  - Simple offering (beer + sealed shots only) = minimal labor skill/speed needs")
     print(f"  - Utilities sub-metered and billed at cost (no margin leakage)")
     print(f"  - COTA event upside preserved: parking + bar uplift")

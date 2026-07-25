@@ -9,7 +9,7 @@ A financial feasibility model for a food truck park + bar & beverage stand
 — no cocktails, no RV park) on the same 4.5-acre property at 13901 FM
 812, Del Valle, TX as the earlier "The Cube" sports bar plan and the
 food-truck-+-RV-park alternative. This is the leanest of the three concepts:
-~$75,000 startup cost, financed via a personal line of credit (LOC) at 12.5%
+~$81,600 startup cost, financed via a personal line of credit (LOC) at 12.5%
 interest rather than a bank term loan.
 
 ## Commands
@@ -25,9 +25,21 @@ streamlit run streamlit_app_ftp.py
 python food_truck_park_model.py
 ```
 
-There is no test suite, linter, or build step configured in this repo. To
-sanity-check a change to the calculation engine, import the module and run
-its analysis functions directly, e.g.:
+**Run the test suite after ANY change to the calculation engine:**
+
+```bash
+pytest -q
+```
+
+`test_model.py` locks down the invariants that have actually broken during
+development — full revenue/cost/NOI reconciliation, COTA totals including
+every event-day uplift, ramp monotonicity, scenario ordering, Monte Carlo
+determinism and slider-responsiveness, and the tax identities. The
+reconciliation test is the highest-value one: it fails the moment a cost is
+added to `calc_monthly_total` but not to `summarize_annual`.
+
+There is no linter or build step. For eyeballing output, the analysis
+functions also run directly:
 
 ```bash
 python3 -c "import food_truck_park_model as m; m.run_scenario_comparison()"
@@ -58,7 +70,7 @@ Two files, strict separation of concerns:
   wraps it in an 11-tab dashboard (Dashboard, Annual Projection, Sensitivity,
   Break-Even, Monte Carlo, Scenarios, Multi-Year, Waterfall, Owner Summary,
   Tax Strategies, Model Overview). All sidebar sliders default to the
-  module's constants (e.g. `model.TRUCK_SLOTS`, `model.BAR_DAILY_CUSTOMERS`),
+  module's constants (e.g. `model.TRUCK_SLOTS`, `model.BAR_WEEKDAY_CUSTOMERS`),
   and `@st.cache_data`-wrapped wrapper functions (`get_annual`,
   `get_multi_year`, `get_monte_carlo`, `get_scenario_results`) call straight
   into the model's `run_*` functions — the dashboard has no calculation
@@ -66,14 +78,14 @@ Two files, strict separation of concerns:
 
 ### Financing: revolving LOC, not a term loan
 
-The $75,000 buildout is drawn from a personal line of credit at 12.5%,
+The ~$81,600 buildout is drawn from a personal line of credit at 12.5%,
 **not** an SBA/bank term loan. That means there is no fixed monthly
 principal-and-interest payment or amortization schedule. The model handles
 this in two places that must stay consistent when either changes:
 
-1. **`FIXED_COSTS["loc_interest"]`** (`LOC_MONTHLY_INTEREST`, ~$793/mo) is a
+1. **`FIXED_COSTS["loc_interest"]`** (`LOC_MONTHLY_INTEREST`, ~$850/mo) is a
    conservative, constant interest-only carrying cost baked into
-   `MONTHLY_NUT`/`ANNUAL_NUT`, computed by assuming the *full* $75K balance
+   `MONTHLY_NUT`/`ANNUAL_NUT`, computed by assuming the *full* $81.6K balance
    stays drawn indefinitely. Every sensitivity/scenario/Monte Carlo/
    break-even function uses this fixed nut, so they're all internally
    consistent but deliberately pessimistic about financing cost.
@@ -93,7 +105,7 @@ role, but measure operating income before fixed costs against the *total
 monthly nut* (including LOC interest) rather than against a debt-service
 payment. `fcf_yield` (labeled "FCF Yield on Total Cost" in the UI) is annual
 NOI divided by `TOTAL_PROJECT_COST` — a returns metric independent of how
-the $75K was actually financed.
+the $81.6K was actually financed.
 
 ### Staffing: two people, no fixed labor line in the nut
 
@@ -105,7 +117,7 @@ oversight), and one bartender. Neither shows up as a line item in
   so there's no "maintenance/cleaning labor" cost in the nut — only
   `maintenance_reserve` for supplies/materials.
 - The bartender is paid via `BARTENDER_SHARE_RATE` (5%) of combined bar-like
-  + daytime-beverage revenue (see `calc_monthly_total`), a variable cost,
+  + daytime-beverage + tobacco revenue (see `calc_monthly_total`), a variable cost,
   not a salary — and is the only bartender at all times, covering both the
   evening alcohol bar AND the all-day non-alcohol beverage window (see
   "Daytime beverage stream" below), including COTA/major-event days. Living
@@ -127,19 +139,61 @@ at cost, no markup), daytime beverages (soda/juice/water/coffee — see
 below), and tobacco & nicotine (cigarettes/vapes/Zyn — see below). The
 evening bar + daytime beverages + tobacco/nicotine together make up the
 "Bar & Beverage Stand" shown in the dashboard's overall naming.
-`run_annual_projection` sums 12 months; Year 1 applies ramp schedules
-(`TRUCK_Y1_RAMP`, `BAR_Y1_RAMP`) for gradual fill-up, Year 2+ runs at steady
-state. `run_multi_year_projection` layers on annual growth/rent
-escalation/cost inflation on top of that.
+`run_annual_projection` sums 12 months. Year 1 applies TWO separate ramps
+(see "Cold start" below); Year 2+ runs at steady state.
+`run_multi_year_projection` layers annual growth/rent escalation/cost
+inflation on top of that. The dashboard's **Projection View** radio in the
+sidebar switches every tab between the ramped Year 1 view and the
+steady-state run-rate view by passing `year=1` or `year=2` to `get_annual` —
+useful because a slow first quarter otherwise confounds ramp effects with
+winter seasonality.
 
-Two independent axes drive most of the complexity:
-- **Seasonality** (`SEASONALITY` dict, per-month multiplier) applies to
-  bar-like and truck revenue-share income, not to truck pad rent
-  (contracted, fixed).
+Three independent monthly multipliers drive most of the complexity:
+- **Seasonality** (`SEASONALITY`, 0.65–1.00) — Austin patio weather. The
+  dominant one. Applies to bar-like and truck revenue-share income, not to
+  truck pad rent (contracted, fixed).
+- **Sports density** (`SPORTS_DENSITY`, 0.92–1.06) — how much watchable
+  sport is on the big TVs that month, derived from the owner's
+  sports-schedule research (October "Sports Equinox" peak, February
+  quietest, June–August summer gap). Deliberately averages to ~1.00 so it
+  **redistributes** evening-bar traffic across the year rather than handing
+  the model free revenue; `test_sports_density_is_revenue_neutral` enforces
+  that. Applies to the evening bar ONLY — daytime beverage and tobacco
+  sales ride on food-truck lunch traffic, which doesn't care what's on
+  screen. Distinct from `SEASONAL_EVENTS`, which models three specific
+  destination watch parties (Super Bowl, March Madness, NYE).
 - **COTA event tiers** (`COTA_EVENT_TIERS`) are looked up per month via
   `COTA_EVENTS_BY_MONTH`, or can be overridden per-call (used heavily by the
   Monte Carlo simulator and the "Scenarios" feature to swap in
   pessimistic/optimistic event calendars).
+
+### Cold start: the park is NOT open yet (important context)
+
+As of this model version the park is **still under construction**, has no
+operating history, and has **no signed vendor contracts** (six operators
+have expressed interest, which is not the same thing). Two Year 1 ramps
+encode that, and both should be revisited once real data exists:
+
+- **`TRUCK_Y1_FILL_RAMP`** — lease-up. The lot opens roughly half-leased and
+  fills over the first two to three quarters. Applied inside
+  `resolve_truck_count`, which returns a possibly-fractional slot count
+  (an expected value, not a headcount) and is then multiplied by
+  `TRUCK_OCCUPANCY` on top. An earlier version assumed all four hubs were
+  leased from month 1; that is no longer true and
+  `test_year1_lot_is_not_full_on_opening_month` guards against regressing.
+- **`BAR_Y1_RAMP`** — discovery, governing the evening bar AND the
+  daytime-beverage and tobacco streams. Starts at 35% and reaches full
+  run-rate at month 10. It used to start at 50%/month 8 on the theory that
+  the park had already soft-opened and had traffic to convert — that
+  premise was wrong, so the curve is now slower.
+
+`TRUCK_OCCUPANCY` is likewise held at 0.85 rather than 0.90 because there
+is no leasing track record to justify the tighter number.
+
+**Estimating rule for this project:** when a number is uncertain, err
+toward *higher expenses and lower revenue*. Understating the business is
+acceptable; overstating it is not. Several assumptions here are
+deliberately pessimistic for that reason and are flagged in-line.
 
 ### Bar operating-model constraint (important, easy to regress)
 
@@ -240,15 +294,67 @@ If real operating data later shows Dollar General does NOT carry vapes/Zyn
 instead of one blended `TOBACCO_*` set - not done here to avoid adding a
 third pricing axis before there's real sales data to calibrate it against.
 
+### Texas tax stack (researched; several were missing before)
+
+Texas has no personal income tax, but this business is far from untaxed.
+What applies, and where it lives:
+
+| Tax | Rate | Where modeled |
+|---|---|---|
+| Mixed Beverage **Gross Receipts** Tax | 6.7% of alcohol sales | `GRT_RATE` |
+| Mixed Beverage **Sales** Tax | 8.25% of alcohol sales | `MB_SALES_TAX_RATE` |
+| Sales tax — daytime beverages | 8.25% | `DAYTIME_BEVERAGE_SALES_TAX_RATE` |
+| Sales tax — tobacco/nicotine | 8.25% | `TOBACCO_SALES_TAX_RATE` |
+| Sales tax — **event parking** | 8.25% | `PARKING_SALES_TAX_RATE` |
+| Property tax — land | ~$4,000/yr actual | `FIXED_COSTS["property_tax"]` |
+| Property tax — **improvements** | 2.0% of buildout | `FIXED_COSTS["property_tax_improvements"]` |
+| Employer payroll (FICA/FUTA/SUTA) | ~10% of bartender comp | `EMPLOYER_PAYROLL_BURDEN_RATE` |
+| Federal income + SE tax (pass-through) | ~28% blended | `EFFECTIVE_INCOME_TAX_RATE`, Section 8 |
+| TX franchise tax | **$0 owed** | not modeled — see below |
+
+Four of these were absent from earlier versions and together cost roughly
+$28K/yr of NOI, so don't "simplify" them back out:
+
+1. **Mixed Beverage Sales Tax (8.25%)** is a *second, separate* tax from the
+   6.7% GRT, and under an MB permit it hits **every** alcoholic beverage
+   including canned beer — not just spirits. The model assumes **tax-inclusive
+   menu pricing** (a "$7 beer" means the customer hands over $7), which is
+   how bars actually post prices and is the conservative read. If the bar
+   instead adds tax at the register, set `MB_SALES_TAX_RATE = 0.0`.
+2. **Parking sales tax (8.25%)** — motor vehicle parking is an explicitly
+   taxable service in Texas (34 TAC 3.315). With a full COTA calendar this
+   is a five-figure annual line.
+3. **Property tax on improvements** — the existing $4,000/yr bill taxes raw
+   land only. Once built, the improvements join the tax roll.
+4. **Employer payroll burden** — paying the bartender via revenue share does
+   not avoid employer FICA/FUTA/SUTA if she's a W-2 employee, which her
+   working arrangement strongly suggests.
+
+**Franchise tax is $0** (2026 no-tax-due threshold is $2.65M of annualized
+revenue; this business projects well under $1M) but a Public Information
+Report must still be filed or the entity risks a penalty and loss of good
+standing. That filing, plus the *monthly* mixed-beverage and sales-tax
+returns an MB permittee owes, is why `FIXED_COSTS["accounting_tax_prep"]`
+exists.
+
+Permit costs are real money and were badly understated before: a TABC
+**Mixed Beverage Permit is $5,300 for the first two years** ($2,650 at
+renewal), which is most of why the `USE_OF_FUNDS` permits line is now
+$7,000 rather than $1,500. Tobacco adds $180/2yr plus $90/2yr for e-cig.
+
+Everything above should be confirmed with a TABC-savvy CPA before filing —
+the in-line comments flag which items are researched versus estimated.
+
 ### Cost totals: use the summarized fields, don't recompute from rates
 
 `summarize_annual` exposes fully-summed variable-cost fields
-(`total_cogs`, `total_grt`, `total_daytime_beverage_cogs`,
-`total_daytime_beverage_tax`, `total_tobacco_cogs`, `total_tobacco_tax`,
-`total_cc_processing`, `total_shrinkage`, `total_bartender_share`,
-`total_cota_parking_upkeep` (`PARKING_UPKEEP_RATE`, 5% of COTA parking
-revenue), `total_cota_cost`, `total_utility_cost`) so the dashboard's Owner
-Summary and Waterfall tabs read them directly instead of re-deriving `rate x
+(`total_cogs`, `total_grt`, `total_mb_sales_tax`,
+`total_daytime_beverage_cogs`, `total_daytime_beverage_tax`,
+`total_tobacco_cogs`, `total_tobacco_tax`, `total_cc_processing`,
+`total_shrinkage`, `total_bartender_share`, `total_payroll_burden`,
+`total_cota_parking_upkeep`, `total_cota_parking_sales_tax`,
+`total_cota_cost`, `total_utility_cost`) so the dashboard's Owner Summary
+and Waterfall tabs read them directly instead of re-deriving `rate x
 revenue` locally in multiple places. Prefer reading these fields over
 recomputing - see the COTA-total note above for what goes wrong when a
 derived total is duplicated across call sites instead of computed once in

@@ -1,3 +1,6 @@
 streamlit>=1.30.0
 plotly>=5.18.0
 pandas>=2.0.0
+
+# Test suite only (pytest -q). Not needed to run the dashboard or the CLI.
+pytest>=8.0.0

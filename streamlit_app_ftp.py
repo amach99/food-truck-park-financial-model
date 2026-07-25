@@ -101,6 +101,19 @@ tobacco_attach = st.sidebar.slider(
 
 st.sidebar.subheader("Other")
 seasonal_pct = st.sidebar.slider("Seasonal Event Strength", 0.0, 2.0, 1.0, step=0.25)
+projection_view = st.sidebar.radio(
+    "Projection View",
+    ["Year 1 (with ramps)", "Steady state (no ramps)"],
+    help="Year 1 applies the cold-start discovery curve to the bar/beverage/"
+         "tobacco streams AND the lease-up curve to the truck slots, so a "
+         "slow first few months mixes together ramp effects and winter "
+         "seasonality. Steady state strips both ramps out to show the "
+         "run-rate business — useful for judging whether the concept works "
+         "once it's established, separately from how long it takes to get "
+         "there.",
+)
+projection_year = 1 if projection_view.startswith("Year 1") else 2
+view_label = "Year 1" if projection_year == 1 else "Steady State"
 
 st.sidebar.markdown("---")
 st.sidebar.subheader("Monte Carlo")
@@ -142,12 +155,18 @@ def get_multi_year(wd_custs, we_custs, check, slots, t_rent, t_share, t_sales, t
 
 
 @st.cache_data
-def get_monte_carlo(n_sims, seed, wd_custs, we_custs, check, t_rent, t_share, t_occ, seasonal):
+def get_monte_carlo(n_sims, seed, wd_custs, we_custs, check, t_rent, t_share, t_occ, seasonal,
+                    slots, t_sales, dbev_attach, dbev_price, tob_attach, tob_price):
     return model.run_monte_carlo(
         n_sims, seed,
         base_weekday_customers=wd_custs, base_weekend_customers=we_custs,
         base_check=check, base_truck_rent=t_rent, base_truck_share=t_share,
         base_truck_occupancy=t_occ, base_seasonal_pct=seasonal,
+        base_truck_slots=slots, base_truck_avg_sales=t_sales,
+        base_daytime_beverage_attach_rate=dbev_attach,
+        base_daytime_beverage_avg_price=dbev_price,
+        base_tobacco_attach_rate=tob_attach,
+        base_tobacco_avg_price=tob_price,
     )
 
 
@@ -183,12 +202,15 @@ def months_to_df(months):
     return pd.DataFrame(rows)
 
 
-# Shared computation for current sidebar inputs
+# Shared computation for current sidebar inputs. `projection_year` is 1 for
+# the ramped Year 1 view and 2 for the steady-state run-rate view; the model
+# applies ramps only when year == 1.
 months, annual = get_annual(weekday_customers, weekend_customers, avg_check,
                             truck_slots, truck_rent, truck_share, truck_sales,
                             truck_occupancy, seasonal_pct,
                             daytime_bev_attach, daytime_bev_price,
-                            tobacco_attach, tobacco_price)
+                            tobacco_attach, tobacco_price,
+                            yr=projection_year)
 df = months_to_df(months)
 
 
@@ -237,7 +259,7 @@ with tabs[0]:
 
     col_left, col_right = st.columns(2)
     with col_left:
-        st.subheader("Revenue Breakdown (Year 1)")
+        st.subheader(f"Revenue Breakdown ({view_label})")
         cota_total = (annual["total_cota_parking"] + annual["total_cota_bar"]
                      + annual["total_cota_daytime_bev"] + annual["total_cota_tobacco"])
         rev_data = {
@@ -279,7 +301,7 @@ with tabs[0]:
         )
         st.plotly_chart(fig, use_container_width=True)
 
-    st.subheader("Year 1 Fill Trajectory")
+    st.subheader(f"Fill Trajectory ({view_label})")
     fig_fill = go.Figure()
     fig_fill.add_trace(go.Scatter(
         x=df["Month"], y=df["Trucks Active"], name="Trucks Active",
@@ -297,7 +319,7 @@ with tabs[0]:
 # TAB 1: ANNUAL PROJECTION
 # =============================================================================
 with tabs[1]:
-    st.header("Year 1 Annual Projection")
+    st.header(f"Annual Projection — {view_label}")
 
     stream_cols = ["Food Trucks", "Evening Bar", "Daytime Beverages", "Tobacco & Nicotine", "COTA", "Seasonal"]
     fig_stack = go.Figure()
@@ -505,7 +527,9 @@ with tabs[4]:
 
     mc_results = get_monte_carlo(mc_sims, mc_seed, weekday_customers, weekend_customers,
                                  avg_check, truck_rent, truck_share, truck_occupancy,
-                                 seasonal_pct)
+                                 seasonal_pct, truck_slots, truck_sales,
+                                 daytime_bev_attach, daytime_bev_price,
+                                 tobacco_attach, tobacco_price)
 
     revenues = sorted(r["revenue"] for r in mc_results)
     covs = sorted(r["nut_coverage"] for r in mc_results)
@@ -564,11 +588,15 @@ with tabs[4]:
         st.plotly_chart(fig_cf, use_container_width=True)
 
     st.caption(
-        "Randomized: truck slots (base -2 to base), truck sales (\\$10K-\\$35K/mo), "
-        "bar customers/evening (10-70), avg check (\\$5-\\$13), COTA events "
-        "(8-15/yr), seasonal strength (40%-150%). Truck rent and revenue "
-        "share are held fixed across every simulation at the sidebar slider "
-        "values (they're actual contracted terms, not something to randomize)."
+        "Randomized around whatever the sidebar sliders are set to: truck "
+        "occupancy (vacancy/churn, ±8pts), truck sales (\\$10K-\\$35K/mo), bar "
+        "customers/evening, avg check (\\$5-\\$13), COTA event mix (big 4 fixed; "
+        "concerts/festivals/GT vary), seasonal strength (40%-150%), and both "
+        "attach rates — daytime beverages (±8pts) and tobacco (±4pts), which "
+        "get the widest relative bands because they're the least-validated "
+        "numbers in the model. Truck count, rent, and revenue share are held "
+        "fixed across every simulation (built slots + intended contract terms); "
+        "lease-up risk shows up through occupancy instead."
     )
 
 
@@ -762,46 +790,56 @@ with tabs[6]:
 # TAB 7: WATERFALL
 # =============================================================================
 with tabs[7]:
-    st.header("Year 1 Cash Flow Waterfall")
+    st.header(f"Cash Flow Waterfall — {view_label}")
 
+    # Read the engine's summed cost fields directly rather than re-deriving
+    # `rate x revenue` here — recomputing locally is how this tab silently
+    # drifted out of sync with NOI twice before.
     gross = annual["total_gross"]
-    bar_like = annual["total_bar"] + annual["total_cota_bar"] + annual["total_seasonal"]
-    cogs = bar_like * model.COGS_RATE
-    grt = bar_like * model.GRT_RATE
-    daytime_bev = annual["total_daytime_beverage"] + annual["total_cota_daytime_bev"]
-    daytime_bev_cogs = daytime_bev * model.DAYTIME_BEVERAGE_COGS_RATE
-    daytime_bev_tax = daytime_bev * model.DAYTIME_BEVERAGE_SALES_TAX_RATE
-    tobacco = annual["total_tobacco"] + annual["total_cota_tobacco"]
-    tobacco_cogs = tobacco * model.TOBACCO_COGS_RATE
-    tobacco_tax = tobacco * model.TOBACCO_SALES_TAX_RATE
+    cogs = annual["total_cogs"]
+    grt = annual["total_grt"]
+    mb_sales_tax = annual["total_mb_sales_tax"]
+    daytime_bev_cogs = annual["total_daytime_beverage_cogs"]
+    daytime_bev_tax = annual["total_daytime_beverage_tax"]
+    tobacco_cogs = annual["total_tobacco_cogs"]
+    tobacco_tax = annual["total_tobacco_tax"]
     cc = annual["total_cc_processing"]
     shrinkage = annual["total_shrinkage"]
-    utility_cost = annual["total_utility_billed"]  # pass-through at cost
+    utility_cost = annual["total_utility_cost"]  # pass-through at cost
     parking_cost = annual["total_cota_parking_upkeep"]
+    parking_tax = annual["total_cota_parking_sales_tax"]
     cota_cost = annual["total_cota_cost"]
     bartender_share = annual["total_bartender_share"]
+    payroll_burden = annual["total_payroll_burden"]
     fixed_ex = model.ANNUAL_NUT
-    pre_tax_cf = (gross - cogs - grt - daytime_bev_cogs - daytime_bev_tax
+    pre_tax_cf = (gross - cogs - grt - mb_sales_tax
+                  - daytime_bev_cogs - daytime_bev_tax
                   - tobacco_cogs - tobacco_tax - cc
-                  - shrinkage - utility_cost - parking_cost
-                  - cota_cost - bartender_share - fixed_ex)
+                  - shrinkage - utility_cost - parking_cost - parking_tax
+                  - cota_cost - bartender_share - payroll_burden - fixed_ex)
     income_tax = max(0.0, pre_tax_cf) * model.EFFECTIVE_INCOME_TAX_RATE
     free_cf = pre_tax_cf - income_tax
 
-    labels = ["Gross Revenue", f"COGS ({model.COGS_RATE:.0%})", "TX GRT (6.7%)",
+    labels = ["Gross Revenue", f"COGS ({model.COGS_RATE:.0%})",
+              f"TX Mixed Bev GRT ({model.GRT_RATE:.1%})",
+              f"TX Mixed Bev Sales Tax ({model.MB_SALES_TAX_RATE:.2%})",
               f"Daytime Bev COGS ({model.DAYTIME_BEVERAGE_COGS_RATE:.0%})",
               f"Daytime Bev Sales Tax ({model.DAYTIME_BEVERAGE_SALES_TAX_RATE:.2%})",
               f"Tobacco COGS ({model.TOBACCO_COGS_RATE:.0%})",
               f"Tobacco Sales Tax ({model.TOBACCO_SALES_TAX_RATE:.2%})",
               "CC Processing", "Shrinkage", "Utility Pass-Thru", "Parking Upkeep",
-              "COTA Costs", "Bartender Share", "Fixed Costs (Nut)",
+              f"Parking Sales Tax ({model.PARKING_SALES_TAX_RATE:.2%})",
+              "COTA Costs", "Bartender Share", "Employer Payroll Burden",
+              "Fixed Costs (Nut)",
               f"Income Tax ({model.EFFECTIVE_INCOME_TAX_RATE:.0%})",
               "After-Tax Cash Flow"]
-    values = [gross, -cogs, -grt, -daytime_bev_cogs, -daytime_bev_tax,
+    values = [gross, -cogs, -grt, -mb_sales_tax,
+              -daytime_bev_cogs, -daytime_bev_tax,
               -tobacco_cogs, -tobacco_tax, -cc, -shrinkage,
-              -utility_cost, -parking_cost,
-              -cota_cost, -bartender_share, -fixed_ex, -income_tax, 0]
-    measures = ["absolute"] + ["relative"] * 14 + ["total"]
+              -utility_cost, -parking_cost, -parking_tax,
+              -cota_cost, -bartender_share, -payroll_burden,
+              -fixed_ex, -income_tax, 0]
+    measures = ["absolute"] + ["relative"] * (len(values) - 2) + ["total"]
 
     fig_wf = go.Figure(go.Waterfall(
         x=labels, y=values, measure=measures,
@@ -887,6 +925,9 @@ with tabs[8]:
         {"Expense": "TX Mixed Beverage GRT",
          "Rate": f"{model.GRT_RATE:.1%} of alcohol revenue",
          "Annual (Base Case)": base["total_grt"]},
+        {"Expense": "TX Mixed Beverage Sales Tax",
+         "Rate": f"{model.MB_SALES_TAX_RATE:.2%} of alcohol revenue (tax-inclusive pricing)",
+         "Annual (Base Case)": base["total_mb_sales_tax"]},
         {"Expense": "COGS — Daytime Beverages",
          "Rate": f"{model.DAYTIME_BEVERAGE_COGS_RATE:.0%} of daytime beverage revenue",
          "Annual (Base Case)": base["total_daytime_beverage_cogs"]},
@@ -908,9 +949,15 @@ with tabs[8]:
         {"Expense": "Bartender Share (variable comp, not a salary)",
          "Rate": f"{model.BARTENDER_SHARE_RATE:.0%} of all beverage revenue",
          "Annual (Base Case)": base["total_bartender_share"]},
+        {"Expense": "Employer Payroll Burden (FICA/FUTA/SUTA)",
+         "Rate": f"{model.EMPLOYER_PAYROLL_BURDEN_RATE:.0%} on top of bartender comp",
+         "Annual (Base Case)": base["total_payroll_burden"]},
         {"Expense": "COTA Parking Lot Upkeep",
          "Rate": f"{model.PARKING_UPKEEP_RATE:.0%} of event parking revenue",
          "Annual (Base Case)": base["total_cota_parking_upkeep"]},
+        {"Expense": "TX Sales Tax — Event Parking",
+         "Rate": f"{model.PARKING_SALES_TAX_RATE:.2%} of event parking revenue",
+         "Annual (Base Case)": base["total_cota_parking_sales_tax"]},
         {"Expense": "COTA Incremental Costs (event staffing/porta-potty)",
          "Rate": "flat per event tier",
          "Annual (Base Case)": base["total_cota_cost"]},
@@ -934,14 +981,19 @@ with tabs[8]:
     st.subheader("Projected Performance (Year 1)")
     perf_l, perf_r = st.columns(2)
     with perf_l:
-        st.markdown("**Conservative** (3 trucks @ 88% occ, soft bar)")
+        _c = model.SCENARIOS["Conservative"]
+        st.markdown(f"**Conservative** ({_c['truck_slots']} trucks @ "
+                    f"{_c['truck_occupancy']:.0%} occ, soft bar)")
         st.metric("Revenue", fmt_dollar(conservative["total_gross"]))
         st.metric("Free Cash Flow (pre-tax)", fmt_dollar(conservative["total_net_cash"]))
         st.metric("After-Tax Cash Flow", fmt_dollar(conservative["after_tax_noi"]))
         st.metric("FCF Yield (pre / after tax)",
                   f"{conservative['fcf_yield']:.0%} / {conservative['after_tax_fcf_yield']:.0%}")
     with perf_r:
-        st.markdown("**Base Case** (4 trucks @ 90% occ, 20 wkday / 58 wkend bar)")
+        _b = model.SCENARIOS["Base Case"]
+        st.markdown(f"**Base Case** ({_b['truck_slots']} trucks @ "
+                    f"{_b['truck_occupancy']:.0%} occ, {_b['weekday_customers']} wkday / "
+                    f"{_b['weekend_customers']} wkend bar)")
         st.metric("Revenue", fmt_dollar(base["total_gross"]))
         st.metric("Free Cash Flow (pre-tax)", fmt_dollar(base["total_net_cash"]))
         st.metric("After-Tax Cash Flow", fmt_dollar(base["after_tax_noi"]))
@@ -958,8 +1010,9 @@ with tabs[8]:
         f"{model.LOC_INTEREST_RATE:.1%} with no fixed amortization, so free cash "
         "flow can sweep the balance down faster than the conservative flat-"
         "interest nut assumes (see LOC Payoff Schedule)",
-        "Phase 0.5 food truck park already operating (opened June 2026) — "
-        "not a cold start",
+        f"Land owned outright — no rent or mortgage in the monthly nut, and "
+        f"{model.ALREADY_SPENT / model.TOTAL_PROJECT_COST:.0%} of the buildout "
+        "is already paid for",
         "Simple beer + sealed-shot offering = minimal labor skill/speed "
         "requirements, low equipment cost",
         "Utilities sub-metered and billed at cost (PURA §39.107) — "
@@ -1140,9 +1193,10 @@ with tabs[10]:
 
     with st.expander("1. Revenue Streams", expanded=True):
         streams = pd.DataFrame([
-            ("1. Food Trucks", "4 trucks (fixed for Year 1, no more hubs "
-             "budgeted) at 90% occupancy: $500 pad rent + 10% rev share on "
-             "~$20K/mo truck sales", "~$12-13K/mo", "100%"),
+            ("1. Food Trucks", "4 hubs being built (no more budgeted), "
+             "leasing up from ~half-full at open to fully leased by month 9 "
+             "at 85% steady-state occupancy: $500 pad rent + 10% rev share "
+             "on ~$20K/mo truck sales", "~$8K/mo", "100%"),
             ("2. Evening Bar", "6pm-close only, $7 beer + $3 shots in plastic "
              "shot glasses (no cocktails, no mixed drinks): 20 weekday / 58 "
              "weekend customers/evening averaging 1.5 drinks (~$9.00 check)",
@@ -1165,9 +1219,9 @@ with tabs[10]:
              "45% Fri / 75% Sat / 100% Sun) + bar uplift at premium event "
              "pricing ($12 beer / $5 shot)", "Event months", "~90-95%"),
             ("6. Seasonal Events", "Super Bowl / March Madness / NYE watch "
-             "parties on the big TVs", "~$2.7K/yr", "~58%"),
+             "parties on the big TVs", "~$3.5K/yr", "~58%"),
             ("7. Utility Pass-Through", "Sub-metered truck power/water/waste "
-             "billed at cost (PURA §39.107)", "~$1.8K/mo", "0% (at-cost by law)"),
+             "billed at cost (PURA §39.107)", "~$1.3K/mo", "0% (at-cost by law)"),
         ], columns=["Stream", "Description", "Steady-State Monthly", "Margin"])
         st.dataframe(streams, use_container_width=True, hide_index=True)
 
@@ -1201,12 +1255,12 @@ with tabs[10]:
             r"""
             | | Food Truck + RV Park | Food Truck Park (this model) |
             |---|---|---|
-            | Capital | \$300,000 SBA 7(a) term loan | \$75,000 personal LOC |
+            | Capital | \$300,000 SBA 7(a) term loan | \$81,600 personal LOC |
             | Rate / structure | 10.5%, 10-yr amortizing | 12.5%, revolving interest-only |
-            | Financing cost | ~\$4,050/mo fixed P&I | ~\$781/mo interest (conservative; declines as paid down) |
-            | Monthly nut | ~\$15,200 | ~\$7,000 |
+            | Financing cost | ~\$4,050/mo fixed P&I | ~\$850/mo interest (conservative; declines as paid down) |
+            | Monthly nut | ~\$15,200 | ~\$5,200 |
             | RV pad rent | ~\$16-18K/mo | Removed entirely |
-            | Truck count | 6 slots, ramps up | 4 trucks, fixed for Year 1 (no more hubs budgeted) |
+            | Truck count | 6 slots, ramps up | 4 hubs, leasing up over Year 1 (no more budgeted) |
             | Cost basis | Estimated buckets | Itemized from real Phase 0.5 cost tracker |
             | Cleaning/maintenance labor | Part-time paid cleaner | Park manager lives on-site free, no labor cost |
             | Event staffing | Extra bartender for big events | One bartender always, no extra hire |
