@@ -1204,8 +1204,8 @@ with tabs[10]:
         This model strips the food-truck-+-RV-park concept down further:
         contracted monthly rent from food truck tenants forms a stable base,
         the evening bar adds beer and single-serve liquor shot sales, the
-        all-day beverage stand adds soda/juice/water/coffee, and COTA event
-        weekends layer parking and bar upside on top. The
+        all-day stand adds soda/juice/water/coffee plus tobacco/nicotine, and
+        COTA event weekends layer parking and bar upside on top. The
         \\${model.TOTAL_PROJECT_COST:,.0f} buildout (itemized from the owner's
         real Phase 0.5 cost tracker) is financed through a personal line of
         credit at {model.LOC_INTEREST_RATE:.1%} rather than a bank term loan — revolving,
@@ -1215,40 +1215,90 @@ with tabs[10]:
         DSCR covenant, plus a dedicated LOC payoff schedule.
         """
     )
+    st.warning(
+        "**The park is not open yet.** It's still under construction with no "
+        "operating history and no signed vendor contracts (six operators have "
+        "expressed interest, which isn't the same thing). Every number here is "
+        "an estimate, and where a number is uncertain the model deliberately "
+        "errs toward **higher expenses and lower revenue** — understating the "
+        "business is acceptable, overstating it isn't. Use the **Projection "
+        "View** toggle in the sidebar to switch between the ramped Year 1 view "
+        "and the steady-state run-rate."
+    )
 
     with st.expander("1. Revenue Streams", expanded=True):
+        # Steady-state (no-ramp) run rate, computed live so this table can't
+        # drift away from the engine the way hardcoded figures did before.
+        _, _ss = get_annual(weekday_customers, weekend_customers, avg_check,
+                            truck_slots, truck_rent, truck_share, truck_sales,
+                            truck_occupancy, seasonal_pct,
+                            daytime_bev_attach, daytime_bev_price,
+                            tobacco_attach, tobacco_price, yr=2)
+        _mo = lambda k: fmt_dollar(_ss[k] / 12) + "/mo"
+        _alcohol_margin = 1 - model.VARIABLE_COST_RATE
+        _parking_margin = 1 - model.PARKING_UPKEEP_RATE - model.PARKING_SALES_TAX_RATE
         streams = pd.DataFrame([
-            ("1. Food Trucks", "4 hubs being built (no more budgeted), "
-             "leasing up from ~half-full at open to fully leased by month 9 "
-             "at 85% steady-state occupancy: $500 pad rent + 10% rev share "
-             "on ~$20K/mo truck sales", "~$8K/mo", "100%"),
-            ("2. Evening Bar", "6pm-close only, $7 beer + $3 shots in plastic "
-             "shot glasses (no cocktails, no mixed drinks): 20 weekday / 58 "
-             "weekend customers/evening averaging 1.5 drinks (~$9.00 check)",
-             "~$7-9K/mo", "~58% after COGS + GRT"),
-            ("3. Daytime Beverages", "All-day (~11am-close) soda/juice/water/"
-             "coffee, sized off implied food-truck customer traffic (35% "
-             "attach rate x $2.75 avg price) - same on-site bartender, no "
-             "new fixed labor. Requires vendor leases restricting trucks to "
-             "food-only (specialty drinks OK) so demand doesn't leak to "
-             "truck-sold drinks", "~$4.3K/mo", "~70% after COGS + sales tax"),
-            ("4. Tobacco & Nicotine", "All-day cigarettes/vapes/nicotine "
-             "pouches (Zyn), same truck-traffic basis as daytime beverages "
-             "but a much lower 12% attach rate and thinner ~24% margin "
-             "(cigarette markup is famously thin) - Dollar General next "
-             "door already sells cigarettes, capping that specific "
-             "product's upside; vapes/Zyn are less consistently stocked "
-             "there", "~$6.4K/mo", "~24% after COGS + sales tax"),
-            ("5. COTA Events", "270-space event parking (dedicated 3-acre "
-             "lot), day-by-day occupancy building to the marquee day (F1: "
-             "45% Fri / 75% Sat / 100% Sun) + bar uplift at premium event "
-             "pricing ($12 beer / $5 shot)", "Event months", "~90-95%"),
-            ("6. Seasonal Events", "Super Bowl / March Madness / NYE watch "
-             "parties on the big TVs", "~$3.5K/yr", "~58%"),
-            ("7. Utility Pass-Through", "Sub-metered truck power/water/waste "
-             "billed at cost (PURA §39.107)", "~$1.3K/mo", "0% (at-cost by law)"),
+            ("1. Food Trucks",
+             f"{model.TRUCK_SLOTS} hubs being built (no more budgeted), leasing "
+             f"up from ~half-full at open to fully leased by month "
+             f"{max(model.TRUCK_Y1_FILL_RAMP) + 1} at "
+             f"{model.TRUCK_OCCUPANCY:.0%} steady-state occupancy: "
+             f"${model.TRUCK_PAD_RENT} pad rent + {model.TRUCK_REV_SHARE_RATE:.0%} "
+             f"rev share on ~${model.TRUCK_AVG_MONTHLY_SALES/1000:.0f}K/mo truck sales",
+             _mo("total_trucks"), "100% (trucks carry their own OpEx)"),
+            ("2. Evening Bar",
+             f"6pm-close only, ${model.BEER_PRICE:.0f} beer + ${model.SHOT_PRICE:.0f} "
+             f"shots in plastic shot glasses (no cocktails, no mixed drinks): "
+             f"{model.BAR_WEEKDAY_CUSTOMERS} weekday / {model.BAR_WEEKEND_CUSTOMERS} "
+             f"weekend customers/evening averaging {model.DRINKS_PER_VISIT} drinks "
+             f"(~${model.BAR_AVG_CHECK:.2f} check)",
+             _mo("total_bar"),
+             f"~{_alcohol_margin:.0%} after COGS + both mixed beverage taxes"),
+            ("3. Daytime Beverages",
+             f"All-day (~11am-close) soda/juice/water/coffee, sized off implied "
+             f"food-truck customer traffic ({model.DAYTIME_BEVERAGE_ATTACH_RATE:.0%} "
+             f"attach rate x ${model.DAYTIME_BEVERAGE_AVG_PRICE:.2f} avg price) - "
+             "same on-site bartender, no new fixed labor. Requires vendor leases "
+             "restricting trucks to food-only (specialty drinks OK) so demand "
+             "doesn't leak to truck-sold drinks",
+             _mo("total_daytime_beverage"),
+             f"~{1 - model.DAYTIME_BEVERAGE_VARIABLE_COST_RATE:.0%} after COGS + sales tax"),
+            ("4. Tobacco & Nicotine",
+             f"All-day cigarettes/vapes/nicotine pouches (Zyn), same "
+             f"truck-traffic basis as daytime beverages but a much lower "
+             f"{model.TOBACCO_ATTACH_RATE:.0%} attach rate and far thinner margin "
+             "(cigarette markup is famously thin) - Dollar General next door "
+             "already sells cigarettes, capping that specific product's upside; "
+             "vapes/Zyn are less consistently stocked there",
+             _mo("total_tobacco"),
+             f"~{1 - model.TOBACCO_VARIABLE_COST_RATE:.0%} after COGS + sales tax"),
+            ("5. COTA Events",
+             f"{model.EVENT_PARKING_SPACES}-space event parking (dedicated 3-acre "
+             "lot), day-by-day occupancy building to the marquee day (F1: 45% Fri "
+             "/ 75% Sat / 100% Sun) + uplift on the bar, daytime beverages and "
+             f"tobacco at premium event pricing (${model.COTA_EVENT_BEER_PRICE:.0f} "
+             f"beer / ${model.COTA_EVENT_SHOT_PRICE:.0f} shot)",
+             "Event months only",
+             f"Parking ~{_parking_margin:.0%} after upkeep + sales tax, "
+             "less per-tier event staffing"),
+            ("6. Seasonal Events",
+             "Super Bowl / March Madness / NYE watch parties on the big TVs. "
+             "Separate from the everyday sports-calendar effect (see Ramps & "
+             "Levers)",
+             fmt_dollar(_ss["total_seasonal"]) + "/yr",
+             f"~{_alcohol_margin:.0%} (same as the bar)"),
+            ("7. Utility Pass-Through",
+             "Sub-metered truck power/water/waste billed at cost (PURA §39.107)",
+             _mo("total_utility_billed"), "0% by law (at-cost resale)"),
         ], columns=["Stream", "Description", "Steady-State Monthly", "Margin"])
         st.dataframe(streams, use_container_width=True, hide_index=True)
+        st.caption(
+            "Monthly figures are the **steady-state run rate** (Year 2+, no "
+            "ramps) at the current sidebar settings, so they won't match the "
+            "Year 1 view. Margins are after that stream's own variable costs "
+            "but before the fixed monthly nut, credit-card processing, "
+            "shrinkage, and the bartender's revenue share."
+        )
 
     with st.expander("2. Key Assumptions"):
         col_l, col_r = st.columns(2)
@@ -1263,19 +1313,84 @@ with tabs[10]:
             ], columns=["Parameter", "Value"])
             st.dataframe(cap_df, use_container_width=True, hide_index=True)
         with col_r:
-            st.subheader("Ramps & Levers (Year 1)")
+            st.subheader("Ramps & Levers")
+            _bar_full = max(model.BAR_Y1_RAMP) + 1
+            _fill_full = max(model.TRUCK_Y1_FILL_RAMP) + 1
             ramp_df = pd.DataFrame([
-                ("Food trucks", "Flat at 4 (already built/running, no ramp)"),
-                ("Truck occupancy", f"{model.TRUCK_OCCUPANCY:.0%} (vacancy factor; 6-mo contracts)"),
-                ("Evening bar", "50% month 1 → 100% by month 8"),
-                ("Daytime beverages", "Same ramp as the bar (new offering, "
-                 "needs discovery)"),
-                ("Tobacco & nicotine", "Same ramp as the bar (new offering, "
-                 "needs discovery)"),
-            ], columns=["Stream", "Schedule"])
+                ("Truck lease-up (Yr 1)",
+                 f"{model.TRUCK_Y1_FILL_RAMP[1]:.0%} of {model.TRUCK_SLOTS} hubs at "
+                 f"open → fully leased by month {_fill_full} (no contracts signed yet)"),
+                ("Truck occupancy",
+                 f"{model.TRUCK_OCCUPANCY:.0%} steady-state vacancy haircut, "
+                 "applied on top of lease-up"),
+                ("Bar / beverages / tobacco (Yr 1)",
+                 f"{model.BAR_Y1_RAMP[1]:.0%} month 1 → 100% by month {_bar_full} "
+                 "(cold-start discovery curve)"),
+                ("Seasonality (all year)",
+                 f"{min(model.SEASONALITY.values()):.2f}–{max(model.SEASONALITY.values()):.2f} "
+                 "by month — Austin patio weather, the dominant swing"),
+                ("Sports density (all year)",
+                 f"{min(model.SPORTS_DENSITY.values()):.2f}–{max(model.SPORTS_DENSITY.values()):.2f} "
+                 "by month — evening bar only; averages ~1.00 so it redistributes "
+                 "traffic rather than adding revenue"),
+            ], columns=["Lever", "Schedule"])
             st.dataframe(ramp_df, use_container_width=True, hide_index=True)
 
-    with st.expander("3. What Changed vs. the Food Truck + RV Park Model"):
+    with st.expander("3. Texas Tax Stack"):
+        st.markdown(
+            "Texas has no personal income tax, but this business is far from "
+            "untaxed — and an MB permittee files **monthly** returns. Every "
+            "rate below is a real operating cost already netted out of NOI."
+        )
+        tax_df = pd.DataFrame([
+            ("Mixed Beverage Gross Receipts Tax",
+             f"{model.GRT_RATE:.1%} of alcohol sales",
+             "Permittee's own liability — cannot be added to the menu price"),
+            ("Mixed Beverage Sales Tax",
+             f"{model.MB_SALES_TAX_RATE:.2%} of alcohol sales",
+             "A second, separate tax. Under an MB permit it hits every "
+             "alcoholic drink including canned beer. Model assumes "
+             "tax-inclusive menu pricing (the conservative read)"),
+            ("Sales tax — daytime beverages",
+             f"{model.DAYTIME_BEVERAGE_SALES_TAX_RATE:.2%}",
+             "Standard Del Valle/Travis County rate — not alcohol, so no GRT"),
+            ("Sales tax — tobacco/nicotine",
+             f"{model.TOBACCO_SALES_TAX_RATE:.2%}",
+             "Cigarette excise is already baked into wholesale cost"),
+            ("Sales tax — event parking",
+             f"{model.PARKING_SALES_TAX_RATE:.2%}",
+             "Motor vehicle parking is an explicitly taxable service in TX "
+             "(34 TAC 3.315)"),
+            ("Property tax — land",
+             fmt_dollar(model.FIXED_COSTS['property_tax'] * 12) + "/yr",
+             "Actual bill; county assesses the land at "
+             f"{fmt_dollar(model.LAND_ASSESSED_VALUE)}"),
+            ("Property tax — improvements",
+             f"{model.PROPERTY_TAX_IMPROVEMENT_RATE:.1%} of buildout "
+             f"({fmt_dollar(model.FIXED_COSTS['property_tax_improvements'] * 12)}/yr)",
+             "The buildout joins the tax roll once complete"),
+            ("Employer payroll (FICA/FUTA/SUTA)",
+             f"~{model.EMPLOYER_PAYROLL_BURDEN_RATE:.0%} of bartender comp",
+             "Revenue-share pay doesn't avoid employer payroll tax for a "
+             "W-2 employee"),
+            ("Federal income + self-employment tax",
+             f"~{model.EFFECTIVE_INCOME_TAX_RATE:.0%} blended on profit",
+             "See the Tax Strategies tab for depreciation and S-corp levers"),
+            ("Texas franchise tax",
+             "$0 owed",
+             "2026 no-tax-due threshold is $2.65M revenue; this projects well "
+             "under $1M. A Public Information Report must still be filed"),
+        ], columns=["Tax", "Rate", "Notes"])
+        st.dataframe(tax_df, use_container_width=True, hide_index=True)
+        st.caption(
+            "Permits are real money and were badly understated in earlier "
+            "versions: a TABC **Mixed Beverage Permit is \\$5,300 for the first "
+            "two years** (\\$2,650 at renewal), plus \\$180/2yr for tobacco and "
+            "\\$90/2yr for e-cigarette retail. Confirm all of the above with a "
+            "TABC-savvy CPA before filing."
+        )
+
+    with st.expander("4. What Changed vs. the Food Truck + RV Park Model"):
         st.markdown(
             r"""
             | | Food Truck + RV Park | Food Truck Park (this model) |
@@ -1300,17 +1415,23 @@ with tabs[10]:
             "break-even, multi-year, waterfall)."
         )
 
-    with st.expander("4. Function Reference"):
+    with st.expander("5. Function Reference"):
         st.code(
             """
-model.run_annual_projection()      # 12-month projection, Year 1 or steady state
-model.run_multi_year_projection()  # Years 1-3 with growth + cost inflation
-model.run_monte_carlo()            # 10K randomized Year 1 scenarios
-model.run_scenario_comparison()    # 5 named scenarios side by side
-model.run_breakeven_analysis()     # zero-bar test + min bar traffic targets
-model.run_sensitivity_analysis()   # one-lever-at-a-time sweeps
-model.run_cash_reserve_tracker()   # month-by-month cash balance + payback month
-model.print_owner_summary()        # full owner-facing report (CLI)
+model.run_annual_projection()       # 12-month projection; year=1 ramped, year=2 steady state
+model.run_multi_year_projection()   # Years 1-3 with growth + cost inflation
+model.run_monte_carlo()             # 10K randomized Year 1 scenarios
+model.run_scenario_comparison()     # 5 named scenarios side by side
+model.run_breakeven_analysis()      # zero-bar test + min bar traffic targets
+model.run_sensitivity_analysis()    # one-lever-at-a-time sweeps
+model.run_cash_reserve_tracker()    # month-by-month cash balance + payback month
+model.run_loc_payoff_schedule()     # declining-balance LOC payoff vs. the flat nut
+model.run_tax_strategy_analysis()   # depreciation + Sec 195 + S-corp election
+model.print_tax_strategy_analysis() # same, printed (CLI)
+model.print_owner_summary()         # full owner-facing report (CLI)
+
+# Regression tests — run after ANY change to the calculation engine:
+#   pytest -q
             """,
             language="python",
         )
