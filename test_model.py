@@ -175,6 +175,47 @@ def test_depreciable_basis_within_project_cost():
             == m.TOTAL_DEPRECIABLE_BASIS)
 
 
+def test_depreciation_item_labels_resolve():
+    """Guard: the basis lists look items up by exact USE_OF_FUNDS label.
+
+    Renaming a line item in USE_OF_FUNDS silently breaks the basis (or
+    KeyErrors) unless the lists are updated with it.
+    """
+    labels = {label for label, _, _ in m.USE_OF_FUNDS}
+    for item in (m.DEPRECIATION_5YR_ITEMS + m.DEPRECIATION_15YR_ITEMS
+                 + m.STARTUP_COST_ITEMS):
+        assert item in labels, f"{item!r} no longer matches a USE_OF_FUNDS label"
+
+
+def test_startup_costs_follow_section_195_structure():
+    """Up to $5,000 immediately, remainder amortized over 15 years."""
+    assert m.STARTUP_COST_BASIS > m.STARTUP_IMMEDIATE_DEDUCTION_CAP
+    remainder = m.STARTUP_COST_BASIS - m.STARTUP_IMMEDIATE_DEDUCTION_CAP
+    assert m.YEAR1_STARTUP_DEDUCTION == pytest.approx(
+        m.STARTUP_IMMEDIATE_DEDUCTION_CAP
+        + remainder / m.STARTUP_AMORTIZATION_YEARS)
+    assert m.ONGOING_STARTUP_AMORTIZATION < m.YEAR1_STARTUP_DEDUCTION
+
+
+def test_startup_and_depreciation_dont_double_count_basis():
+    """A dollar of buildout is either depreciable OR a startup cost."""
+    dep_items = set(m.DEPRECIATION_5YR_ITEMS) | set(m.DEPRECIATION_15YR_ITEMS)
+    assert dep_items.isdisjoint(set(m.STARTUP_COST_ITEMS))
+
+
+def test_first_year_gets_larger_startup_deduction_than_later_years():
+    noi = 200_000
+    yr1 = m.run_tax_strategy_analysis(noi, first_year=True)
+    later = m.run_tax_strategy_analysis(noi, first_year=False)
+    assert yr1["startup_amortization"] > later["startup_amortization"]
+    assert yr1["strategy_total_tax"] < later["strategy_total_tax"]
+
+
+def test_social_security_wage_base_is_current():
+    """Stale wage bases silently misstate SE tax; 2026 figure is $184,500."""
+    assert m.SOCIAL_SECURITY_WAGE_BASE == 184_500
+
+
 # ---------------------------------------------------------------------------
 # Ramps and lease-up (the park is a cold start with no signed contracts)
 # ---------------------------------------------------------------------------

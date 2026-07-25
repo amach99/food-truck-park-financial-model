@@ -1719,16 +1719,51 @@ TOTAL_DEPRECIABLE_BASIS = DEPRECIABLE_BASIS_5YR + DEPRECIABLE_BASIS_15YR
 NON_DEPRECIABLE_COST = TOTAL_PROJECT_COST - TOTAL_DEPRECIABLE_BASIS  # inventory, permits, contingency
 
 # Straight-line, no half-year convention (a CPA would apply the IRS
-# half-year/mid-quarter convention and could instead front-load the whole
-# basis via Section 179 / 100% bonus depreciation - modeled as "accelerated"
-# below, both well under the current-law annual expensing limits for a
-# business this size).
+# half-year/mid-quarter convention). The "accelerated" alternative below
+# front-loads the entire basis into Year 1.
+#
+# That full-basis write-off is on firm footing as of this model version:
+# the One Big Beautiful Bill Act permanently restored **100% bonus
+# depreciation** under IRC Sec. 168(k) for qualified property acquired
+# after Jan 19, 2025 (IRS Notice 2026-11 gives interim guidance). Bonus is
+# no longer phasing down, so a Year 1 buildout can be expensed in full.
+#
+# Mechanism differs by asset class, which matters if a CPA asks:
+#   - 5-year equipment/fixtures qualify for BOTH Section 179 and bonus.
+#   - 15-year LAND IMPROVEMENTS (gravel, lighting, fencing, grading) are
+#     generally NOT Section 179-eligible, but they ARE bonus-eligible - so
+#     100% bonus is what actually gets this portion expensed in Year 1.
+# Either way the modeled deduction is the same; the label "Sec 179/Bonus"
+# is shorthand for whichever applies to that asset.
 ANNUAL_STRAIGHT_LINE_DEPRECIATION = (DEPRECIABLE_BASIS_5YR / 5) + (DEPRECIABLE_BASIS_15YR / 15)
-YEAR1_ACCELERATED_DEPRECIATION = TOTAL_DEPRECIABLE_BASIS  # Section 179/bonus: full basis in Year 1
+YEAR1_ACCELERATED_DEPRECIATION = TOTAL_DEPRECIABLE_BASIS  # 100% bonus (+ Sec 179 where eligible)
+
+# --- Startup cost amortization (IRC Sec. 195) ---
+# Permits, licenses, and pre-opening costs are NOT depreciable property,
+# but they aren't lost either: startup and organizational expenditures get
+# up to $5,000 deducted immediately in the year the business opens, with
+# the remainder amortized straight-line over 15 years. This became worth
+# modeling once the permits line was corrected to $7,000 (a TABC Mixed
+# Beverage Permit alone is $5,300 for two years).
+# Only the genuinely pre-opening portion qualifies - inventory is
+# inventory, and contingency is a budgeting buffer rather than a real
+# incurred cost, so neither is included here.
+STARTUP_COST_ITEMS = [
+    "Permits & soft costs (TABC MB permit, health, tobacco, business license)",
+    "Cleaning",
+]
+STARTUP_COST_BASIS = sum(_use_of_funds_cost[i] for i in STARTUP_COST_ITEMS)
+STARTUP_IMMEDIATE_DEDUCTION_CAP = 5_000   # IRC Sec. 195(b)(1)(A)
+STARTUP_AMORTIZATION_YEARS = 15
+_startup_immediate = min(STARTUP_COST_BASIS, STARTUP_IMMEDIATE_DEDUCTION_CAP)
+_startup_remainder = max(0.0, STARTUP_COST_BASIS - _startup_immediate)
+# Year 1 gets the immediate chunk plus one year of amortization on the rest.
+YEAR1_STARTUP_DEDUCTION = _startup_immediate + _startup_remainder / STARTUP_AMORTIZATION_YEARS
+ONGOING_STARTUP_AMORTIZATION = _startup_remainder / STARTUP_AMORTIZATION_YEARS
 
 # --- Self-employment tax vs. S-corp salary/distribution split ---
 SE_TAXABLE_SHARE = 0.9235        # IRS Sch SE: only 92.35% of net earnings is subject to SE tax
-SOCIAL_SECURITY_WAGE_BASE = 176_100  # 2025 SS wage base - earnings above owe Medicare (2.9%) only
+SOCIAL_SECURITY_WAGE_BASE = 184_500  # 2026 SSA wage base - earnings above owe Medicare (2.9%) only
 ADDITIONAL_MEDICARE_THRESHOLD = 200_000  # single-filer 0.9% Medicare surtax threshold
 ADDITIONAL_MEDICARE_RATE = 0.009
 FEDERAL_INCOME_TAX_RATE_ONLY = 0.15  # estimate, excludes SE/payroll tax - see note above
@@ -1760,7 +1795,8 @@ def calc_payroll_tax_on_salary(salary):
 
 def run_tax_strategy_analysis(annual_noi, owner_salary=None,
                               accelerated_depreciation=False,
-                              apply_depreciation=True, apply_scorp=True):
+                              apply_depreciation=True, apply_scorp=True,
+                              first_year=True):
     """
     Compare today's default tax posture (sole prop / single-member LLC, no
     depreciation election called out) against depreciation and/or an S-corp
@@ -1772,12 +1808,36 @@ def run_tax_strategy_analysis(annual_noi, owner_salary=None,
     the SE/payroll-tax base differs between sole-prop (SE tax on 100% of
     taxable profit) and S-corp (payroll tax on salary only, no SE tax on
     distributions).
+
+    `first_year=True` includes the IRC Sec. 195 startup-cost deduction (up
+    to $5,000 immediately plus one year of 15-year amortization on the
+    rest); set it False for a Year 2+ view, which only gets the ongoing
+    amortization slice.
+
+    NOTE ON TEXAS TAXES: every Texas tax this business pays (mixed beverage
+    GRT and sales tax, sales tax on parking/beverages/tobacco, property tax,
+    employer payroll) is an ordinary operating expense already deducted
+    inside `annual_noi` before this function sees it. What's modeled here is
+    only the FEDERAL layer - income tax plus self-employment/payroll tax.
+    Texas has no personal income tax, which is why there is no state layer.
     """
     salary = owner_salary if owner_salary is not None else REASONABLE_OWNER_SALARY
     depreciation = (YEAR1_ACCELERATED_DEPRECIATION if accelerated_depreciation
                     else ANNUAL_STRAIGHT_LINE_DEPRECIATION) if apply_depreciation else 0.0
-    depreciation = min(depreciation, max(0.0, annual_noi))
-    taxable_profit = max(0.0, annual_noi - depreciation)
+    # Startup-cost amortization rides along with the depreciation election -
+    # it's the same "capitalize now, deduct over time" idea applied to the
+    # non-depreciable pre-opening spend (permits, licensing, cleaning).
+    startup_deduction = 0.0
+    if apply_depreciation:
+        startup_deduction = (YEAR1_STARTUP_DEDUCTION if first_year
+                             else ONGOING_STARTUP_AMORTIZATION)
+    total_deduction = min(depreciation + startup_deduction, max(0.0, annual_noi))
+    # Report the two pieces proportionally if NOI capped the total.
+    if depreciation + startup_deduction > 0:
+        _scale = total_deduction / (depreciation + startup_deduction)
+        depreciation *= _scale
+        startup_deduction *= _scale
+    taxable_profit = max(0.0, annual_noi - total_deduction)
 
     federal_income_tax = taxable_profit * FEDERAL_INCOME_TAX_RATE_ONLY
 
@@ -1809,6 +1869,8 @@ def run_tax_strategy_analysis(annual_noi, owner_salary=None,
     return {
         "annual_noi": annual_noi,
         "depreciation_expense": depreciation,
+        "startup_amortization": startup_deduction,
+        "total_deduction": total_deduction,
         "taxable_profit": taxable_profit,
         "federal_income_tax": federal_income_tax,
         "owner_salary": salary,
@@ -1843,7 +1905,11 @@ def print_tax_strategy_analysis(annual_noi=None):
     print(f"  {'15-Year (land improvements)':<32} ${DEPRECIABLE_BASIS_15YR:>10,.0f}")
     print(f"  {'Total depreciable basis':<32} ${TOTAL_DEPRECIABLE_BASIS:>10,.0f}")
     print(f"  {'Straight-line annual expense':<32} ${ANNUAL_STRAIGHT_LINE_DEPRECIATION:>10,.0f}")
-    print(f"  {'Accelerated (Sec 179, Year 1)':<32} ${YEAR1_ACCELERATED_DEPRECIATION:>10,.0f}")
+    print(f"  {'Accelerated (100% bonus, Yr 1)':<32} ${YEAR1_ACCELERATED_DEPRECIATION:>10,.0f}")
+    print(f"\n  STARTUP COSTS (IRC Sec. 195 - not depreciable property)")
+    print(f"  {'Qualifying startup basis':<32} ${STARTUP_COST_BASIS:>10,.0f}")
+    print(f"  {'Year 1 deduction ($5K + amort.)':<32} ${YEAR1_STARTUP_DEDUCTION:>10,.0f}")
+    print(f"  {'Year 2+ amortization':<32} ${ONGOING_STARTUP_AMORTIZATION:>10,.0f}")
 
     print(f"\n  {'':<24} {'No Strategy':>13} {'+Depreciation':>15} {'+S-Corp Only':>14} {'+Both (Combined)':>18}")
     print("  " + "-" * 88)

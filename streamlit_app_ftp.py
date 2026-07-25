@@ -1042,6 +1042,15 @@ with tabs[9]:
                "status, state). Confirm with a CPA before filing. This tab "
                "doesn't change the pre-tax NOI used elsewhere in the model — "
                "it only estimates incremental tax savings.")
+    st.info(
+        "**This tab covers the FEDERAL layer only** — income tax plus "
+        "self-employment/payroll tax. Texas has no personal income tax, but "
+        "the business pays plenty of other Texas taxes (mixed beverage GRT "
+        "and sales tax, sales tax on parking/beverages/tobacco, property "
+        "tax, employer payroll). Those are ordinary operating expenses and "
+        "are **already deducted inside the NOI figure below** — see the "
+        "Owner Summary tab's Variable Operating Costs table for that side."
+    )
 
     st.markdown("---")
     st.subheader("NOI Basis")
@@ -1062,25 +1071,41 @@ with tabs[9]:
         st.metric(f"{noi_source} Year 1 NOI (pre-tax)", fmt_dollar(tax_noi))
 
     st.markdown("---")
-    st.subheader("1. Depreciation")
+    st.subheader("1. Depreciation & Startup Cost Amortization")
     st.markdown(
         f"The \\${model.TOTAL_DEPRECIABLE_BASIS:,.0f} capital buildout "
-        "(excludes inventory, permits, and contingency — see Owner Summary "
-        "for the full Use of Funds) can be written off against taxable "
-        "income. It's a **non-cash deduction**: it lowers the tax bill "
-        "without reducing actual cash NOI."
+        "(excludes inventory and contingency — see Owner Summary for the "
+        "full Use of Funds) can be written off against taxable income. It's "
+        "a **non-cash deduction**: it lowers the tax bill without reducing "
+        "actual cash NOI. Separately, pre-opening costs that aren't "
+        f"depreciable property — permits, licensing, cleaning "
+        f"(\\${model.STARTUP_COST_BASIS:,.0f}) — are deductible under **IRC "
+        "§195**: up to \\$5,000 immediately in the opening year, with the "
+        "remainder amortized over 15 years."
     )
     dep_l, dep_r = st.columns(2)
     with dep_l:
         st.metric("5-Year Basis (equipment/fixtures)", fmt_dollar(model.DEPRECIABLE_BASIS_5YR))
         st.metric("Straight-Line Annual Expense", fmt_dollar(model.ANNUAL_STRAIGHT_LINE_DEPRECIATION))
+        st.metric("§195 Startup Basis", fmt_dollar(model.STARTUP_COST_BASIS))
     with dep_r:
         st.metric("15-Year Basis (land improvements)", fmt_dollar(model.DEPRECIABLE_BASIS_15YR))
-        st.metric("Accelerated (Sec 179/Bonus, Year 1)", fmt_dollar(model.YEAR1_ACCELERATED_DEPRECIATION))
+        st.metric("Accelerated (100% Bonus, Year 1)", fmt_dollar(model.YEAR1_ACCELERATED_DEPRECIATION))
+        st.metric("§195 Year 1 Deduction", fmt_dollar(model.YEAR1_STARTUP_DEDUCTION))
     accelerated = st.checkbox(
-        "Elect Section 179 / bonus depreciation (write off the full basis in Year 1, "
-        "vs. spreading it straight-line over 5/15 years)",
+        "Elect 100% bonus depreciation / Section 179 (write off the full basis in "
+        "Year 1, vs. spreading it straight-line over 5/15 years)",
         value=True,
+    )
+    st.caption(
+        "100% bonus depreciation was **permanently restored** by the One Big "
+        "Beautiful Bill Act for property acquired after Jan 19, 2025 (IRC "
+        "§168(k); IRS Notice 2026-11), so the full-basis Year 1 write-off is "
+        "available and no longer phasing down. Mechanism differs by asset "
+        "class: 5-year equipment qualifies for both §179 and bonus, while "
+        "15-year land improvements (gravel, lighting, fencing) are generally "
+        "**not** §179-eligible but are bonus-eligible — 100% bonus is what "
+        "actually expenses that portion."
     )
 
     st.markdown("---")
