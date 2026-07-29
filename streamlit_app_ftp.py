@@ -86,17 +86,16 @@ daytime_bev_attach = st.sidebar.slider(
 
 st.sidebar.subheader("Other")
 seasonal_pct = st.sidebar.slider("Seasonal Event Strength", 0.0, 2.0, 1.0, step=0.25)
-cota_impact_pct = st.sidebar.slider(
-    "COTA Event Impact (%)", 0, 100, 50, step=5,
-    help="0% = COTA has no effect at all — parking, bar uplift, and "
+cota_impact_multiplier = st.sidebar.slider(
+    "COTA Event Impact", 0.0, 2.0, 1.0, step=0.1, format="%.1fx",
+    help="0.0x = COTA has no effect at all — parking, bar uplift, and "
          "daytime-beverage uplift all zero out, as if the event calendar "
-         "didn't exist. 50% (default) reproduces today's baseline modeled "
-         "calendar exactly. 100% is a deliberately optimistic 'exceptional "
+         "didn't exist. 1.0x (default) reproduces today's baseline modeled "
+         "calendar exactly. 2.0x is a deliberately optimistic 'exceptional "
          "events' scenario: COTA revenue runs at 2x today's baseline, AND "
          "event-weekend months pull extra foot traffic into the food "
          "trucks themselves (up to +20% truck sales/occupancy in those "
          "months only) — not just parking and bar customers.")
-cota_impact_multiplier = cota_impact_pct / 50.0
 projection_view = st.sidebar.radio(
     "Projection View",
     ["Year 1 (with ramps)", "Steady state (no ramps)"],

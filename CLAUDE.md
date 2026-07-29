@@ -241,17 +241,17 @@ Three independent monthly multipliers drive most of the complexity:
 → `calc_cota_event_revenue`/`calc_truck_revenue` → `run_annual_projection` →
 `run_multi_year_projection`/`run_monte_carlo`/`run_cre_sensitivity_grid`) is a
 dashboard-only exploratory lever, distinct from the calendar-driven levers
-above. The sidebar's **"COTA Event Impact (%)"** slider runs 0–100 and maps
-to it linearly (`multiplier = pct / 50`), so the midpoint (50%, the default)
-reproduces today's baseline calendar exactly:
+above. The sidebar's **"COTA Event Impact"** slider runs `0.0x`–`2.0x` and
+*is* the multiplier directly (no conversion), so the midpoint (`1.0x`, the
+default) reproduces today's baseline calendar exactly:
 
-- **0%** (multiplier `0.0`) zeroes every COTA revenue/cost line
-  (`calc_cota_event_revenue` returns all-zero regardless of what's on the
-  calendar) — "as if COTA didn't exist."
-- **100%** (multiplier `2.0`) doubles COTA parking/bar-uplift/daytime-bev-
-  uplift/incremental-cost, AND — only in months that actually have an event
-  on the calendar, and only for the portion of the multiplier above `1.0` —
-  boosts food-truck sales and closes the vacancy gap toward full occupancy
+- **`0.0x`** zeroes every COTA revenue/cost line (`calc_cota_event_revenue`
+  returns all-zero regardless of what's on the calendar) — "as if COTA
+  didn't exist."
+- **`2.0x`** doubles COTA parking/bar-uplift/daytime-bev-uplift/incremental-
+  cost, AND — only in months that actually have an event on the calendar,
+  and only for the portion of the multiplier above `1.0` — boosts
+  food-truck sales and closes the vacancy gap toward full occupancy
   (`COTA_TRUCK_BOOST_MAX`, capped at +20% at the slider's max). This is the
   one place in the model where a COTA event spills over into truck revenue;
   everywhere else, COTA and truck traffic are independent. Daytime-beverage
