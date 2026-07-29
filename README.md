@@ -2,7 +2,7 @@
 
 Financial feasibility model for a food truck park with a bar & beverage
 stand — an evening bar (prepackaged beer + liquor shots in sealed plastic
-shot glasses, no cocktails) plus an all-day soda/juice/water/coffee and tobacco/nicotine stand —
+shot glasses, no cocktails) plus an all-day soda/juice/water/coffee stand —
 at 13901 FM 812, Del Valle, TX. ~$81,600 startup cost, financed via a
 personal line of credit at 12.5% interest.
 

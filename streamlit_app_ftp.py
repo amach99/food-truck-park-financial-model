@@ -84,28 +84,13 @@ daytime_bev_attach = st.sidebar.slider(
          "restrict trucks to food-only, or this demand leaks to "
          "truck-sold drinks instead.") / 100
 
-st.sidebar.subheader("Tobacco & Nicotine (cigs/vapes/Zyn)")
-tobacco_price = st.sidebar.slider(
-    "Avg Price ($)", 5.0, 25.0, model.TOBACCO_AVG_PRICE, step=1.0,
-    format="$%.2f")
-tobacco_attach = st.sidebar.slider(
-    "Truck-Customer Attach Rate (%)", 0, 40,
-    int(round(model.TOBACCO_ATTACH_RATE * 100)), step=2,
-    help="Fraction of food-truck customers who also buy a nicotine "
-         "product. Deliberately much lower than the beverage attach rate - "
-         "nicotine use is a smaller slice of the population than \"wants a "
-         "drink,\" and Dollar General next door (~30 sec walk) already "
-         "sells cigarettes, capping the upside for that specific product. "
-         "Vapes/Zyn are less consistently stocked there, so the real edge "
-         "is narrower than the beverage stand's.") / 100
-
 st.sidebar.subheader("Other")
 seasonal_pct = st.sidebar.slider("Seasonal Event Strength", 0.0, 2.0, 1.0, step=0.25)
 projection_view = st.sidebar.radio(
     "Projection View",
     ["Year 1 (with ramps)", "Steady state (no ramps)"],
-    help="Year 1 applies the cold-start discovery curve to the bar/beverage/"
-         "tobacco streams AND the lease-up curve to the truck slots, so a "
+    help="Year 1 applies the cold-start discovery curve to the bar and "
+         "beverage streams AND the lease-up curve to the truck slots, so a "
          "slow first few months mixes together ramp effects and winter "
          "seasonality. Steady state strips both ramps out to show the "
          "run-rate business — useful for judging whether the concept works "
@@ -126,7 +111,7 @@ mc_sims = st.sidebar.selectbox("Simulations", [1000, 5000, 10000], index=1)
 # =============================================================================
 @st.cache_data
 def get_annual(wd_custs, we_custs, check, slots, t_rent, t_share, t_sales, t_occ, seasonal,
-               dbev_attach, dbev_price, tob_attach, tob_price, yr=1):
+               dbev_attach, dbev_price, yr=1):
     return model.run_annual_projection(
         wd_custs, we_custs, year=yr, avg_check=check,
         truck_slots=slots, truck_rent=t_rent,
@@ -134,14 +119,12 @@ def get_annual(wd_custs, we_custs, check, slots, t_rent, t_share, t_sales, t_occ
         truck_occupancy=t_occ, seasonal_pct=seasonal,
         daytime_beverage_attach_rate=dbev_attach,
         daytime_beverage_avg_price=dbev_price,
-        tobacco_attach_rate=tob_attach,
-        tobacco_avg_price=tob_price,
     )
 
 
 @st.cache_data
 def get_multi_year(wd_custs, we_custs, check, slots, t_rent, t_share, t_sales, t_occ, seasonal,
-                   dbev_attach, dbev_price, tob_attach, tob_price, years=3):
+                   dbev_attach, dbev_price, years=3):
     return model.run_multi_year_projection(
         wd_custs, we_custs, years=years, base_check=check,
         truck_slots=slots, truck_rent=t_rent,
@@ -149,14 +132,12 @@ def get_multi_year(wd_custs, we_custs, check, slots, t_rent, t_share, t_sales, t
         truck_occupancy=t_occ, seasonal_pct=seasonal,
         daytime_beverage_attach_rate=dbev_attach,
         daytime_beverage_avg_price=dbev_price,
-        tobacco_attach_rate=tob_attach,
-        tobacco_avg_price=tob_price,
     )
 
 
 @st.cache_data
 def get_monte_carlo(n_sims, seed, wd_custs, we_custs, check, t_rent, t_share, t_occ, seasonal,
-                    slots, t_sales, dbev_attach, dbev_price, tob_attach, tob_price):
+                    slots, t_sales, dbev_attach, dbev_price):
     return model.run_monte_carlo(
         n_sims, seed,
         base_weekday_customers=wd_custs, base_weekend_customers=we_custs,
@@ -165,8 +146,6 @@ def get_monte_carlo(n_sims, seed, wd_custs, we_custs, check, t_rent, t_share, t_
         base_truck_slots=slots, base_truck_avg_sales=t_sales,
         base_daytime_beverage_attach_rate=dbev_attach,
         base_daytime_beverage_avg_price=dbev_price,
-        base_tobacco_attach_rate=tob_attach,
-        base_tobacco_avg_price=tob_price,
     )
 
 
@@ -182,15 +161,14 @@ def get_scenario_results():
 def months_to_df(months):
     rows = []
     for m in months:
-        cota = (m["cota_parking"] + m["cota_bar_uplift"] + m["cota_daytime_bev_uplift"]
-               + m["cota_tobacco_uplift"])
+        cota = (m["cota_parking"] + m["cota_bar_uplift"]
+               + m["cota_daytime_bev_uplift"])
         rows.append({
             "Month": MONTH_NAMES[m["month"] - 1],
             "Gross Revenue": m["total_gross_revenue"],
             "Food Trucks": m["truck_gross"],
             "Evening Bar": m["bar_revenue"],
             "Daytime Beverages": m["daytime_beverage_revenue"],
-            "Tobacco & Nicotine": m["tobacco_revenue"],
             "COTA": cota,
             "Seasonal": m["seasonal_revenue"],
             "Utilities (pass-thru)": m["utility_billed"],
@@ -209,7 +187,6 @@ months, annual = get_annual(weekday_customers, weekend_customers, avg_check,
                             truck_slots, truck_rent, truck_share, truck_sales,
                             truck_occupancy, seasonal_pct,
                             daytime_bev_attach, daytime_bev_price,
-                            tobacco_attach, tobacco_price,
                             yr=projection_year)
 df = months_to_df(months)
 
@@ -261,13 +238,12 @@ with tabs[0]:
     with col_left:
         st.subheader(f"Revenue Breakdown ({view_label})")
         cota_total = (annual["total_cota_parking"] + annual["total_cota_bar"]
-                     + annual["total_cota_daytime_bev"] + annual["total_cota_tobacco"])
+                     + annual["total_cota_daytime_bev"])
         rev_data = {
             "Stream": ["Food Trucks", "Evening Bar", "Daytime Beverages",
-                       "Tobacco & Nicotine", "COTA Events", "Seasonal",
-                       "Utilities (at cost)"],
+                       "COTA Events", "Seasonal", "Utilities (at cost)"],
             "Revenue": [annual["total_trucks"], annual["total_bar"],
-                        annual["total_daytime_beverage"], annual["total_tobacco"],
+                        annual["total_daytime_beverage"],
                         cota_total, annual["total_seasonal"],
                         annual["total_utility_billed"]],
         }
@@ -321,7 +297,7 @@ with tabs[0]:
 with tabs[1]:
     st.header(f"Annual Projection — {view_label}")
 
-    stream_cols = ["Food Trucks", "Evening Bar", "Daytime Beverages", "Tobacco & Nicotine", "COTA", "Seasonal"]
+    stream_cols = ["Food Trucks", "Evening Bar", "Daytime Beverages", "COTA", "Seasonal"]
     fig_stack = go.Figure()
     colors = px.colors.qualitative.Set2
     for i, col in enumerate(stream_cols):
@@ -346,15 +322,15 @@ with tabs[1]:
     st.subheader("Revenue Streams")
     stream_data = {
         "Stream": ["Food Truck Rent", "Food Truck Rev Share",
-                   "Evening Bar", "Daytime Beverages", "Tobacco & Nicotine",
+                   "Evening Bar", "Daytime Beverages",
                    "COTA Parking", "COTA Bar Uplift", "COTA Daytime Bev Uplift",
-                   "COTA Tobacco Uplift", "Seasonal Events",
+                   "Seasonal Events",
                    "Utility Pass-Through (at cost)"],
         "Annual": [annual["total_truck_rent"], annual["total_truck_share"],
                    annual["total_bar"], annual["total_daytime_beverage"],
-                   annual["total_tobacco"], annual["total_cota_parking"],
+                   annual["total_cota_parking"],
                    annual["total_cota_bar"], annual["total_cota_daytime_bev"],
-                   annual["total_cota_tobacco"], annual["total_seasonal"],
+                   annual["total_seasonal"],
                    annual["total_utility_billed"]],
     }
     stream_df = pd.DataFrame(stream_data)
@@ -368,10 +344,10 @@ with tabs[1]:
 
     st.subheader("Monthly Detail")
     display_df = df[["Month", "Gross Revenue", "Food Trucks", "Evening Bar",
-                     "Daytime Beverages", "Tobacco & Nicotine", "COTA", "NOI",
+                     "Daytime Beverages", "COTA", "NOI",
                      "Cash Flow", "Nut Coverage"]].copy()
     for col in ["Gross Revenue", "Food Trucks", "Evening Bar", "Daytime Beverages",
-               "Tobacco & Nicotine", "COTA", "NOI", "Cash Flow"]:
+               "COTA", "NOI", "Cash Flow"]:
         display_df[col] = display_df[col].apply(fmt_dollar)
     display_df["Nut Coverage"] = display_df["Nut Coverage"].apply(lambda x: f"{x:.2f}x")
     st.dataframe(display_df, use_container_width=True, hide_index=True)
@@ -528,8 +504,7 @@ with tabs[4]:
     mc_results = get_monte_carlo(mc_sims, mc_seed, weekday_customers, weekend_customers,
                                  avg_check, truck_rent, truck_share, truck_occupancy,
                                  seasonal_pct, truck_slots, truck_sales,
-                                 daytime_bev_attach, daytime_bev_price,
-                                 tobacco_attach, tobacco_price)
+                                 daytime_bev_attach, daytime_bev_price)
 
     revenues = sorted(r["revenue"] for r in mc_results)
     covs = sorted(r["nut_coverage"] for r in mc_results)
@@ -591,10 +566,10 @@ with tabs[4]:
         "Randomized around whatever the sidebar sliders are set to: truck "
         "occupancy (vacancy/churn, ±8pts), truck sales (\\$10K-\\$35K/mo), bar "
         "customers/evening, avg check (\\$5-\\$13), COTA event mix (big 4 fixed; "
-        "concerts/festivals/GT vary), seasonal strength (40%-150%), and both "
-        "attach rates — daytime beverages (±8pts) and tobacco (±4pts), which "
-        "get the widest relative bands because they're the least-validated "
-        "numbers in the model. Truck count, rent, and revenue share are held "
+        "concerts/festivals/GT vary), seasonal strength (40%-150%), and the "
+        "daytime-beverage attach rate (±8pts), which gets the widest relative "
+        "band because it's the least-validated number in the model. Truck "
+        "count, rent, and revenue share are held "
         "fixed across every simulation (built slots + intended contract terms); "
         "lease-up risk shows up through occupancy instead."
     )
@@ -668,20 +643,18 @@ with tabs[6]:
     all_years = get_multi_year(weekday_customers, weekend_customers, avg_check,
                                truck_slots, truck_rent, truck_share, truck_sales,
                                truck_occupancy, seasonal_pct,
-                               daytime_bev_attach, daytime_bev_price,
-                               tobacco_attach, tobacco_price)
+                               daytime_bev_attach, daytime_bev_price)
 
     my_rows = []
     for yr, months_data, ann in all_years:
         cota_total = (ann["total_cota_parking"] + ann["total_cota_bar"]
-                     + ann["total_cota_daytime_bev"] + ann["total_cota_tobacco"])
+                     + ann["total_cota_daytime_bev"])
         my_rows.append({
             "Year": f"Year {yr}",
             "Annual Revenue": ann["total_gross"],
             "Food Trucks": ann["total_trucks"],
             "Evening Bar": ann["total_bar"],
             "Daytime Beverages": ann["total_daytime_beverage"],
-            "Tobacco & Nicotine": ann["total_tobacco"],
             "COTA": cota_total,
             "Cost Inflation": ann["cost_inflation_adj"],
             "Free Cash Flow": ann["total_net_cash"],
@@ -715,7 +688,7 @@ with tabs[6]:
 
     disp_my = my_df.copy()
     for col in ["Annual Revenue", "Food Trucks", "Evening Bar", "Daytime Beverages",
-                "Tobacco & Nicotine", "COTA", "Cost Inflation", "Free Cash Flow"]:
+                "COTA", "Cost Inflation", "Free Cash Flow"]:
         disp_my[col] = disp_my[col].apply(fmt_dollar)
     disp_my["FCF Yield"] = disp_my["FCF Yield"].apply(lambda x: f"{x:.1%}")
     st.dataframe(disp_my, use_container_width=True, hide_index=True)
@@ -801,8 +774,6 @@ with tabs[7]:
     mb_sales_tax = annual["total_mb_sales_tax"]
     daytime_bev_cogs = annual["total_daytime_beverage_cogs"]
     daytime_bev_tax = annual["total_daytime_beverage_tax"]
-    tobacco_cogs = annual["total_tobacco_cogs"]
-    tobacco_tax = annual["total_tobacco_tax"]
     cc = annual["total_cc_processing"]
     shrinkage = annual["total_shrinkage"]
     utility_cost = annual["total_utility_cost"]  # pass-through at cost
@@ -813,8 +784,7 @@ with tabs[7]:
     payroll_burden = annual["total_payroll_burden"]
     fixed_ex = model.ANNUAL_NUT
     pre_tax_cf = (gross - cogs - grt - mb_sales_tax
-                  - daytime_bev_cogs - daytime_bev_tax
-                  - tobacco_cogs - tobacco_tax - cc
+                  - daytime_bev_cogs - daytime_bev_tax - cc
                   - shrinkage - utility_cost - parking_cost - parking_tax
                   - cota_cost - bartender_share - payroll_burden - fixed_ex)
     income_tax = max(0.0, pre_tax_cf) * model.EFFECTIVE_INCOME_TAX_RATE
@@ -825,8 +795,6 @@ with tabs[7]:
               f"TX Mixed Bev Sales Tax ({model.MB_SALES_TAX_RATE:.2%})",
               f"Daytime Bev COGS ({model.DAYTIME_BEVERAGE_COGS_RATE:.0%})",
               f"Daytime Bev Sales Tax ({model.DAYTIME_BEVERAGE_SALES_TAX_RATE:.2%})",
-              f"Tobacco COGS ({model.TOBACCO_COGS_RATE:.0%})",
-              f"Tobacco Sales Tax ({model.TOBACCO_SALES_TAX_RATE:.2%})",
               "CC Processing", "Shrinkage", "Utility Pass-Thru", "Parking Upkeep",
               f"Parking Sales Tax ({model.PARKING_SALES_TAX_RATE:.2%})",
               "COTA Costs", "Bartender Share", "Employer Payroll Burden",
@@ -834,8 +802,7 @@ with tabs[7]:
               f"Income Tax ({model.EFFECTIVE_INCOME_TAX_RATE:.0%})",
               "After-Tax Cash Flow"]
     values = [gross, -cogs, -grt, -mb_sales_tax,
-              -daytime_bev_cogs, -daytime_bev_tax,
-              -tobacco_cogs, -tobacco_tax, -cc, -shrinkage,
+              -daytime_bev_cogs, -daytime_bev_tax, -cc, -shrinkage,
               -utility_cost, -parking_cost, -parking_tax,
               -cota_cost, -bartender_share, -payroll_burden,
               -fixed_ex, -income_tax, 0]
@@ -934,12 +901,6 @@ with tabs[8]:
         {"Expense": "TX Sales Tax — Daytime Beverages",
          "Rate": f"{model.DAYTIME_BEVERAGE_SALES_TAX_RATE:.2%} of daytime beverage revenue",
          "Annual (Base Case)": base["total_daytime_beverage_tax"]},
-        {"Expense": "COGS — Tobacco & Nicotine",
-         "Rate": f"{model.TOBACCO_COGS_RATE:.0%} of tobacco/nicotine revenue",
-         "Annual (Base Case)": base["total_tobacco_cogs"]},
-        {"Expense": "TX Sales Tax — Tobacco & Nicotine",
-         "Rate": f"{model.TOBACCO_SALES_TAX_RATE:.2%} of tobacco/nicotine revenue",
-         "Annual (Base Case)": base["total_tobacco_tax"]},
         {"Expense": "Credit Card Processing",
          "Rate": f"{model.CC_PROCESSING_RATE:.1%} × {model.CC_CARD_USAGE_RATE:.0%} card usage",
          "Annual (Base Case)": base["total_cc_processing"]},
@@ -1022,11 +983,6 @@ with tabs[8]:
         "All-day beverage sales (soda/juice/water/coffee) diversify revenue "
         "beyond evening-only alcohol hours at no new fixed labor cost — "
         "same on-site bartender covers both windows",
-        "Tobacco/nicotine sales (cigs/vapes/Zyn) add a third all-day "
-        "revenue line at no new labor cost — modeled conservatively "
-        "(12% attach rate) since Dollar General next door already sells "
-        "cigarettes; vapes/Zyn are less consistently stocked there, so "
-        "that portion of the upside is more defensible than cigarettes",
     ]
     for m in mitigants:
         st.markdown(f"- {m}")
@@ -1046,7 +1002,7 @@ with tabs[9]:
         "**This tab covers the FEDERAL layer only** — income tax plus "
         "self-employment/payroll tax. Texas has no personal income tax, but "
         "the business pays plenty of other Texas taxes (mixed beverage GRT "
-        "and sales tax, sales tax on parking/beverages/tobacco, property "
+        "and sales tax, sales tax on parking and daytime beverages, property "
         "tax, employer payroll). Those are ordinary operating expenses and "
         "are **already deducted inside the NOI figure below** — see the "
         "Owner Summary tab's Variable Operating Costs table for that side."
@@ -1204,8 +1160,8 @@ with tabs[10]:
         This model strips the food-truck-+-RV-park concept down further:
         contracted monthly rent from food truck tenants forms a stable base,
         the evening bar adds beer and single-serve liquor shot sales, the
-        all-day stand adds soda/juice/water/coffee plus tobacco/nicotine, and
-        COTA event weekends layer parking and bar upside on top. The
+        all-day stand adds soda/juice/water/coffee, and COTA event weekends
+        layer parking and bar upside on top. The
         \\${model.TOTAL_PROJECT_COST:,.0f} buildout (itemized from the owner's
         real Phase 0.5 cost tracker) is financed through a personal line of
         credit at {model.LOC_INTEREST_RATE:.1%} rather than a bank term loan — revolving,
@@ -1233,7 +1189,7 @@ with tabs[10]:
                             truck_slots, truck_rent, truck_share, truck_sales,
                             truck_occupancy, seasonal_pct,
                             daytime_bev_attach, daytime_bev_price,
-                            tobacco_attach, tobacco_price, yr=2)
+                            yr=2)
         _mo = lambda k: fmt_dollar(_ss[k] / 12) + "/mo"
         _alcohol_margin = 1 - model.VARIABLE_COST_RATE
         _parking_margin = 1 - model.PARKING_UPKEEP_RATE - model.PARKING_SALES_TAX_RATE
@@ -1263,31 +1219,23 @@ with tabs[10]:
              "doesn't leak to truck-sold drinks",
              _mo("total_daytime_beverage"),
              f"~{1 - model.DAYTIME_BEVERAGE_VARIABLE_COST_RATE:.0%} after COGS + sales tax"),
-            ("4. Tobacco & Nicotine",
-             f"All-day cigarettes/vapes/nicotine pouches (Zyn), same "
-             f"truck-traffic basis as daytime beverages but a much lower "
-             f"{model.TOBACCO_ATTACH_RATE:.0%} attach rate and far thinner margin "
-             "(cigarette markup is famously thin) - Dollar General next door "
-             "already sells cigarettes, capping that specific product's upside; "
-             "vapes/Zyn are less consistently stocked there",
-             _mo("total_tobacco"),
-             f"~{1 - model.TOBACCO_VARIABLE_COST_RATE:.0%} after COGS + sales tax"),
-            ("5. COTA Events",
+            ("4. COTA Events",
              f"{model.EVENT_PARKING_SPACES}-space event parking (dedicated 3-acre "
              "lot), day-by-day occupancy building to the marquee day (F1: 45% Fri "
-             "/ 75% Sat / 100% Sun) + uplift on the bar, daytime beverages and "
-             f"tobacco at premium event pricing (${model.COTA_EVENT_BEER_PRICE:.0f} "
-             f"beer / ${model.COTA_EVENT_SHOT_PRICE:.0f} shot)",
+             "/ 75% Sat / 100% Sun) + uplift on the bar and daytime beverages, "
+             f"with the bar at premium event pricing "
+             f"(${model.COTA_EVENT_BEER_PRICE:.0f} beer / "
+             f"${model.COTA_EVENT_SHOT_PRICE:.0f} shot)",
              "Event months only",
              f"Parking ~{_parking_margin:.0%} after upkeep + sales tax, "
              "less per-tier event staffing"),
-            ("6. Seasonal Events",
+            ("5. Seasonal Events",
              "Super Bowl / March Madness / NYE watch parties on the big TVs. "
              "Separate from the everyday sports-calendar effect (see Ramps & "
              "Levers)",
              fmt_dollar(_ss["total_seasonal"]) + "/yr",
              f"~{_alcohol_margin:.0%} (same as the bar)"),
-            ("7. Utility Pass-Through",
+            ("6. Utility Pass-Through",
              "Sub-metered truck power/water/waste billed at cost (PURA §39.107)",
              _mo("total_utility_billed"), "0% by law (at-cost resale)"),
         ], columns=["Stream", "Description", "Steady-State Monthly", "Margin"])
@@ -1323,7 +1271,7 @@ with tabs[10]:
                 ("Truck occupancy",
                  f"{model.TRUCK_OCCUPANCY:.0%} steady-state vacancy haircut, "
                  "applied on top of lease-up"),
-                ("Bar / beverages / tobacco (Yr 1)",
+                ("Bar / daytime beverages (Yr 1)",
                  f"{model.BAR_Y1_RAMP[1]:.0%} month 1 → 100% by month {_bar_full} "
                  "(cold-start discovery curve)"),
                 ("Seasonality (all year)",
@@ -1354,9 +1302,6 @@ with tabs[10]:
             ("Sales tax — daytime beverages",
              f"{model.DAYTIME_BEVERAGE_SALES_TAX_RATE:.2%}",
              "Standard Del Valle/Travis County rate — not alcohol, so no GRT"),
-            ("Sales tax — tobacco/nicotine",
-             f"{model.TOBACCO_SALES_TAX_RATE:.2%}",
-             "Cigarette excise is already baked into wholesale cost"),
             ("Sales tax — event parking",
              f"{model.PARKING_SALES_TAX_RATE:.2%}",
              "Motor vehicle parking is an explicitly taxable service in TX "
@@ -1385,8 +1330,8 @@ with tabs[10]:
         st.caption(
             "Permits are real money and were badly understated in earlier "
             "versions: a TABC **Mixed Beverage Permit is \\$5,300 for the first "
-            "two years** (\\$2,650 at renewal), plus \\$180/2yr for tobacco and "
-            "\\$90/2yr for e-cigarette retail. Confirm all of the above with a "
+            "two years** (\\$2,650 at renewal), which is most of the permits "
+            "line in Use of Funds. Confirm all of the above with a "
             "TABC-savvy CPA before filing."
         )
 

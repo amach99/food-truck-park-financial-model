@@ -117,7 +117,7 @@ oversight), and one bartender. Neither shows up as a line item in
   so there's no "maintenance/cleaning labor" cost in the nut — only
   `maintenance_reserve` for supplies/materials.
 - The bartender is paid via `BARTENDER_SHARE_RATE` (5%) of combined bar-like
-  + daytime-beverage + tobacco revenue (see `calc_monthly_total`), a variable cost,
+  + daytime-beverage revenue (see `calc_monthly_total`), a variable cost,
   not a salary — and is the only bartender at all times, covering both the
   evening alcohol bar AND the all-day non-alcohol beverage window (see
   "Daytime beverage stream" below), including COTA/major-event days. Living
@@ -130,15 +130,15 @@ oversight), and one bartender. Neither shows up as a line item in
 
 ### Revenue model shape
 
-Every monthly calculation (`calc_monthly_total`) composes seven independent
+Every monthly calculation (`calc_monthly_total`) composes six independent
 streams: food truck pad rent + revenue share, evening bar (alcohol) sales,
 COTA (Circuit of the Americas) event weekends (parking + bar uplift),
 seasonal one-off watch parties, an at-cost utility pass-through (net-zero by
 design — Texas PUC resale rules require sub-metered utilities to be billed
-at cost, no markup), daytime beverages (soda/juice/water/coffee — see
-below), and tobacco & nicotine (cigarettes/vapes/Zyn — see below). The
-evening bar + daytime beverages + tobacco/nicotine together make up the
-"Bar & Beverage Stand" shown in the dashboard's overall naming.
+at cost, no markup), and daytime beverages (soda/juice/water/coffee — see
+below). The evening bar + daytime beverages together make up the
+"Bar & Beverage Stand" shown in the dashboard's overall naming. A seventh
+tobacco/nicotine stream was removed — see "Tobacco & nicotine" below.
 `run_annual_projection` sums 12 months. Year 1 applies TWO separate ramps
 (see "Cold start" below); Year 2+ runs at steady state.
 `run_multi_year_projection` layers annual growth/rent escalation/cost
@@ -158,9 +158,8 @@ Three independent monthly multipliers drive most of the complexity:
   quietest, June–August summer gap). Deliberately averages to ~1.00 so it
   **redistributes** evening-bar traffic across the year rather than handing
   the model free revenue; `test_sports_density_is_revenue_neutral` enforces
-  that. Applies to the evening bar ONLY — daytime beverage and tobacco
-  sales ride on food-truck lunch traffic, which doesn't care what's on
-  screen. Distinct from `SEASONAL_EVENTS`, which models three specific
+  that. Applies to the evening bar ONLY — daytime beverage sales ride on
+  food-truck lunch traffic, which doesn't care what's on screen. Distinct from `SEASONAL_EVENTS`, which models three specific
   destination watch parties (Super Bowl, March Madness, NYE).
 - **COTA event tiers** (`COTA_EVENT_TIERS`) are looked up per month via
   `COTA_EVENTS_BY_MONTH`, or can be overridden per-call (used heavily by the
@@ -182,7 +181,7 @@ encode that, and both should be revisited once real data exists:
   leased from month 1; that is no longer true and
   `test_year1_lot_is_not_full_on_opening_month` guards against regressing.
 - **`BAR_Y1_RAMP`** — discovery, governing the evening bar AND the
-  daytime-beverage and tobacco streams. Starts at 35% and reaches full
+  daytime-beverage stream. Starts at 35% and reaches full
   run-rate at month 10. It used to start at 50%/month 8 on the theory that
   the park had already soft-opened and had traffic to convert — that
   premise was wrong, so the curve is now slower.
@@ -252,47 +251,56 @@ truck-count Worst Case/Stress Test scenarios, which model *existing*
 vendors churning out gradually).
 
 On COTA event days, `calc_cota_event_revenue` also derives a
-**daytime-beverage uplift** and a **tobacco/nicotine uplift** directly from
-the same day-by-day parking attendance used for parking revenue (`cars x
-PEOPLE_PER_CAR x attach rate x price`, one calc per product) rather than
-separate hardcoded per-tier numbers — a packed event-day lot obviously
-sells more water/soda/cigarettes than a normal day. Both uplifts
-(`cota_daytime_bev_uplift`, `cota_tobacco_uplift`) are additive with their
-everyday truck-traffic-driven baselines, not a replacement for them. **Any
-UI code that reconstructs a "COTA total" from `cota_parking` +
-`cota_bar_uplift` must also add `cota_daytime_bev_uplift` AND
-`cota_tobacco_uplift`**, or it will silently undercount vs.
-`total_gross_revenue` (which already includes both via `cota["gross"]`) —
+**daytime-beverage uplift** directly from the same day-by-day parking
+attendance used for parking revenue (`cars x PEOPLE_PER_CAR x attach rate x
+price`) rather than a separate hardcoded per-tier number — a packed
+event-day lot obviously sells more water/soda/coffee than a normal day.
+That uplift (`cota_daytime_bev_uplift`) is additive with the everyday
+truck-traffic-driven baseline, not a replacement for it. **Any UI code that
+reconstructs a "COTA total" from `cota_parking` + `cota_bar_uplift` must
+also add `cota_daytime_bev_uplift`**, or it will silently undercount vs.
+`total_gross_revenue` (which already includes it via `cota["gross"]`) —
 this class of bug already bit 7+ separate call sites twice (dashboard tabs
-+ CLI prints, once when daytime beverages was added and again when tobacco
-was) before being centralized.
++ CLI prints, once when daytime beverages was added and again when the
+since-removed tobacco stream was) before being centralized. Adding any
+future event-day stream means auditing every one of those call sites again;
+`test_cota_gross_is_sum_of_parts` guards the engine side only.
 
-### Tobacco & nicotine stream (thinner margin, real nearby competition)
+### Tobacco & nicotine: removed (deliberate — do not re-add casually)
 
-`calc_tobacco_revenue` mirrors `calc_daytime_beverage_revenue` exactly (same
-truck-traffic-derived customer count, same all-day window, same on-site
-bartender covering it - she already cards for alcohol, so Tobacco 21 age
-verification adds no new labor), but with materially different economics:
-- `TOBACCO_ATTACH_RATE` (12%) is much lower than
-  `DAYTIME_BEVERAGE_ATTACH_RATE` (35%) - nicotine use is a smaller slice of
-  the population than "wants a drink," and it's set low deliberately
-  because **Dollar General next door (~30 sec walk) already sells
-  cigarettes**, directly undercutting the one-stop-shop pitch for that
-  specific product. Vapes/nicotine pouches are less consistently stocked at
-  Dollar General, so the real edge is narrower than the beverage stand's,
-  not zero.
-- `TOBACCO_COGS_RATE` (68%) is much higher than any beverage stream's -
-  cigarette retail margin is famously thin (~15-18%), dragging down the
-  blended margin even though vapes/Zyn run better (~40-50%).
-- Requires a **separate regulatory permit** from the TABC alcohol permit -
-  TX Comptroller cigarette/tobacco + e-cigarette retailer permits
-  (`TOBACCO_PERMIT_MONTHLY` in `FIXED_COSTS["tobacco_permit"]`, estimate,
-  confirm actual fee with the Comptroller).
+An earlier version carried a seventh stream selling cigarettes, vapes, and
+nicotine pouches (Zyn) from the same all-day window. **It was removed
+entirely**, along with `calc_tobacco_revenue`, every `TOBACCO_*` constant,
+the `cota_tobacco_uplift`, the `tobacco_permit` fixed cost, the dashboard
+sliders, and the scenario/Monte Carlo levers. Why, so the decision isn't
+silently reversed later:
 
-If real operating data later shows Dollar General does NOT carry vapes/Zyn
-(only cigarettes), consider splitting the attach rate/price by sub-product
-instead of one blended `TOBACCO_*` set - not done here to avoid adding a
-third pricing axis before there's real sales data to calibrate it against.
+1. **No competitive edge.** Dollar General next door (~30 sec walk) sells
+   **both cigarettes and nicotine pouches**. The stream had been justified
+   on the premise that DG stocked cigarettes but not vapes/Zyn, leaving a
+   narrow edge on the higher-margin sub-products — that premise was wrong.
+   A smoke shop across the road (~1–2 min) competes too.
+2. **The margin never justified the top line.** At the old assumptions it
+   grossed ~$84K/yr steady state (~16% of gross revenue) but produced only
+   ~$12K of NOI (~5%), because blended COGS ran ~68%. It flattered revenue
+   without moving cash flow — precisely what this model is built to avoid.
+3. **Real costs and obligations.** Separate TX Comptroller
+   cigarette/tobacco + e-cigarette retailer permits (a different regulatory
+   track from TABC), Tobacco 21 age-verification liability, and shrinkage
+   on a high-theft category.
+
+Removal is consistent with the project's estimating rule (err toward lower
+revenue). `test_tobacco_stream_is_fully_removed` guards against a partial
+revert — re-adding a constant or dict key without wiring it through every
+consumer is exactly the "COTA total" failure mode above. If tobacco is ever
+genuinely re-introduced it needs its **own** stream with its own attach
+rate and COGS; folding it into `DAYTIME_BEVERAGE_*` (22% COGS, 35% attach)
+would overstate it badly.
+
+The `USE_OF_FUNDS` permits line stays at **$7,000** even though the tobacco
+permits are gone (~$270/2yr). It's a rounded planning bucket dominated by
+the $5,300 two-year TABC MB permit, and unmodeled TABC surety bonds sit in
+the same bucket — so `TOTAL_PROJECT_COST` is unchanged at $81,600.
 
 ### Texas tax stack (researched; several were missing before)
 
@@ -304,7 +312,6 @@ What applies, and where it lives:
 | Mixed Beverage **Gross Receipts** Tax | 6.7% of alcohol sales | `GRT_RATE` |
 | Mixed Beverage **Sales** Tax | 8.25% of alcohol sales | `MB_SALES_TAX_RATE` |
 | Sales tax — daytime beverages | 8.25% | `DAYTIME_BEVERAGE_SALES_TAX_RATE` |
-| Sales tax — tobacco/nicotine | 8.25% | `TOBACCO_SALES_TAX_RATE` |
 | Sales tax — **event parking** | 8.25% | `PARKING_SALES_TAX_RATE` |
 | Property tax — land | ~$4,000/yr actual | `FIXED_COSTS["property_tax"]` |
 | Property tax — **improvements** | 2.0% of buildout | `FIXED_COSTS["property_tax_improvements"]` |
@@ -313,7 +320,8 @@ What applies, and where it lives:
 | TX franchise tax | **$0 owed** | not modeled — see below |
 
 Four of these were absent from earlier versions and together cost roughly
-$28K/yr of NOI, so don't "simplify" them back out:
+$25K/yr of NOI at steady state (~$23K in Year 1), so don't "simplify" them
+back out:
 
 1. **Mixed Beverage Sales Tax (8.25%)** is a *second, separate* tax from the
    6.7% GRT, and under an MB permit it hits **every** alcoholic beverage
@@ -340,7 +348,7 @@ exists.
 Permit costs are real money and were badly understated before: a TABC
 **Mixed Beverage Permit is $5,300 for the first two years** ($2,650 at
 renewal), which is most of why the `USE_OF_FUNDS` permits line is now
-$7,000 rather than $1,500. Tobacco adds $180/2yr plus $90/2yr for e-cig.
+$7,000 rather than $1,500.
 
 Everything above should be confirmed with a TABC-savvy CPA before filing —
 the in-line comments flag which items are researched versus estimated.
@@ -350,7 +358,7 @@ the in-line comments flag which items are researched versus estimated.
 `summarize_annual` exposes fully-summed variable-cost fields
 (`total_cogs`, `total_grt`, `total_mb_sales_tax`,
 `total_daytime_beverage_cogs`, `total_daytime_beverage_tax`,
-`total_tobacco_cogs`, `total_tobacco_tax`, `total_cc_processing`,
+`total_cc_processing`,
 `total_shrinkage`, `total_bartender_share`, `total_payroll_burden`,
 `total_cota_parking_upkeep`, `total_cota_parking_sales_tax`,
 `total_cota_cost`, `total_utility_cost`) so the dashboard's Owner Summary

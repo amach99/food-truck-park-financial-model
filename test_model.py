@@ -7,8 +7,9 @@ correctly. Two classes of bug motivated most of this file:
 
   1. "COTA total" undercounting. Several call sites reconstruct an event
      total from its parts; twice, adding a new event-day revenue stream
-     (daytime beverages, then tobacco) silently broke every one of them.
-     test_cota_gross_is_sum_of_parts and friends catch that class directly.
+     (daytime beverages, then a since-removed tobacco stream) silently
+     broke every one of them. test_cota_gross_is_sum_of_parts and friends
+     catch that class directly.
   2. Cost totals drifting away from NOI. Whenever a new cost line is added
      to calc_monthly_total but not to summarize_annual (or vice versa), the
      full reconciliation below stops balancing.
@@ -50,8 +51,6 @@ def _total_variable_costs(annual):
         + annual["total_mb_sales_tax"]
         + annual["total_daytime_beverage_cogs"]
         + annual["total_daytime_beverage_tax"]
-        + annual["total_tobacco_cogs"]
-        + annual["total_tobacco_tax"]
         + annual["total_cc_processing"]
         + annual["total_shrinkage"]
         + annual["total_bartender_share"]
@@ -79,25 +78,25 @@ def test_annual_reconciles_to_noi(year1):
 
 
 def test_monthly_gross_is_sum_of_streams(event_month):
-    """total_gross_revenue must equal the seven streams added up."""
+    """total_gross_revenue must equal the six streams added up."""
     r = event_month
     parts = (r["truck_gross"] + r["bar_revenue"] + r["seasonal_revenue"]
-             + r["daytime_beverage_revenue"] + r["tobacco_revenue"]
+             + r["daytime_beverage_revenue"]
              + r["utility_billed"]
              + r["cota_parking"] + r["cota_bar_uplift"]
-             + r["cota_daytime_bev_uplift"] + r["cota_tobacco_uplift"])
+             + r["cota_daytime_bev_uplift"])
     assert r["total_gross_revenue"] == pytest.approx(parts)
 
 
 def test_cota_gross_is_sum_of_parts():
-    """calc_cota_event_revenue's gross must include BOTH product uplifts.
+    """calc_cota_event_revenue's gross must include the beverage uplift.
 
     Regression guard: a new event-day revenue stream that isn't folded into
     `gross` makes every downstream "COTA total" undercount.
     """
     cota = m.calc_cota_event_revenue(["tier1_f1"])
     parts = (cota["parking"] + cota["bar_uplift"]
-             + cota["daytime_bev_uplift"] + cota["tobacco_uplift"])
+             + cota["daytime_bev_uplift"])
     assert cota["gross"] == pytest.approx(parts)
 
 
@@ -105,8 +104,37 @@ def test_no_events_returns_all_zero_keys():
     """An empty event list must still expose every key, all zeroed."""
     cota = m.calc_cota_event_revenue([])
     for key in ("parking", "bar_uplift", "daytime_bev_uplift",
-                "tobacco_uplift", "gross", "incremental_cost", "net"):
+                "gross", "incremental_cost", "net"):
         assert cota[key] == 0, f"{key} should be 0 with no events"
+
+
+def test_tobacco_stream_is_fully_removed():
+    """The tobacco/nicotine stream must stay gone, everywhere.
+
+    It was dropped deliberately: Dollar General next door sells both
+    cigarettes AND nicotine pouches, so the park had no competitive edge,
+    and at ~68% blended COGS the stream inflated gross revenue far more
+    than NOI. See the decision record in Section 1 of the model.
+
+    This guards against a HALF-revert - re-adding a constant or a dict key
+    without wiring it through every consumer is exactly how the "COTA
+    total" bug bit 7+ call sites twice. If tobacco is ever genuinely
+    re-introduced, delete this test in the same commit rather than
+    weakening it.
+    """
+    leftovers = [n for n in dir(m) if "TOBACCO" in n]
+    assert leftovers == [], f"tobacco constants still present: {leftovers}"
+    assert not hasattr(m, "calc_tobacco_revenue")
+    assert "tobacco_permit" not in m.FIXED_COSTS
+
+    monthly = m.calc_monthly_total(20, 58, 10)
+    cota = m.calc_cota_event_revenue(["tier1_f1"])
+    _, annual = m.run_annual_projection()
+    for key in list(monthly) + list(cota) + list(annual):
+        assert "tobacco" not in key, f"stale tobacco key: {key}"
+
+    for name, params in m.SCENARIOS.items():
+        assert "tobacco_attach_rate" not in params, f"{name} still sets tobacco"
 
 
 # ---------------------------------------------------------------------------
@@ -267,11 +295,10 @@ def test_scenarios_are_ordered_worst_to_best():
 
 
 def test_downside_scenarios_haircut_attach_rates():
-    """A failing bar shouldn't keep base-case beverage/tobacco attach."""
+    """A failing bar shouldn't keep the base-case beverage attach rate."""
     worst = m.SCENARIOS["Worst Case"]
     base = m.SCENARIOS["Base Case"]
     assert worst["daytime_beverage_attach_rate"] < base["daytime_beverage_attach_rate"]
-    assert worst["tobacco_attach_rate"] < base["tobacco_attach_rate"]
 
 
 # ---------------------------------------------------------------------------
@@ -279,17 +306,16 @@ def test_downside_scenarios_haircut_attach_rates():
 # ---------------------------------------------------------------------------
 
 def test_zero_bar_test_zeroes_every_bar_driven_stream():
-    """The no-bar view must also kill daytime beverages and tobacco.
+    """The no-bar view must also kill daytime beverages.
 
-    Those two ride on truck traffic, not bar traffic, so they do NOT zero
-    out just because bar customers are set to 0 - the analysis has to pass
-    their attach rates explicitly.
+    That stream rides on truck traffic, not bar traffic, so it does NOT
+    zero out just because bar customers are set to 0 - the analysis has to
+    pass its attach rate explicitly.
     """
     result = m.run_breakeven_analysis(verbose=False)
     annual = result["no_bar_annual"]
     assert annual["total_bar"] == 0
     assert annual["total_daytime_beverage"] == 0
-    assert annual["total_tobacco"] == 0
     assert annual["total_trucks"] > 0, "truck rent should survive"
 
 
@@ -314,16 +340,16 @@ def test_monte_carlo_respects_slider_inputs():
     median = lambda rs: sorted(r["noi"] for r in rs)[len(rs) // 2]
     base = m.run_monte_carlo(120, seed=3)
     more_slots = m.run_monte_carlo(120, seed=3, base_truck_slots=6)
-    no_tobacco = m.run_monte_carlo(120, seed=3, base_tobacco_attach_rate=0.0)
+    no_daytime_bev = m.run_monte_carlo(
+        120, seed=3, base_daytime_beverage_attach_rate=0.0)
     assert median(more_slots) > median(base), "more truck slots must raise NOI"
-    assert median(no_tobacco) < median(base), "killing tobacco must lower NOI"
+    assert median(no_daytime_bev) < median(base), \
+        "killing daytime beverages must lower NOI"
 
 
-def test_monte_carlo_varies_the_new_attach_rates():
+def test_monte_carlo_varies_the_beverage_attach_rate():
     results = m.run_monte_carlo(120, seed=5)
-    tob = {round(r["tobacco_attach_rate"], 4) for r in results}
     bev = {round(r["daytime_beverage_attach_rate"], 4) for r in results}
-    assert len(tob) > 10, "tobacco attach rate should vary across sims"
     assert len(bev) > 10, "beverage attach rate should vary across sims"
 
 
