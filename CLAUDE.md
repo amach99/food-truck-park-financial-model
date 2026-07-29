@@ -235,6 +235,36 @@ Three independent monthly multipliers drive most of the complexity:
   Monte Carlo simulator and the "Scenarios" feature to swap in
   pessimistic/optimistic event calendars).
 
+### COTA impact slider — "what if COTA didn't exist / was exceptional"
+
+`cota_impact_multiplier` (default `1.0`, threaded through `calc_monthly_total`
+→ `calc_cota_event_revenue`/`calc_truck_revenue` → `run_annual_projection` →
+`run_multi_year_projection`/`run_monte_carlo`/`run_cre_sensitivity_grid`) is a
+dashboard-only exploratory lever, distinct from the calendar-driven levers
+above. The sidebar's **"COTA Event Impact (%)"** slider runs 0–100 and maps
+to it linearly (`multiplier = pct / 50`), so the midpoint (50%, the default)
+reproduces today's baseline calendar exactly:
+
+- **0%** (multiplier `0.0`) zeroes every COTA revenue/cost line
+  (`calc_cota_event_revenue` returns all-zero regardless of what's on the
+  calendar) — "as if COTA didn't exist."
+- **100%** (multiplier `2.0`) doubles COTA parking/bar-uplift/daytime-bev-
+  uplift/incremental-cost, AND — only in months that actually have an event
+  on the calendar, and only for the portion of the multiplier above `1.0` —
+  boosts food-truck sales and closes the vacancy gap toward full occupancy
+  (`COTA_TRUCK_BOOST_MAX`, capped at +20% at the slider's max). This is the
+  one place in the model where a COTA event spills over into truck revenue;
+  everywhere else, COTA and truck traffic are independent. Daytime-beverage
+  revenue rides along automatically since it derives from
+  `truck_total_sales` (see below) — no separate wiring needed.
+
+Held fixed (not randomized) across every Monte Carlo simulation via
+`base_cota_impact_multiplier`, same convention as `base_truck_rent`/
+`base_truck_share`. Not wired into `SCENARIOS`/`run_breakeven_analysis`/
+`print_owner_summary`, matching the existing precedent that those use fixed
+named parameter sets independent of the sidebar (same as `weekday_customers`
+etc. already don't reach those either).
+
 ### Cold start: the park is NOT open yet (important context)
 
 As of this model version the park is **still under construction**, has no

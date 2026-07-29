@@ -86,6 +86,17 @@ daytime_bev_attach = st.sidebar.slider(
 
 st.sidebar.subheader("Other")
 seasonal_pct = st.sidebar.slider("Seasonal Event Strength", 0.0, 2.0, 1.0, step=0.25)
+cota_impact_pct = st.sidebar.slider(
+    "COTA Event Impact (%)", 0, 100, 50, step=5,
+    help="0% = COTA has no effect at all — parking, bar uplift, and "
+         "daytime-beverage uplift all zero out, as if the event calendar "
+         "didn't exist. 50% (default) reproduces today's baseline modeled "
+         "calendar exactly. 100% is a deliberately optimistic 'exceptional "
+         "events' scenario: COTA revenue runs at 2x today's baseline, AND "
+         "event-weekend months pull extra foot traffic into the food "
+         "trucks themselves (up to +20% truck sales/occupancy in those "
+         "months only) — not just parking and bar customers.")
+cota_impact_multiplier = cota_impact_pct / 50.0
 projection_view = st.sidebar.radio(
     "Projection View",
     ["Year 1 (with ramps)", "Steady state (no ramps)"],
@@ -111,7 +122,7 @@ mc_sims = st.sidebar.selectbox("Simulations", [1000, 5000, 10000], index=1)
 # =============================================================================
 @st.cache_data
 def get_annual(wd_custs, we_custs, check, slots, t_rent, t_share, t_sales, t_occ, seasonal,
-               dbev_attach, dbev_price, yr=1):
+               dbev_attach, dbev_price, cota_impact=1.0, yr=1):
     return model.run_annual_projection(
         wd_custs, we_custs, year=yr, avg_check=check,
         truck_slots=slots, truck_rent=t_rent,
@@ -119,12 +130,13 @@ def get_annual(wd_custs, we_custs, check, slots, t_rent, t_share, t_sales, t_occ
         truck_occupancy=t_occ, seasonal_pct=seasonal,
         daytime_beverage_attach_rate=dbev_attach,
         daytime_beverage_avg_price=dbev_price,
+        cota_impact_multiplier=cota_impact,
     )
 
 
 @st.cache_data
 def get_multi_year(wd_custs, we_custs, check, slots, t_rent, t_share, t_sales, t_occ, seasonal,
-                   dbev_attach, dbev_price, years=3):
+                   dbev_attach, dbev_price, cota_impact=1.0, years=3):
     return model.run_multi_year_projection(
         wd_custs, we_custs, years=years, base_check=check,
         truck_slots=slots, truck_rent=t_rent,
@@ -132,12 +144,13 @@ def get_multi_year(wd_custs, we_custs, check, slots, t_rent, t_share, t_sales, t
         truck_occupancy=t_occ, seasonal_pct=seasonal,
         daytime_beverage_attach_rate=dbev_attach,
         daytime_beverage_avg_price=dbev_price,
+        cota_impact_multiplier=cota_impact,
     )
 
 
 @st.cache_data
 def get_monte_carlo(n_sims, seed, wd_custs, we_custs, check, t_rent, t_share, t_occ, seasonal,
-                    slots, t_sales, dbev_attach, dbev_price):
+                    slots, t_sales, dbev_attach, dbev_price, cota_impact=1.0):
     return model.run_monte_carlo(
         n_sims, seed,
         base_weekday_customers=wd_custs, base_weekend_customers=we_custs,
@@ -146,6 +159,7 @@ def get_monte_carlo(n_sims, seed, wd_custs, we_custs, check, t_rent, t_share, t_
         base_truck_slots=slots, base_truck_avg_sales=t_sales,
         base_daytime_beverage_attach_rate=dbev_attach,
         base_daytime_beverage_avg_price=dbev_price,
+        base_cota_impact_multiplier=cota_impact,
     )
 
 
@@ -187,7 +201,7 @@ months, annual = get_annual(weekday_customers, weekend_customers, avg_check,
                             truck_slots, truck_rent, truck_share, truck_sales,
                             truck_occupancy, seasonal_pct,
                             daytime_bev_attach, daytime_bev_price,
-                            yr=projection_year)
+                            cota_impact_multiplier, yr=projection_year)
 df = months_to_df(months)
 
 
@@ -368,6 +382,7 @@ with tabs[2]:
             truck_slots=slots, truck_rent=truck_rent,
             truck_share_rate=truck_share, truck_avg_sales=truck_sales,
             truck_occupancy=truck_occupancy,
+            cota_impact_multiplier=cota_impact_multiplier,
         )
         slot_rows.append({
             "Trucks": slots,
@@ -411,6 +426,7 @@ with tabs[2]:
                 truck_slots=slots, truck_rent=truck_rent,
                 truck_share_rate=truck_share, truck_avg_sales=sales,
                 truck_occupancy=truck_occupancy,
+                cota_impact_multiplier=cota_impact_multiplier,
             )
             row[f"{slots} trucks"] = f"{ann['avg_monthly_nut_coverage']:.2f}x"
         grid_rows.append(row)
@@ -428,6 +444,7 @@ with tabs[2]:
             truck_slots=truck_slots, truck_rent=truck_rent,
             truck_share_rate=truck_share, truck_avg_sales=truck_sales,
             truck_occupancy=truck_occupancy,
+            cota_impact_multiplier=cota_impact_multiplier,
         )
         bar_rows.append({
             "Weekday/Weekend Customers": f"{wd} / {we}",
@@ -445,6 +462,7 @@ with tabs[2]:
             truck_slots=truck_slots, truck_rent=truck_rent,
             truck_share_rate=truck_share, truck_avg_sales=truck_sales,
             truck_occupancy=occ,
+            cota_impact_multiplier=cota_impact_multiplier,
         )
         occ_rows.append({
             "Occupancy": f"{occ:.0%}",
@@ -505,7 +523,8 @@ with tabs[4]:
     mc_results = get_monte_carlo(mc_sims, mc_seed, weekday_customers, weekend_customers,
                                  avg_check, truck_rent, truck_share, truck_occupancy,
                                  seasonal_pct, truck_slots, truck_sales,
-                                 daytime_bev_attach, daytime_bev_price)
+                                 daytime_bev_attach, daytime_bev_price,
+                                 cota_impact_multiplier)
 
     revenues = sorted(r["revenue"] for r in mc_results)
     covs = sorted(r["nut_coverage"] for r in mc_results)
@@ -644,7 +663,8 @@ with tabs[6]:
     all_years = get_multi_year(weekday_customers, weekend_customers, avg_check,
                                truck_slots, truck_rent, truck_share, truck_sales,
                                truck_occupancy, seasonal_pct,
-                               daytime_bev_attach, daytime_bev_price)
+                               daytime_bev_attach, daytime_bev_price,
+                               cota_impact_multiplier)
 
     my_rows = []
     for yr, months_data, ann in all_years:
@@ -1229,7 +1249,7 @@ with tabs[10]:
                             truck_slots, truck_rent, truck_share, truck_sales,
                             truck_occupancy, seasonal_pct,
                             daytime_bev_attach, daytime_bev_price,
-                            yr=2)
+                            cota_impact_multiplier, yr=2)
         _mo = lambda k: fmt_dollar(_ss[k] / 12) + "/mo"
         _alcohol_margin = 1 - model.VARIABLE_COST_RATE
         _parking_margin = 1 - model.PARKING_UPKEEP_RATE - model.PARKING_SALES_TAX_RATE
@@ -1446,7 +1466,7 @@ with tabs[11]:
                          truck_slots, truck_rent, truck_share, truck_sales,
                          truck_occupancy, seasonal_pct,
                          daytime_bev_attach, daytime_bev_price,
-                         yr=2)
+                         cota_impact_multiplier, yr=2)
     st.caption("All figures below are the **stabilized (steady-state) run rate** "
                "at the current sidebar inputs, regardless of the sidebar's "
                "Projection View toggle — CRE valuation is done off stabilized "
@@ -1580,7 +1600,7 @@ with tabs[11]:
                                 truck_slots, truck_rent, truck_share, truck_sales,
                                 truck_occupancy, seasonal_pct,
                                 daytime_bev_attach, daytime_bev_price,
-                                years=hold_years + 1)
+                                cota_impact_multiplier, years=hold_years + 1)
     returns = model.run_returns_analysis(
         hold_years=hold_years, exit_cap_rate=exit_cap_rate,
         sale_cost_pct=sale_cost_pct, discount_rate=discount_pct,
@@ -1626,6 +1646,7 @@ with tabs[11]:
         truck_occupancy=truck_occupancy, seasonal_pct=seasonal_pct,
         daytime_beverage_attach_rate=daytime_bev_attach,
         daytime_beverage_avg_price=daytime_bev_price,
+        cota_impact_multiplier=cota_impact_multiplier,
     )
     grid_df = pd.DataFrame(grid)
     cap_cols = [c for c in grid_df.columns if c != "revenue_delta"]

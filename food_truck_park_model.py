@@ -157,6 +157,27 @@ PARKING_UPKEEP_RATE = 0.05
 # on a full COTA calendar it is a real five-figure annual cost.
 PARKING_SALES_TAX_RATE = 0.0825
 
+# --- COTA Impact Slider (dashboard-adjustable "what if COTA didn't happen /
+# was exceptional" lever) ---
+# COTA_IMPACT_MULTIPLIER scales the COTA parking/bar-uplift/daytime-bev-
+# uplift/incremental-cost totals computed by calc_cota_event_revenue(): 0.0
+# = COTA has zero effect (as if the event calendar didn't exist), 1.0 =
+# today's default modeled calendar (COTA_EVENTS_BY_MONTH / COTA_EVENT_TIERS
+# as-is, unchanged from before this lever existed), up to 2.0 = a
+# deliberately optimistic "very high performing events" scenario. The
+# dashboard slider runs 0-100% and maps to this 0.0-2.0 range so the
+# midpoint (50%) reproduces today's baseline exactly.
+COTA_IMPACT_MULTIPLIER_DEFAULT = 1.0
+# Above a multiplier of 1.0 (i.e. sliding past today's baseline toward
+# "exceptional events"), COTA event months ALSO pull extra foot traffic
+# into the food trucks themselves - not just parking/bar/beverage revenue.
+# COTA_TRUCK_BOOST_MAX is the ceiling on that effect: at multiplier 2.0
+# (slider all the way right), truck sales in event months run up to 20%
+# hotter, and vacant slots close the gap toward full occupancy by up to
+# 20% of the remaining gap. Zero at multiplier <= 1.0, so today's baseline
+# behavior is completely unaffected by this lever's existence.
+COTA_TRUCK_BOOST_MAX = 0.20
+
 # --- Food Truck Park ---
 # 4 utility hubs are being BUILT (the park is still under construction as of
 # this model version - it is not yet open and has no operating history).
@@ -705,19 +726,30 @@ def resolve_truck_count(year_month, max_slots):
 
 
 def calc_truck_revenue(month, year_month=None, slots=None, pad_rent=None,
-                       share_rate=None, avg_sales=None, occupancy=None):
+                       share_rate=None, avg_sales=None, occupancy=None,
+                       event_month_boost=0.0):
     """
     Food truck income: pad rent + revenue share.
     Rent is not seasonal (monthly agreements); the revenue-share portion
     follows bar-traffic seasonality since truck sales track park foot traffic.
     `occupancy` (0-1) is an expected-value haircut for vendor vacancy/churn -
     applied to both rent and revenue share, since an empty slot earns neither.
+
+    `event_month_boost` (0.0-COTA_TRUCK_BOOST_MAX) is the COTA-impact-slider
+    driven bump for months with an event on the calendar and the slider
+    pushed past its baseline position (see COTA_TRUCK_BOOST_MAX) - it lifts
+    per-truck sales directly and closes the vacancy gap toward full
+    occupancy proportionally, rather than pushing occupancy past 1.0.
+    Zero by default, so existing callers are unaffected.
     """
     max_slots = slots if slots is not None else TRUCK_SLOTS
     rent = pad_rent if pad_rent is not None else TRUCK_PAD_RENT
     share = share_rate if share_rate is not None else TRUCK_REV_SHARE_RATE
     sales = avg_sales if avg_sales is not None else TRUCK_AVG_MONTHLY_SALES
     occ = occupancy if occupancy is not None else TRUCK_OCCUPANCY
+    if event_month_boost:
+        occ = occ + (1.0 - occ) * event_month_boost
+        sales = sales * (1 + event_month_boost)
 
     slots_active = resolve_truck_count(year_month, max_slots)
 
@@ -794,7 +826,8 @@ def calc_seasonal_event_revenue(month, year_month=None, seasonal_pct=1.0):
 
 def calc_cota_event_revenue(event_list, parking_spaces=None,
                             daytime_beverage_attach_rate=None,
-                            daytime_beverage_avg_price=None):
+                            daytime_beverage_avg_price=None,
+                            impact_multiplier=1.0):
     """
     COTA event weekends: paid parking + bar uplift + daytime-beverage
     uplift. Parking and the beverage uplift are summed day-by-day using
@@ -806,13 +839,19 @@ def calc_cota_event_revenue(event_list, parking_spaces=None,
     sells more water/soda/coffee than a normal day, and this ties that
     directly to the crowd size the model already computes for parking.
     event_list: list of tier keys, e.g. ["tier1_f1", "tier3_concert"].
+
+    `impact_multiplier` scales every total (including incremental_cost -
+    a bigger event needs more staffing too) uniformly: 0.0 zeroes COTA out
+    entirely regardless of the calendar passed in, 1.0 (default) is
+    unchanged/baseline behavior, values above 1.0 amplify it. See
+    COTA_IMPACT_MULTIPLIER_DEFAULT for the dashboard slider mapping.
     """
     spaces = parking_spaces if parking_spaces is not None else EVENT_PARKING_SPACES
     bev_rate = (daytime_beverage_attach_rate if daytime_beverage_attach_rate is not None
                 else DAYTIME_BEVERAGE_ATTACH_RATE)
     bev_price = (daytime_beverage_avg_price if daytime_beverage_avg_price is not None
                  else DAYTIME_BEVERAGE_AVG_PRICE)
-    if not event_list:
+    if not event_list or impact_multiplier <= 0:
         return {"parking": 0, "bar_uplift": 0, "daytime_bev_uplift": 0,
                 "gross": 0, "incremental_cost": 0, "net": 0}
 
@@ -829,6 +868,11 @@ def calc_cota_event_revenue(event_list, parking_spaces=None,
             total_daytime_bev += attendees * bev_rate * bev_price
         total_bar += tier["bar_uplift_per_weekend"]
         total_cost += tier["incremental_cost"]
+
+    total_parking *= impact_multiplier
+    total_bar *= impact_multiplier
+    total_daytime_bev *= impact_multiplier
+    total_cost *= impact_multiplier
 
     gross = total_parking + total_bar + total_daytime_bev
     return {"parking": total_parking, "bar_uplift": total_bar,
@@ -851,16 +895,36 @@ def calc_monthly_total(weekday_customers, weekend_customers, month, year_month=N
                        truck_share_rate=None, truck_avg_sales=None,
                        truck_occupancy=None, seasonal_pct=1.0,
                        daytime_beverage_attach_rate=None,
-                       daytime_beverage_avg_price=None):
+                       daytime_beverage_avg_price=None,
+                       cota_impact_multiplier=1.0):
     """
     Full monthly calculation across all streams:
       1. Food truck rent+share  4. Seasonal watch parties
       2. Evening bar            5. Utility pass-through (net zero)
       3. COTA events            6. All-day beverages (soda/juice/water/coffee)
     Returns detailed breakdown dict.
+
+    `cota_impact_multiplier` (default 1.0 = today's baseline calendar) is
+    the dashboard's "COTA Event Impact" slider: 0.0 zeroes every COTA
+    revenue/cost line as if the event calendar didn't exist; values above
+    1.0 amplify it AND, in months with events on the calendar, spill over
+    into extra food-truck sales/occupancy (COTA_TRUCK_BOOST_MAX) - a
+    high-performing COTA weekend pulls in more than just parking and bar
+    customers.
     """
+    if cota_events is not None:
+        event_list = cota_events
+    else:
+        event_list = COTA_EVENTS_BY_MONTH.get(month, [])
+
+    # Extra truck traffic only kicks in once the slider is pushed past
+    # baseline (multiplier > 1.0), and only in months with an event.
+    event_month_boost = (max(0.0, cota_impact_multiplier - 1.0) * COTA_TRUCK_BOOST_MAX
+                         if event_list else 0.0)
+
     trucks = calc_truck_revenue(month, year_month, truck_slots, truck_rent,
-                                truck_share_rate, truck_avg_sales, truck_occupancy)
+                                truck_share_rate, truck_avg_sales, truck_occupancy,
+                                event_month_boost)
     bar_rev = calc_bar_revenue(weekday_customers, weekend_customers, month,
                                year_month, avg_check)
     seasonal_rev = calc_seasonal_event_revenue(month, year_month, seasonal_pct)
@@ -868,13 +932,10 @@ def calc_monthly_total(weekday_customers, weekend_customers, month, year_month=N
         trucks["truck_total_sales"], year_month,
         daytime_beverage_attach_rate, daytime_beverage_avg_price)
 
-    if cota_events is not None:
-        event_list = cota_events
-    else:
-        event_list = COTA_EVENTS_BY_MONTH.get(month, [])
     cota = calc_cota_event_revenue(
         event_list, daytime_beverage_attach_rate=daytime_beverage_attach_rate,
-        daytime_beverage_avg_price=daytime_beverage_avg_price)
+        daytime_beverage_avg_price=daytime_beverage_avg_price,
+        impact_multiplier=cota_impact_multiplier)
 
     utilities = calc_utility_passthrough(trucks["trucks"])
 
@@ -992,7 +1053,8 @@ def run_annual_projection(weekday_customers=None, weekend_customers=None, year=1
                           truck_share_rate=None, truck_avg_sales=None,
                           truck_occupancy=None, seasonal_pct=1.0,
                           daytime_beverage_attach_rate=None,
-                          daytime_beverage_avg_price=None):
+                          daytime_beverage_avg_price=None,
+                          cota_impact_multiplier=1.0):
     """
     Full 12-month projection. Returns (months_list, annual_dict).
     Year 1 applies the truck and bar ramps; Year 2+ is steady state.
@@ -1018,6 +1080,7 @@ def run_annual_projection(weekday_customers=None, weekend_customers=None, year=1
             truck_slots, truck_rent, truck_share_rate, truck_avg_sales,
             truck_occupancy, seasonal_pct,
             daytime_beverage_attach_rate, daytime_beverage_avg_price,
+            cota_impact_multiplier,
         )
         months.append(result)
 
@@ -1089,7 +1152,8 @@ def run_multi_year_projection(base_weekday_customers=None, base_weekend_customer
                               truck_share_rate=None, truck_avg_sales=None,
                               truck_occupancy=None, seasonal_pct=1.0,
                               daytime_beverage_attach_rate=None,
-                              daytime_beverage_avg_price=None):
+                              daytime_beverage_avg_price=None,
+                              cota_impact_multiplier=1.0):
     """
     Year 1 with ramps; Year 2+ steady state with growth and cost inflation.
     Returns list of (year, months, annual) tuples.
@@ -1116,6 +1180,7 @@ def run_multi_year_projection(base_weekday_customers=None, base_weekend_customer
             seasonal_pct=seasonal_pct,
             daytime_beverage_attach_rate=daytime_beverage_attach_rate,
             daytime_beverage_avg_price=daytime_beverage_avg_price,
+            cota_impact_multiplier=cota_impact_multiplier,
         )
 
         if yr > 1:
@@ -1151,14 +1216,17 @@ def run_monte_carlo(n_simulations=10_000, seed=42,
                     base_truck_occupancy=None, base_seasonal_pct=1.0,
                     base_truck_slots=None, base_truck_avg_sales=None,
                     base_daytime_beverage_attach_rate=None,
-                    base_daytime_beverage_avg_price=None):
+                    base_daytime_beverage_avg_price=None,
+                    base_cota_impact_multiplier=1.0):
     """
     Randomized Year 1 scenarios. Varies: truck sales, truck occupancy
     (vacancy), weekday/weekend bar traffic and check, COTA event mix,
     seasonal event strength, and the daytime-beverage attach rate.
     Truck COUNT, rent, and revenue share are held FIXED across every
     simulation (built slots + contracted terms, not uncertain) - lease-up
-    risk is expressed through occupancy instead.
+    risk is expressed through occupancy instead. The COTA impact multiplier
+    is also held fixed at whatever the dashboard slider is set to (not
+    randomized) - the event MIX is already randomized below independently.
 
     Every base_* argument mirrors a dashboard slider so the simulation
     tracks whatever the user has dialed in; passing none of them reproduces
@@ -1223,6 +1291,7 @@ def run_monte_carlo(n_simulations=10_000, seed=42,
             seasonal_pct=seasonal_pct,
             daytime_beverage_attach_rate=dbev_attach,
             daytime_beverage_avg_price=_dbev_price,
+            cota_impact_multiplier=base_cota_impact_multiplier,
         )
 
         results.append({
@@ -2061,7 +2130,8 @@ def run_cre_sensitivity_grid(revenue_deltas=(-0.10, 0.0, 0.10),
                              truck_slots=None, truck_rent=None, truck_share_rate=None,
                              truck_occupancy=None, seasonal_pct=1.0,
                              daytime_beverage_attach_rate=None,
-                             daytime_beverage_avg_price=None):
+                             daytime_beverage_avg_price=None,
+                             cota_impact_multiplier=1.0):
     """
     Unlevered IRR grid: revenue scenario x exit cap rate, for the CRE tab's
     sensitivity table. Scales bar traffic, avg check, and truck avg sales
@@ -2089,6 +2159,7 @@ def run_cre_sensitivity_grid(revenue_deltas=(-0.10, 0.0, 0.10),
             seasonal_pct=seasonal_pct,
             daytime_beverage_attach_rate=daytime_beverage_attach_rate,
             daytime_beverage_avg_price=daytime_beverage_avg_price,
+            cota_impact_multiplier=cota_impact_multiplier,
             years=hold_years + 1,
         )
         for cap in exit_cap_rates:

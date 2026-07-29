@@ -158,6 +158,80 @@ def test_no_events_returns_all_zero_keys():
         assert cota[key] == 0, f"{key} should be 0 with no events"
 
 
+# ---------------------------------------------------------------------------
+# COTA impact slider
+# ---------------------------------------------------------------------------
+
+def test_cota_impact_multiplier_default_matches_unscaled_baseline():
+    """multiplier=1.0 (the implicit default) must be bit-for-bit identical
+    to calling calc_cota_event_revenue with no multiplier argument at all -
+    this is the guarantee that adding the slider doesn't silently change
+    today's baseline numbers for anyone not touching it."""
+    cota_default = m.calc_cota_event_revenue(["tier1_f1"])
+    cota_explicit = m.calc_cota_event_revenue(["tier1_f1"], impact_multiplier=1.0)
+    assert cota_default == cota_explicit
+
+
+def test_cota_impact_multiplier_zero_zeroes_everything():
+    """Slider at 0% (multiplier=0.0) must behave exactly like an empty
+    calendar, even with real events passed in - "as if COTA didn't exist"."""
+    cota = m.calc_cota_event_revenue(["tier1_f1", "tier2_nascar"], impact_multiplier=0.0)
+    for key in ("parking", "bar_uplift", "daytime_bev_uplift",
+                "gross", "incremental_cost", "net"):
+        assert cota[key] == 0, f"{key} should be 0 at multiplier=0.0"
+
+
+def test_cota_impact_multiplier_scales_linearly():
+    baseline = m.calc_cota_event_revenue(["tier1_f1"])
+    doubled = m.calc_cota_event_revenue(["tier1_f1"], impact_multiplier=2.0)
+    assert doubled["parking"] == pytest.approx(baseline["parking"] * 2)
+    assert doubled["bar_uplift"] == pytest.approx(baseline["bar_uplift"] * 2)
+    assert doubled["daytime_bev_uplift"] == pytest.approx(baseline["daytime_bev_uplift"] * 2)
+    assert doubled["incremental_cost"] == pytest.approx(baseline["incremental_cost"] * 2)
+
+
+def test_cota_impact_multiplier_default_leaves_annual_projection_unchanged():
+    """Threading the new parameter through run_annual_projection must not
+    move any number for callers that don't pass it - regression guard for
+    the whole wiring chain (calc_monthly_total -> run_annual_projection)."""
+    _, without_arg = m.run_annual_projection(year=2)
+    _, with_default = m.run_annual_projection(year=2, cota_impact_multiplier=1.0)
+    assert without_arg == with_default
+
+
+def test_cota_impact_multiplier_zero_removes_cota_but_not_truck_boost():
+    """At 0%, COTA revenue disappears entirely and food trucks see NO boost
+    (event_month_boost only applies above baseline, multiplier > 1.0)."""
+    _, off = m.run_annual_projection(year=2, cota_impact_multiplier=0.0)
+    _, baseline = m.run_annual_projection(year=2)
+    assert off["total_cota_parking"] == 0
+    assert off["total_cota_bar"] == 0
+    assert off["total_cota_daytime_bev"] == 0
+    assert off["total_cota_cost"] == 0
+    assert off["total_trucks"] == pytest.approx(baseline["total_trucks"])
+    assert off["total_gross"] < baseline["total_gross"]
+
+
+def test_cota_impact_multiplier_above_baseline_boosts_truck_traffic():
+    """Above 1.0, event months pull extra sales/occupancy into the food
+    trucks themselves, not just parking/bar/beverage revenue - and that
+    lifts total_daytime_beverage too, since it rides on truck traffic."""
+    _, baseline = m.run_annual_projection(year=2)
+    _, high = m.run_annual_projection(year=2, cota_impact_multiplier=2.0)
+    assert high["total_trucks"] > baseline["total_trucks"]
+    assert high["total_daytime_beverage"] > baseline["total_daytime_beverage"]
+    assert high["total_cota_parking"] == pytest.approx(baseline["total_cota_parking"] * 2)
+
+
+def test_cota_truck_boost_only_applies_in_event_months():
+    """A month with no COTA events on the calendar must see zero truck
+    boost even when the slider is maxed out - only event months benefit."""
+    no_event_month = m.calc_monthly_total(20, 58, 1, cota_events=[],
+                                          cota_impact_multiplier=2.0)
+    baseline_no_boost = m.calc_monthly_total(20, 58, 1, cota_events=[])
+    assert no_event_month["truck_gross"] == pytest.approx(baseline_no_boost["truck_gross"])
+
+
 def test_tobacco_stream_is_fully_removed():
     """The tobacco/nicotine stream must stay gone, everywhere.
 
