@@ -212,6 +212,7 @@ tabs = st.tabs([
     "Owner Summary",
     "Tax Strategies",
     "📖 Model Overview",
+    "🏦 CRE Investment Summary",
 ])
 
 
@@ -782,13 +783,27 @@ with tabs[7]:
     cota_cost = annual["total_cota_cost"]
     bartender_share = annual["total_bartender_share"]
     payroll_burden = annual["total_payroll_burden"]
-    fixed_ex = model.ANNUAL_NUT
+    management_fee = annual["total_management_fee"]
+    replacement_reserve = annual["total_replacement_reserve"]
+    opex = model.ANNUAL_OPEX_NUT
+    loc_interest = model.ANNUAL_DEBT_SERVICE
     pre_tax_cf = (gross - cogs - grt - mb_sales_tax
                   - daytime_bev_cogs - daytime_bev_tax - cc
                   - shrinkage - utility_cost - parking_cost - parking_tax
-                  - cota_cost - bartender_share - payroll_burden - fixed_ex)
+                  - cota_cost - bartender_share - payroll_burden
+                  - management_fee - replacement_reserve
+                  - opex - loc_interest)
     income_tax = max(0.0, pre_tax_cf) * model.EFFECTIVE_INCOME_TAX_RATE
     free_cf = pre_tax_cf - income_tax
+
+    # The hand-built waterfall above must reconcile to the engine's own
+    # authoritative after-tax cash flow - if a cost line is ever added to
+    # calc_monthly_total but not mirrored here, this catches it visually
+    # instead of the chart silently drifting out of sync (see CLAUDE.md).
+    assert abs(free_cf - annual["after_tax_noi"]) < 1.0, (
+        "Waterfall's hand-rolled cash flow drifted from annual['after_tax_noi'] "
+        "- a cost line was added to calc_monthly_total without being mirrored here."
+    )
 
     labels = ["Gross Revenue", f"COGS ({model.COGS_RATE:.0%})",
               f"TX Mixed Bev GRT ({model.GRT_RATE:.1%})",
@@ -798,14 +813,17 @@ with tabs[7]:
               "CC Processing", "Shrinkage", "Utility Pass-Thru", "Parking Upkeep",
               f"Parking Sales Tax ({model.PARKING_SALES_TAX_RATE:.2%})",
               "COTA Costs", "Bartender Share", "Employer Payroll Burden",
-              "Fixed Costs (Nut)",
+              f"Management Fee ({model.MANAGEMENT_FEE_RATE:.0%})",
+              f"Replacement Reserve ({model.REPLACEMENT_RESERVE_RATE:.0%})",
+              "Operating Fixed Costs", "LOC Interest",
               f"Income Tax ({model.EFFECTIVE_INCOME_TAX_RATE:.0%})",
               "After-Tax Cash Flow"]
     values = [gross, -cogs, -grt, -mb_sales_tax,
               -daytime_bev_cogs, -daytime_bev_tax, -cc, -shrinkage,
               -utility_cost, -parking_cost, -parking_tax,
               -cota_cost, -bartender_share, -payroll_burden,
-              -fixed_ex, -income_tax, 0]
+              -management_fee, -replacement_reserve,
+              -opex, -loc_interest, -income_tax, 0]
     measures = ["absolute"] + ["relative"] * (len(values) - 2) + ["total"]
 
     fig_wf = go.Figure(go.Waterfall(
@@ -925,6 +943,12 @@ with tabs[8]:
         {"Expense": "Utility Pass-Through Cost (at cost, net-zero)",
          "Rate": "billed at cost, no markup",
          "Annual (Base Case)": base["total_utility_cost"]},
+        {"Expense": "Management Fee",
+         "Rate": f"{model.MANAGEMENT_FEE_RATE:.0%} of EGI ex. utility pass-through",
+         "Annual (Base Case)": base["total_management_fee"]},
+        {"Expense": "Replacement Reserve",
+         "Rate": f"{model.REPLACEMENT_RESERVE_RATE:.0%} of EGI ex. utility pass-through",
+         "Annual (Base Case)": base["total_replacement_reserve"]},
     ]
     var_df = pd.DataFrame(var_cost_rows)
     total_variable = var_df["Annual (Base Case)"].sum()
@@ -963,6 +987,16 @@ with tabs[8]:
     st.caption(f"After-tax figures apply a {model.EFFECTIVE_INCOME_TAX_RATE:.0%} blended "
                "effective federal + self-employment rate estimate on pass-through "
                "profit (TX has no state income tax). Confirm with a CPA.")
+    st.caption(
+        f"Free Cash Flow above is net of a management fee "
+        f"({model.MANAGEMENT_FEE_RATE:.0%} of EGI) and a replacement reserve "
+        f"({model.REPLACEMENT_RESERVE_RATE:.0%} of EGI) — real, market-rate costs "
+        f"included whether or not the owner charges themselves one. Conservative: "
+        f"\\${conservative['total_management_fee']:,.0f} mgmt fee + "
+        f"\\${conservative['total_replacement_reserve']:,.0f} reserve. Base Case: "
+        f"\\${base['total_management_fee']:,.0f} mgmt fee + "
+        f"\\${base['total_replacement_reserve']:,.0f} reserve."
+    )
 
     st.markdown("---")
     st.subheader("Risk Mitigants")
@@ -996,35 +1030,41 @@ with tabs[9]:
     st.caption("Illustrative only — depreciation elections and entity choice "
                "depend on the owner's full tax picture (other income, filing "
                "status, state). Confirm with a CPA before filing. This tab "
-               "doesn't change the pre-tax NOI used elsewhere in the model — "
-               "it only estimates incremental tax savings.")
+               "doesn't change the pre-tax profit used elsewhere in the "
+               "model — it only estimates incremental tax savings.")
     st.info(
         "**This tab covers the FEDERAL layer only** — income tax plus "
-        "self-employment/payroll tax. Texas has no personal income tax, but "
-        "the business pays plenty of other Texas taxes (mixed beverage GRT "
-        "and sales tax, sales tax on parking and daytime beverages, property "
-        "tax, employer payroll). Those are ordinary operating expenses and "
-        "are **already deducted inside the NOI figure below** — see the "
+        "self-employment/payroll tax, applied to profit AFTER the LOC's "
+        "interest expense (a deductible business cost). Texas has no "
+        "personal income tax, but the business pays plenty of other Texas "
+        "taxes (mixed beverage GRT and sales tax, sales tax on parking and "
+        "daytime beverages, property tax, employer payroll). Those, plus "
+        "the LOC interest itself, are ordinary operating expenses and are "
+        "**already deducted inside the profit figure below** — see the "
         "Owner Summary tab's Variable Operating Costs table for that side."
     )
 
     st.markdown("---")
-    st.subheader("NOI Basis")
+    st.subheader("Taxable Profit Basis")
+    st.caption("This is cash flow AFTER the LOC's interest expense (a "
+               "deductible cost) — not NOI, which by definition is measured "
+               "BEFORE debt service. See the CRE Investment Summary tab for "
+               "the property-level NOI figure.")
     noi_source = st.radio(
         "Run the analysis on:",
         ["Current Dashboard Inputs", "Base Case", "Conservative", "Custom"],
         horizontal=True,
     )
     if noi_source == "Current Dashboard Inputs":
-        tax_noi = annual["total_noi"]
-        st.metric("Year 1 NOI (pre-tax, sidebar inputs)", fmt_dollar(tax_noi))
+        tax_noi = annual["total_net_cash"]
+        st.metric("Year 1 Taxable Profit (sidebar inputs)", fmt_dollar(tax_noi))
     elif noi_source == "Custom":
-        tax_noi = st.slider("Annual NOI (pre-tax, $)", 0, 400_000,
-                            int(annual["total_noi"]), step=5_000, format="$%d")
+        tax_noi = st.slider("Annual Taxable Profit ($)", 0, 400_000,
+                            int(annual["total_net_cash"]), step=5_000, format="$%d")
     else:
         _, scen_ann = model.run_scenario_projection(model.SCENARIOS[noi_source])
-        tax_noi = scen_ann["total_noi"]
-        st.metric(f"{noi_source} Year 1 NOI (pre-tax)", fmt_dollar(tax_noi))
+        tax_noi = scen_ann["total_net_cash"]
+        st.metric(f"{noi_source} Year 1 Taxable Profit", fmt_dollar(tax_noi))
 
     st.markdown("---")
     st.subheader("1. Depreciation & Startup Cost Amortization")
@@ -1374,9 +1414,242 @@ model.run_loc_payoff_schedule()     # declining-balance LOC payoff vs. the flat 
 model.run_tax_strategy_analysis()   # depreciation + Sec 195 + S-corp election
 model.print_tax_strategy_analysis() # same, printed (CLI)
 model.print_owner_summary()         # full owner-facing report (CLI)
+model.calc_valuation_and_leverage() # cap-rate value, LTC/LTV, debt yield
+model.run_returns_analysis()        # unlevered/levered IRR, NPV, equity multiple
+model.run_cre_sensitivity_grid()    # revenue x exit-cap-rate IRR grid
 
 # Regression tests — run after ANY change to the calculation engine:
 #   pytest -q
             """,
             language="python",
+        )
+
+
+# =============================================================================
+# TAB 11: CRE INVESTMENT SUMMARY
+# =============================================================================
+with tabs[11]:
+    st.header("CRE Investment Summary")
+    st.caption(
+        "Formal commercial real estate underwriting view of this project — "
+        "sources & uses, stabilized NOI, cap-rate valuation, leverage, and "
+        "unlevered/levered returns. This tab intentionally uses standard "
+        "CRE terminology that differs from the plain-language figures "
+        "elsewhere in this dashboard (e.g. NOI here excludes LOC interest, "
+        "where 'Free Cash Flow' on other tabs includes it) — each metric's "
+        "tooltip gives the exact formula."
+    )
+
+    # Stabilized (steady-state, no ramps) figures at current sidebar inputs -
+    # CRE valuation is always done off stabilized NOI, not a ramped Year 1.
+    _, stab = get_annual(weekday_customers, weekend_customers, avg_check,
+                         truck_slots, truck_rent, truck_share, truck_sales,
+                         truck_occupancy, seasonal_pct,
+                         daytime_bev_attach, daytime_bev_price,
+                         yr=2)
+    st.caption("All figures below are the **stabilized (steady-state) run rate** "
+               "at the current sidebar inputs, regardless of the sidebar's "
+               "Projection View toggle — CRE valuation is done off stabilized "
+               "NOI, not a ramped opening year.")
+
+    # --- 1. Sources & Uses ---
+    st.subheader("1. Sources & Uses")
+    su1, su2, su3, su4 = st.columns(4)
+    su1.metric("Land (Contributed, at Basis)", fmt_dollar(model.LAND_PURCHASE_PRICE),
+               help="Owner's actual purchase price. Owned outright, not "
+                    "financed by this project's LOC.")
+    su2.metric("Buildout (Hard + Soft Costs)", fmt_dollar(model.TOTAL_PROJECT_COST))
+    su3.metric("Total Capitalized Basis", fmt_dollar(model.TOTAL_CAPITALIZED_BASIS),
+               help="Land + buildout. The correct denominator for a "
+                    "yield-on-cost calculation — excluding land, as this "
+                    "dashboard's other 'FCF Yield' metrics do, only "
+                    "measures return on cash actually spent, not on the "
+                    "full capital committed to the project.")
+    su4.metric("LOC Draw (Debt)", fmt_dollar(model.LOC_AMOUNT),
+               help="Finances the buildout only — never the land.")
+
+    su_df = pd.DataFrame([
+        {"Source / Use": "Land (equity, contributed at basis)",
+         "Amount": model.LAND_PURCHASE_PRICE,
+         "% of Basis": model.LAND_PURCHASE_PRICE / model.TOTAL_CAPITALIZED_BASIS},
+        {"Source / Use": "Buildout — cash equity",
+         "Amount": model.TOTAL_PROJECT_COST - model.LOC_AMOUNT,
+         "% of Basis": (model.TOTAL_PROJECT_COST - model.LOC_AMOUNT) / model.TOTAL_CAPITALIZED_BASIS},
+        {"Source / Use": f"Personal LOC (debt) @ {model.LOC_INTEREST_RATE:.1%}",
+         "Amount": model.LOC_AMOUNT,
+         "% of Basis": model.LOC_AMOUNT / model.TOTAL_CAPITALIZED_BASIS},
+        {"Source / Use": "Total Capitalized Basis", "Amount": model.TOTAL_CAPITALIZED_BASIS, "% of Basis": 1.0},
+    ])
+    su_df["Amount"] = su_df["Amount"].apply(fmt_dollar)
+    su_df["% of Basis"] = su_df["% of Basis"].apply(lambda x: f"{x:.1%}")
+    st.dataframe(su_df, use_container_width=True, hide_index=True)
+    st.caption(f"The LOC fully finances the buildout (\\${model.LOC_AMOUNT:,.0f} draw "
+               f"against \\${model.TOTAL_PROJECT_COST:,.0f} of cost), so cash equity in "
+               "the buildout is \\$0 — the owner's entire equity position in the deal "
+               "is the land.")
+
+    # --- 2. Stabilized Operations ---
+    st.markdown("---")
+    st.subheader("2. Stabilized Operations")
+    op1, op2, op3, op4 = st.columns(4)
+    op1.metric("Effective Gross Income", fmt_dollar(stab["total_gross"]),
+               help="All revenue streams, including the at-cost utility pass-through.")
+    op2.metric("Management Fee", fmt_dollar(stab["total_management_fee"]),
+               help=f"{model.MANAGEMENT_FEE_RATE:.0%} of EGI ex. utility "
+                    "pass-through — market 3rd-party property management "
+                    "cost, charged whether or not this owner collects it.")
+    op3.metric("Replacement Reserve", fmt_dollar(stab["total_replacement_reserve"]),
+               help=f"{model.REPLACEMENT_RESERVE_RATE:.0%} of EGI ex. "
+                    "utility pass-through — capital reserve for FF&E / "
+                    "site replacement.")
+    op4.metric("Net Operating Income (NOI)", fmt_dollar(stab["total_noi"]),
+               help="EGI less all operating expenses (incl. management fee "
+                    "and replacement reserve), BEFORE debt service. This is "
+                    "the standard CRE NOI figure — it excludes the LOC's "
+                    "interest expense, unlike the 'Free Cash Flow' figures "
+                    "elsewhere in this dashboard.")
+
+    st.caption("**Real Estate vs. Operating Business Contribution** — pre-shared-overhead "
+               "(management fee, replacement reserve, and per-event COTA staffing "
+               "costs apply to the consolidated property, not to either segment individually)")
+    seg1, seg2, seg3 = st.columns(3)
+    re_contrib = stab["total_real_estate_contribution"]
+    biz_contrib = stab["total_business_contribution"]
+    seg1.metric("Real Estate", fmt_dollar(re_contrib),
+                help="Truck pad rent + revenue share + COTA event parking "
+                     "(net of upkeep/tax) + utility pass-through. "
+                     "Contractual, land-based income — what a real-estate "
+                     "lender would underwrite.")
+    seg2.metric("Operating Business", fmt_dollar(biz_contrib),
+                help="Evening bar + daytime beverages + seasonal events + "
+                     "COTA bar/beverage uplifts, net of their own COGS, "
+                     "tax, and labor. F&B business enterprise value, not "
+                     "real property income.")
+    seg3.metric("Business Share of Contribution",
+                fmt_pct(biz_contrib / (re_contrib + biz_contrib) * 100) if (re_contrib + biz_contrib) else "n/a")
+
+    # --- 3. Valuation & Leverage ---
+    st.markdown("---")
+    st.subheader("3. Valuation & Leverage")
+    cap_rate_pct = st.slider(
+        "Market Cap Rate (%)", 6.0, 14.0, model.MARKET_CAP_RATE * 100, step=0.25,
+        help="Used both to value the property today (NOI / cap rate) and "
+             "as the default exit assumption in the Returns section below.")
+    cap_rate = cap_rate_pct / 100
+    val = model.calc_valuation_and_leverage(stab, cap_rate=cap_rate)
+
+    v1, v2, v3 = st.columns(3)
+    v1.metric("Implied Value (NOI ÷ Cap Rate)", fmt_dollar(val["implied_value"]))
+    v2.metric("Yield on Cost", fmt_pct(val["yield_on_cost"] * 100),
+              help="Stabilized NOI ÷ Total Capitalized Basis (land + "
+                   "buildout). Compare to the market cap rate — the gap is "
+                   "the development spread.")
+    v3.metric("Development Spread", f"{val['development_spread'] * 100:+.1f} pts",
+              help="Yield on cost minus the market cap rate. Positive means "
+                   "the project was built cheaper than it can be sold for "
+                   "at a stabilized cap rate.")
+
+    l1, l2, l3, l4 = st.columns(4)
+    l1.metric("Loan-to-Cost (LTC)", fmt_pct(val["ltc"] * 100),
+              help="LOC draw ÷ Total Capitalized Basis.")
+    l2.metric("Loan-to-Value (LTV)", fmt_pct(val["ltv"] * 100),
+              help="LOC draw ÷ implied value at the cap rate above.")
+    l3.metric("Debt Yield", fmt_pct(val["debt_yield"] * 100),
+              help="NOI ÷ LOC draw. A value-independent leverage test "
+                   "lenders use because it can't be moved by a cap-rate "
+                   "assumption. Typical minimums: ~9-11% general CRE, "
+                   "11-13% hospitality/F&B.")
+    l4.metric("Fixed Charge Coverage Ratio (FCCR)",
+              f"{stab['avg_monthly_nut_coverage']:.2f}x",
+              help="Operating income before fixed overhead ÷ total monthly "
+                   "nut (opex + debt service). Plays the role DSCR would "
+                   "play if this were a lender-covenant loan — shown "
+                   "elsewhere in this dashboard as 'Nut Coverage.'")
+
+    # --- 4. Returns ---
+    st.markdown("---")
+    st.subheader("4. Returns — Unlevered & Levered")
+    r1, r2, r3, r4 = st.columns(4)
+    hold_years = r1.slider("Hold Period (yrs)", 3, 10, model.HOLD_PERIOD_YEARS, step=1)
+    exit_cap_pct = r2.slider("Exit Cap Rate (%)", 6.0, 14.0, model.MARKET_CAP_RATE * 100, step=0.25)
+    sale_cost_pct = r3.slider("Sale Costs (%)", 0.0, 6.0, model.SALE_COST_PCT * 100, step=0.5) / 100
+    discount_pct = r4.slider("NPV Discount Rate (%)", 4.0, 20.0, model.DISCOUNT_RATE * 100, step=0.5) / 100
+    exit_cap_rate = exit_cap_pct / 100
+
+    base_years = get_multi_year(weekday_customers, weekend_customers, avg_check,
+                                truck_slots, truck_rent, truck_share, truck_sales,
+                                truck_occupancy, seasonal_pct,
+                                daytime_bev_attach, daytime_bev_price,
+                                years=hold_years + 1)
+    returns = model.run_returns_analysis(
+        hold_years=hold_years, exit_cap_rate=exit_cap_rate,
+        sale_cost_pct=sale_cost_pct, discount_rate=discount_pct,
+        base_years=base_years)
+
+    ru, rl = st.columns(2)
+    with ru:
+        st.markdown("**Unlevered (all-cash, no LOC)**")
+        st.metric("IRR", fmt_pct(returns["unlevered_irr"] * 100) if returns["unlevered_irr"] is not None else "n/a")
+        st.metric("Equity Multiple", f"{returns['unlevered_equity_multiple']:.2f}x")
+        st.metric("NPV", fmt_dollar(returns["unlevered_npv"]))
+    with rl:
+        st.markdown("**Levered (with the LOC)**")
+        st.metric("IRR", fmt_pct(returns["levered_irr"] * 100) if returns["levered_irr"] is not None else "n/a")
+        st.metric("Equity Multiple",
+                  f"{returns['levered_equity_multiple']:.2f}x" if returns["levered_equity_multiple"] is not None else "n/a")
+        st.metric("NPV", fmt_dollar(returns["levered_npv"]))
+    st.metric("Cash-on-Cash (Year 1)",
+              fmt_pct(returns["cash_on_cash_year1"] * 100) if returns["cash_on_cash_year1"] is not None else "n/a",
+              help="Year 1 net cash flow after debt service ÷ equity basis "
+                   "(land + cash equity in the deal). The only true "
+                   "cash-on-cash figure in this model — the other 'yield' "
+                   "metrics elsewhere divide by cost, not equity.")
+    st.caption(
+        f"Reversion (sale) value: \\${returns['reversion_gross']:,.0f} gross, "
+        f"\\${returns['reversion_net']:,.0f} net of {sale_cost_pct:.1%} sale "
+        "costs — based on the NOI in the year immediately after the hold ends, "
+        "capitalized at the exit cap rate above (standard forward-cap convention)."
+    )
+
+    # --- 5. Sensitivity ---
+    st.markdown("---")
+    st.subheader("5. Sensitivity — Unlevered IRR")
+    st.caption("Revenue scenario (bar traffic, avg check, and truck sales "
+               "scaled together) × exit cap rate.")
+    grid = model.run_cre_sensitivity_grid(
+        revenue_deltas=(-0.10, -0.05, 0.0, 0.05, 0.10),
+        exit_cap_rates=(0.07, 0.08, 0.09, 0.10, 0.11),
+        hold_years=hold_years,
+        base_weekday_customers=weekday_customers, base_weekend_customers=weekend_customers,
+        base_check=avg_check, base_truck_avg_sales=truck_sales,
+        truck_slots=truck_slots, truck_rent=truck_rent, truck_share_rate=truck_share,
+        truck_occupancy=truck_occupancy, seasonal_pct=seasonal_pct,
+        daytime_beverage_attach_rate=daytime_bev_attach,
+        daytime_beverage_avg_price=daytime_bev_price,
+    )
+    grid_df = pd.DataFrame(grid)
+    cap_cols = [c for c in grid_df.columns if c != "revenue_delta"]
+    for c in cap_cols:
+        grid_df[c] = grid_df[c].apply(lambda x: f"{x:.1%}" if x is not None else "n/a")
+    grid_df["revenue_delta"] = grid_df["revenue_delta"].apply(lambda d: f"{d:+.0%}")
+    grid_df = grid_df.rename(columns={"revenue_delta": "Revenue Δ",
+                                      **{c: f"{c:.0%} cap" for c in cap_cols}})
+    st.dataframe(grid_df, use_container_width=True, hide_index=True)
+
+    with st.expander("Glossary"):
+        st.markdown(
+            """
+            | Term | Definition |
+            |---|---|
+            | **NOI** | Effective Gross Income − operating expenses, BEFORE debt service, capex, depreciation, income tax |
+            | **Cap rate** | NOI ÷ value — the market's required unlevered yield. Value = NOI ÷ cap rate |
+            | **Yield on cost** | Stabilized NOI ÷ total capitalized basis. The gap vs. market cap rate is the **development spread** |
+            | **LTC / LTV** | Loan ÷ total cost / Loan ÷ value |
+            | **Debt yield** | NOI ÷ loan amount — a value-independent leverage test |
+            | **FCCR** | Fixed Charge Coverage Ratio — operating income before overhead ÷ (opex + debt service) |
+            | **Reversion** | Sale proceeds at end of hold = terminal-year NOI ÷ exit cap rate, less sale costs |
+            | **Equity multiple** | Total distributions ÷ equity invested — not time-weighted |
+            | **IRR** | Discount rate at which NPV of all cash flows = 0 — time-weighted |
+            | **Cash-on-cash** | Annual cash flow after debt service ÷ equity invested |
+            """
         )

@@ -59,21 +59,71 @@ def _total_variable_costs(annual):
         + annual["total_cota_parking_sales_tax"]
         + annual["total_cota_cost"]
         + annual["total_utility_cost"]
+        + annual["total_management_fee"]
+        + annual["total_replacement_reserve"]
     )
 
 
 def test_annual_reconciles_to_noi(year1):
-    """Gross - variable - fixed must equal NOI exactly.
+    """Gross - variable - opex must equal true NOI exactly.
 
     This is the single most valuable assertion in the file: it fails the
     moment a cost is added to the monthly calc but omitted from the annual
     summary, which is exactly how the dashboard's cost tables go stale.
+    NOI is defined BEFORE debt service (CRE convention), so this reconciles
+    against ANNUAL_OPEX_NUT, not the full ANNUAL_NUT - see
+    test_noi_reconciles_to_net_cash_flow for the debt-service step.
     """
     _, annual = year1
     residual = (annual["total_gross"]
                 - _total_variable_costs(annual)
-                - m.ANNUAL_NUT
+                - m.ANNUAL_OPEX_NUT
                 - annual["total_noi"])
+    assert abs(residual) < 1.0
+
+
+def test_noi_reconciles_to_net_cash_flow(year1):
+    """NOI minus debt service must equal net cash flow exactly.
+
+    Locks in the NOI/CFADS split: NOI is before debt service (true CRE
+    NOI), net_cash_flow is after it. If someone reintroduces LOC interest
+    into the NOI calc (the bug this whole refactor fixed), this fails.
+    """
+    _, annual = year1
+    residual = (annual["total_noi"] - m.ANNUAL_DEBT_SERVICE
+                - annual["total_net_cash"])
+    assert abs(residual) < 1.0
+
+
+def test_noi_is_before_debt_service(year1):
+    """NOI must exceed net cash flow by exactly the annual debt service."""
+    _, annual = year1
+    assert annual["total_noi"] > annual["total_net_cash"]
+    assert (annual["total_noi"] - annual["total_net_cash"]) == pytest.approx(
+        m.ANNUAL_DEBT_SERVICE)
+
+
+def test_management_fee_and_reserve_scale_with_egi(year1):
+    """Management fee (4%) and replacement reserve (3%) apply to EGI net of
+    the pass-through utility billing, which carries no fee (it's a wash)."""
+    _, annual = year1
+    egi_ex_utility = annual["total_gross"] - annual["total_utility_billed"]
+    assert annual["total_management_fee"] == pytest.approx(
+        egi_ex_utility * m.MANAGEMENT_FEE_RATE)
+    assert annual["total_replacement_reserve"] == pytest.approx(
+        egi_ex_utility * m.REPLACEMENT_RESERVE_RATE)
+
+
+def test_real_estate_and_business_contribution_reconcile(year1):
+    """Segment contributions, less shared overhead, must equal NOI before opex."""
+    _, annual = year1
+    total_net_before_fixed = annual["total_noi"] + m.ANNUAL_OPEX_NUT
+    residual = (annual["total_real_estate_contribution"]
+                + annual["total_business_contribution"]
+                - annual["total_cota_cost"]
+                - annual["total_management_fee"]
+                - annual["total_replacement_reserve"]
+                - total_net_before_fixed)
     assert abs(residual) < 1.0
 
 
@@ -379,6 +429,23 @@ def test_monthly_nut_matches_fixed_costs():
     assert m.ANNUAL_NUT == m.MONTHLY_NUT * 12
 
 
+def test_opex_and_debt_service_split_matches_fixed_costs():
+    assert m.MONTHLY_OPEX_NUT == sum(m.OPERATING_FIXED_COSTS.values())
+    assert m.ANNUAL_OPEX_NUT == m.MONTHLY_OPEX_NUT * 12
+    assert m.MONTHLY_DEBT_SERVICE == m.FIXED_COSTS["loc_interest"]
+    assert m.ANNUAL_DEBT_SERVICE == m.MONTHLY_DEBT_SERVICE * 12
+    assert m.MONTHLY_OPEX_NUT + m.MONTHLY_DEBT_SERVICE == m.MONTHLY_NUT
+
+
+def test_yield_on_cost_includes_land():
+    assert m.TOTAL_CAPITALIZED_BASIS == m.LAND_PURCHASE_PRICE + m.TOTAL_PROJECT_COST
+    assert m.EQUITY_BASIS == m.TOTAL_CAPITALIZED_BASIS - m.LOC_AMOUNT
+    _, annual = m.run_annual_projection(year=2)
+    result = m.calc_valuation_and_leverage(annual)
+    assert result["yield_on_cost"] == pytest.approx(
+        annual["total_noi"] / m.TOTAL_CAPITALIZED_BASIS)
+
+
 # ---------------------------------------------------------------------------
 # Multi-year
 # ---------------------------------------------------------------------------
@@ -395,3 +462,45 @@ def test_utility_passthrough_is_noi_neutral(year1):
     _, annual = year1
     assert annual["total_utility_billed"] == pytest.approx(
         annual["total_utility_cost"])
+
+
+# ---------------------------------------------------------------------------
+# CRE valuation & returns
+# ---------------------------------------------------------------------------
+
+def test_returns_analysis_irr_is_sane():
+    """Unlevered/levered IRR at default assumptions should land in a sane
+    band, not pinned to an exact value (assumptions will get tuned over
+    time). Levered IRR should exceed unlevered when yield on cost beats the
+    cost of debt, which holds at these defaults (positive leverage)."""
+    result = m.run_returns_analysis()
+    assert result["unlevered_irr"] is not None
+    assert result["levered_irr"] is not None
+    assert 0 < result["unlevered_irr"] < 1.0
+    assert result["levered_irr"] > result["unlevered_irr"]
+
+
+def test_equity_multiple_exceeds_one_at_default_assumptions():
+    result = m.run_returns_analysis()
+    assert result["unlevered_equity_multiple"] > 1.0
+    assert result["levered_equity_multiple"] > 1.0
+
+
+def test_returns_analysis_respects_hold_period_and_cap_rate():
+    """A shorter hold or a lower exit cap rate should raise unlevered IRR
+    (less time for compounding to matter less; a lower cap rate means a
+    richer exit value for the same NOI)."""
+    base = m.run_returns_analysis(hold_years=5, exit_cap_rate=0.09)
+    shorter_hold = m.run_returns_analysis(hold_years=3, exit_cap_rate=0.09)
+    richer_exit = m.run_returns_analysis(hold_years=5, exit_cap_rate=0.07)
+    assert shorter_hold["unlevered_irr"] != base["unlevered_irr"]
+    assert richer_exit["unlevered_irr"] > base["unlevered_irr"]
+
+
+def test_cre_sensitivity_grid_varies_with_revenue_and_cap_rate():
+    grid = m.run_cre_sensitivity_grid(
+        revenue_deltas=(-0.10, 0.0, 0.10), exit_cap_rates=(0.08, 0.10))
+    assert len(grid) == 3
+    low, base, high = grid
+    assert low[0.08] < base[0.08] < high[0.08]      # more revenue -> higher IRR
+    assert base[0.10] < base[0.08]                   # higher exit cap -> lower IRR

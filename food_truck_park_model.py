@@ -115,7 +115,15 @@ LOC_MONTHLY_INTEREST = round(LOC_AMOUNT * LOC_INTEREST_RATE / 12)  # assumes ful
 LAND_ACRES = 4.5
 LAND_PURCHASE_PRICE = 1_400_000  # what the owner actually paid (owned outright, not financed here)
 LAND_ASSESSED_VALUE = 300_000    # county tax assessment - basis for the ~$4K/yr property tax bill
-LAND_VALUE = LAND_PURCHASE_PRICE  # kept for reference; not used in any calculation
+LAND_VALUE = LAND_PURCHASE_PRICE  # kept for reference; use TOTAL_CAPITALIZED_BASIS for basis math
+# The real capitalized basis for any yield-on-cost / cap-rate valuation: no
+# CRE metric excludes land from basis just because it was owned outright
+# rather than purchased with this project's capital. TOTAL_PROJECT_COST
+# alone (buildout only) remains the right denominator for "return on what I
+# actually spent in cash" - that's what the existing FCF Yield metrics on
+# the main dashboard tabs mean and continue to mean. This basis is used only
+# by the CRE valuation/returns functions (Section 9).
+TOTAL_CAPITALIZED_BASIS = LAND_PURCHASE_PRICE + TOTAL_PROJECT_COST
 # The existing $4,000/yr bill taxes RAW LAND only. Once the buildout is
 # finished, Travis County adds the improvements (gravel lot, electrical,
 # plumbing, structures, shade, lighting) to the tax roll and the bill goes
@@ -604,6 +612,17 @@ FIXED_COSTS = {
 MONTHLY_NUT = sum(FIXED_COSTS.values())
 ANNUAL_NUT = MONTHLY_NUT * 12
 
+# Operating costs vs. debt service, split out of the same FIXED_COSTS dict
+# (not a second source of truth - OPERATING_FIXED_COSTS is just FIXED_COSTS
+# minus the one financing line). NOI is defined before debt service in CRE
+# terms; MONTHLY_NUT/ANNUAL_NUT (opex + debt service) remain the correct,
+# unchanged denominator for the nut coverage ratio elsewhere in this file.
+OPERATING_FIXED_COSTS = {k: v for k, v in FIXED_COSTS.items() if k != "loc_interest"}
+MONTHLY_OPEX_NUT = sum(OPERATING_FIXED_COSTS.values())
+ANNUAL_OPEX_NUT = MONTHLY_OPEX_NUT * 12
+MONTHLY_DEBT_SERVICE = FIXED_COSTS["loc_interest"]
+ANNUAL_DEBT_SERVICE = MONTHLY_DEBT_SERVICE * 12
+
 # --- Multi-Year Growth ---
 ANNUAL_GROWTH_RATE = 0.03        # bar traffic + truck sales growth
 ANNUAL_RENT_GROWTH = 0.03        # truck rent escalation
@@ -626,6 +645,30 @@ EFFECTIVE_INCOME_TAX_RATE = 0.28
 LOCAL_HOUSEHOLDS = 8_754
 ANNUAL_COTA_VISITORS = 700_000   # 1.5M total visitors/year, 700K event-attending portion
 ANNUAL_COTA_VISITOR_SPENDING = 50  # avg spend per visitor at bar/parking
+
+# --- CRE Valuation & Returns (Section 9) ---
+# Management fee and replacement reserve are variable costs (% of revenue),
+# not flat dollar amounts, so they're computed per-month in calc_monthly_total
+# rather than living in FIXED_COSTS. Both are REAL costs now, not a
+# valuation-tab-only adjustment - a change of operator/manager would bring a
+# market fee whether or not this owner charges themselves one, and a
+# working F&B-adjacent property needs a real capital replacement reserve
+# regardless of who's collecting it. Rates are standard commercial property
+# management / FF&E reserve market ranges.
+MANAGEMENT_FEE_RATE = 0.04           # % of EGI ex. utility pass-through
+REPLACEMENT_RESERVE_RATE = 0.03      # % of EGI ex. utility pass-through
+# Going-in AND default exit cap rate for the valuation/returns engine below.
+# Both directions (implied value today, reversion value at exit) default to
+# the same rate unless overridden via the dashboard sliders - a real
+# cap-rate-expansion assumption is a sensitivity to run, not a baked-in view.
+MARKET_CAP_RATE = 0.09
+HOLD_PERIOD_YEARS = 5
+SALE_COST_PCT = 0.03                 # broker + closing costs at exit
+DISCOUNT_RATE = 0.10                 # NPV discount rate default
+# Owner's actual land + cash equity in the deal - the LOC finances the
+# buildout only (LOC_AMOUNT == TOTAL_PROJECT_COST, never the land), so
+# everything above that in TOTAL_CAPITALIZED_BASIS is equity.
+EQUITY_BASIS = TOTAL_CAPITALIZED_BASIS - LOC_AMOUNT
 
 
 # =============================================================================
@@ -867,13 +910,34 @@ def calc_monthly_total(weekday_customers, weekend_customers, month, year_month=N
     parking_sales_tax = cota["parking"] * PARKING_SALES_TAX_RATE
     parking_net = cota["parking"] - parking_upkeep - parking_sales_tax
 
-    total_net_before_fixed = (bev_net + trucks["net"] + parking_net
-                              + utilities["net"] - cota["incremental_cost"])
-    noi = total_net_before_fixed - MONTHLY_NUT
+    # Real estate vs. operating-business segment CONTRIBUTION (pre-shared-
+    # overhead - management fee, replacement reserve, and per-event COTA
+    # staffing costs apply to the consolidated property, not to either
+    # segment individually, so they're not allocated between the two here).
+    real_estate_contribution = trucks["net"] + parking_net + utilities["net"]
+    business_contribution = bev_net
+
+    # Management fee + replacement reserve: real, variable operating costs
+    # (market-rate % of EGI), not a valuation-tab-only adjustment - a change
+    # of manager would bring a market fee regardless of this owner's in-kind
+    # arrangement, and a working F&B property needs a real capital reserve.
+    # Excludes the utility pass-through (net-zero by design; a fee on wash
+    # revenue would be economically meaningless).
+    egi_ex_utility = total_gross - utilities["billed"]
+    management_fee = egi_ex_utility * MANAGEMENT_FEE_RATE
+    replacement_reserve = egi_ex_utility * REPLACEMENT_RESERVE_RATE
+
+    total_net_before_fixed = (real_estate_contribution + business_contribution
+                              - cota["incremental_cost"]
+                              - management_fee - replacement_reserve)
+    noi = total_net_before_fixed - MONTHLY_OPEX_NUT   # TRUE NOI - before debt service
+    net_cash_flow = noi - MONTHLY_DEBT_SERVICE         # NOI after debt service (pre-tax)
 
     # "Nut Coverage Ratio" plays the role DSCR played when there was a loan:
     # how many times over does operating income before fixed overhead cover
-    # the fixed monthly nut?
+    # the fixed monthly nut (opex + debt service)? Formula is unchanged -
+    # it just now reflects the management fee/reserve deduction automatically
+    # via the lower total_net_before_fixed.
     nut_coverage = total_net_before_fixed / MONTHLY_NUT if MONTHLY_NUT > 0 else 0
 
     return {
@@ -906,11 +970,15 @@ def calc_monthly_total(weekday_customers, weekend_customers, month, year_month=N
         "payroll_burden": payroll_burden,
         "cc_processing": cc_processing,
         "shrinkage": shrinkage,
+        "management_fee": management_fee,
+        "replacement_reserve": replacement_reserve,
+        "real_estate_contribution": real_estate_contribution,
+        "business_contribution": business_contribution,
         "fixed_costs": MONTHLY_NUT,
         "total_net_before_fixed": total_net_before_fixed,
         "noi": noi,
         "monthly_nut_coverage": nut_coverage,
-        "net_cash_flow": noi,
+        "net_cash_flow": net_cash_flow,
     }
 
 
@@ -960,11 +1028,19 @@ def run_annual_projection(weekday_customers=None, weekend_customers=None, year=1
 def summarize_annual(months):
     """Build the annual summary dict from 12 monthly results.
     Includes after-tax views: income_tax applies EFFECTIVE_INCOME_TAX_RATE
-    to positive annual NOI (pass-through federal tax; TX has no state income
-    tax). Pre-tax NOI remains the primary operating metric."""
+    to positive annual net cash flow (pass-through federal tax; TX has no
+    state income tax; LOC interest is a deductible business expense, so the
+    tax base is cash flow AFTER debt service, not NOI - NOI is defined
+    before debt service in CRE terms and is no longer the right tax base
+    now that the two diverge). Pre-tax NOI remains the primary operating
+    metric; fcf_yield/after_tax_fcf_yield are the owner-facing "return on
+    what I actually spent" figures against TOTAL_PROJECT_COST (buildout
+    only) - see calc_valuation_and_leverage() in Section 9 for the
+    land-inclusive CRE yield-on-cost metric."""
     total_noi = sum(m["noi"] for m in months)
-    income_tax = max(0.0, total_noi) * EFFECTIVE_INCOME_TAX_RATE
-    after_tax_noi = total_noi - income_tax
+    total_net_cash = sum(m["net_cash_flow"] for m in months)
+    income_tax = max(0.0, total_net_cash) * EFFECTIVE_INCOME_TAX_RATE
+    after_tax_noi = total_net_cash - income_tax
     return {
         "total_gross": sum(m["total_gross_revenue"] for m in months),
         "total_trucks": sum(m["truck_gross"] for m in months),
@@ -990,8 +1066,12 @@ def summarize_annual(months):
         "total_mb_sales_tax": sum(m["mb_sales_tax"] for m in months),
         "total_daytime_beverage_cogs": sum(m["daytime_beverage_cogs"] for m in months),
         "total_daytime_beverage_tax": sum(m["daytime_beverage_tax"] for m in months),
+        "total_management_fee": sum(m["management_fee"] for m in months),
+        "total_replacement_reserve": sum(m["replacement_reserve"] for m in months),
+        "total_real_estate_contribution": sum(m["real_estate_contribution"] for m in months),
+        "total_business_contribution": sum(m["business_contribution"] for m in months),
         "total_noi": total_noi,
-        "total_net_cash": sum(m["net_cash_flow"] for m in months),
+        "total_net_cash": total_net_cash,
         "income_tax": income_tax,
         "after_tax_noi": after_tax_noi,
         "after_tax_fcf_yield": after_tax_noi / TOTAL_PROJECT_COST,
@@ -999,7 +1079,7 @@ def summarize_annual(months):
         "min_monthly_nut_coverage": min(m["monthly_nut_coverage"] for m in months),
         "max_monthly_nut_coverage": max(m["monthly_nut_coverage"] for m in months),
         "annual_nut": ANNUAL_NUT,
-        "fcf_yield": total_noi / TOTAL_PROJECT_COST,
+        "fcf_yield": total_net_cash / TOTAL_PROJECT_COST,
     }
 
 
@@ -1039,14 +1119,17 @@ def run_multi_year_projection(base_weekday_customers=None, base_weekend_customer
         )
 
         if yr > 1:
-            inflation_penalty = ANNUAL_NUT * (cost_mult - 1)
+            # Only OPERATING costs inflate - debt service is a flat-rate LOC
+            # carrying cost, not subject to ANNUAL_COST_INFLATION.
+            inflation_penalty = ANNUAL_OPEX_NUT * (cost_mult - 1)
             annual["total_noi"] -= inflation_penalty
             annual["total_net_cash"] -= inflation_penalty
             annual["cost_inflation_adj"] = inflation_penalty
-            annual["fcf_yield"] = annual["total_noi"] / TOTAL_PROJECT_COST
-            # Recompute after-tax figures on the inflation-adjusted NOI
-            annual["income_tax"] = max(0.0, annual["total_noi"]) * EFFECTIVE_INCOME_TAX_RATE
-            annual["after_tax_noi"] = annual["total_noi"] - annual["income_tax"]
+            # Recompute after-tax figures on the inflation-adjusted, POST-
+            # debt-service cash flow (the correct tax base - see summarize_annual).
+            annual["income_tax"] = max(0.0, annual["total_net_cash"]) * EFFECTIVE_INCOME_TAX_RATE
+            annual["after_tax_noi"] = annual["total_net_cash"] - annual["income_tax"]
+            annual["fcf_yield"] = annual["total_net_cash"] / TOTAL_PROJECT_COST
             annual["after_tax_fcf_yield"] = annual["after_tax_noi"] / TOTAL_PROJECT_COST
         else:
             annual["cost_inflation_adj"] = 0
@@ -1428,7 +1511,7 @@ def run_cash_reserve_tracker(all_years=None, verbose=True):
             cf = m["net_cash_flow"]
             if yr > 1:
                 cost_mult = (1 + ANNUAL_COST_INFLATION) ** (yr - 1)
-                cf -= MONTHLY_NUT * (cost_mult - 1)
+                cf -= MONTHLY_OPEX_NUT * (cost_mult - 1)   # only opex inflates, not the flat-rate LOC interest
             cumulative_cf += cf
             cumulative_noi += cf
             balance += cf
@@ -1486,9 +1569,10 @@ def run_loc_payoff_schedule(all_years=None, sweep_pct=1.0, verbose=True):
     for yr, months, annual in all_years:
         cost_mult = (1 + ANNUAL_COST_INFLATION) ** (yr - 1) if yr > 1 else 1.0
         for m in months:
-            noi_before_financing = m["noi"] + LOC_MONTHLY_INTEREST
+            # m["noi"] is already pre-debt-service (true NOI) - no add-back needed here anymore.
+            noi_before_financing = m["noi"]
             if yr > 1:
-                noi_before_financing -= MONTHLY_NUT * (cost_mult - 1)
+                noi_before_financing -= MONTHLY_OPEX_NUT * (cost_mult - 1)
 
             if balance <= 0.01:
                 interest, principal_payment = 0.0, 0.0
@@ -1558,9 +1642,13 @@ def print_owner_summary():
     print(f"  {'':>25} {'Conservative':>16} {'Base Case':>16}")
     print("  " + "-" * 58)
     print(f"  {'Annual Revenue':<25} ${conservative['total_gross']:>15,.0f} ${base['total_gross']:>15,.0f}")
+    print(f"  {'Management Fee (4% EGI)':<25} ${conservative['total_management_fee']:>15,.0f} ${base['total_management_fee']:>15,.0f}")
+    print(f"  {'Replacement Reserve (3%)':<25} ${conservative['total_replacement_reserve']:>15,.0f} ${base['total_replacement_reserve']:>15,.0f}")
     print(f"  {'Annual NOI (pre-tax)':<25} ${conservative['total_noi']:>15,.0f} ${base['total_noi']:>15,.0f}")
+    print(f"  {'  (before LOC interest)':<25}")
+    print(f"  {'Free Cash Flow (pre-tax)':<25} ${conservative['total_net_cash']:>15,.0f} ${base['total_net_cash']:>15,.0f}")
     print(f"  {'Est. Income Tax (28%)':<25} ${conservative['income_tax']:>15,.0f} ${base['income_tax']:>15,.0f}")
-    print(f"  {'After-Tax NOI':<25} ${conservative['after_tax_noi']:>15,.0f} ${base['after_tax_noi']:>15,.0f}")
+    print(f"  {'After-Tax Cash Flow':<25} ${conservative['after_tax_noi']:>15,.0f} ${base['after_tax_noi']:>15,.0f}")
     print(f"  {'FCF Yield (pre-tax)':<25} {conservative['fcf_yield']:>15.1%} {base['fcf_yield']:>15.1%}")
     print(f"  {'FCF Yield (after-tax)':<25} {conservative['after_tax_fcf_yield']:>15.1%} {base['after_tax_fcf_yield']:>15.1%}")
 
@@ -1800,10 +1888,16 @@ def run_tax_strategy_analysis(annual_noi, owner_salary=None,
 
 
 def print_tax_strategy_analysis(annual_noi=None):
-    """CLI view of the depreciation + S-corp tax strategy analysis, on Base Case Year 1 NOI by default."""
+    """CLI view of the depreciation + S-corp tax strategy analysis, on Base
+    Case Year 1 taxable profit by default.
+
+    `annual_noi` here means taxable profit AFTER LOC interest (a deductible
+    business expense) - despite the parameter name (kept for backward
+    compatibility with callers), this should be total_net_cash, not
+    total_noi, which is now defined BEFORE debt service."""
     if annual_noi is None:
         _, base = run_scenario_projection(SCENARIOS["Base Case"])
-        annual_noi = base["total_noi"]
+        annual_noi = base["total_net_cash"]
 
     no_strategy = run_tax_strategy_analysis(annual_noi, apply_depreciation=False, apply_scorp=False)
     dep_only = run_tax_strategy_analysis(annual_noi, accelerated_depreciation=False, apply_scorp=False)
@@ -1813,7 +1907,7 @@ def print_tax_strategy_analysis(annual_noi=None):
     print(f"\n{'=' * 70}")
     print("  TAX STRATEGY ANALYSIS")
     print(f"{'=' * 70}")
-    print(f"\n  Annual NOI (pre-tax): ${annual_noi:,.0f}")
+    print(f"\n  Annual Taxable Profit (pre-tax, after LOC interest): ${annual_noi:,.0f}")
     print(f"\n  DEPRECIATION BASIS")
     print(f"  {'5-Year (equipment/fixtures)':<32} ${DEPRECIABLE_BASIS_5YR:>10,.0f}")
     print(f"  {'15-Year (land improvements)':<32} ${DEPRECIABLE_BASIS_15YR:>10,.0f}")
@@ -1842,7 +1936,170 @@ def print_tax_strategy_analysis(annual_noi=None):
 
 
 # =============================================================================
-# SECTION 9: CLI MENU
+# SECTION 9: CRE VALUATION & RETURNS ANALYSIS
+# =============================================================================
+# Standard commercial real estate underwriting metrics that this model didn't
+# previously compute: cap-rate valuation, LTC/LTV, debt yield, and a full
+# unlevered/levered returns engine (IRR, NPV, equity multiple, cash-on-cash).
+# These are ADDITIONAL to the existing owner-facing metrics elsewhere in this
+# file (fcf_yield, monthly_nut_coverage, etc.), which keep their original
+# meaning and denominator (TOTAL_PROJECT_COST, buildout only) - the functions
+# here use TOTAL_CAPITALIZED_BASIS (land + buildout), the technically correct
+# basis for a CRE yield-on-cost or valuation figure. Surfaced in the
+# dashboard's dedicated "CRE Investment Summary" tab.
+
+def calc_valuation_and_leverage(annual, cap_rate=None):
+    """
+    Cap-rate valuation, yield on cost, LTC/LTV, and debt yield off a given
+    year's annual NOI (before debt service - see summarize_annual).
+
+    cap_rate: the market capitalization rate used to convert NOI into an
+    implied asset value (value = NOI / cap_rate). Defaults to MARKET_CAP_RATE.
+    """
+    cap_rate = cap_rate if cap_rate is not None else MARKET_CAP_RATE
+    noi = annual["total_noi"]
+    implied_value = noi / cap_rate if cap_rate > 0 else 0
+    yield_on_cost = noi / TOTAL_CAPITALIZED_BASIS
+    return {
+        "cap_rate": cap_rate,
+        "implied_value": implied_value,
+        "yield_on_cost": yield_on_cost,
+        "development_spread": yield_on_cost - cap_rate,
+        "total_capitalized_basis": TOTAL_CAPITALIZED_BASIS,
+        "ltc": LOC_AMOUNT / TOTAL_CAPITALIZED_BASIS,
+        "ltv": LOC_AMOUNT / implied_value if implied_value > 0 else 0,
+        "debt_yield": noi / LOC_AMOUNT if LOC_AMOUNT > 0 else 0,
+        "equity_basis": EQUITY_BASIS,
+    }
+
+
+def _irr(cash_flows, lo=-0.95, hi=10.0, iterations=200):
+    """Bisection IRR solver - no external dependency required.
+
+    Returns None if there's no sign change across [lo, hi] (IRR undefined
+    or outside a sane range for this size of cash flow stream).
+    """
+    def npv_at(rate):
+        return sum(cf / (1 + rate) ** i for i, cf in enumerate(cash_flows))
+
+    if npv_at(lo) * npv_at(hi) > 0:
+        return None
+    for _ in range(iterations):
+        mid = (lo + hi) / 2
+        if npv_at(lo) * npv_at(mid) <= 0:
+            hi = mid
+        else:
+            lo = mid
+    return (lo + hi) / 2
+
+
+def _npv(rate, cash_flows):
+    return sum(cf / (1 + rate) ** i for i, cf in enumerate(cash_flows))
+
+
+def run_returns_analysis(hold_years=None, exit_cap_rate=None, sale_cost_pct=None,
+                         discount_rate=None, base_years=None):
+    """
+    Unlevered and levered IRR/NPV/equity multiple over a hold period, with
+    reversion (sale) at a forward-looking cap rate applied to the NOI of the
+    year immediately AFTER the hold ends (standard convention - the buyer is
+    pricing off their first year of ownership, not the seller's last).
+
+    Debt is held FLAT at LOC_AMOUNT through the hold and paid off in full at
+    sale - the same conservative "full balance always drawn" convention
+    MONTHLY_NUT/ANNUAL_NUT use everywhere else in this model (see
+    run_loc_payoff_schedule for the separate, more realistic declining-
+    balance view - not fed into this analysis for the same reason it isn't
+    fed into ANNUAL_NUT: this model's convention is to keep the headline
+    figures conservative and show the realistic view as a distinct,
+    clearly-labeled alternative).
+
+    base_years: optionally pass a pre-computed run_multi_year_projection()
+    result (used by run_cre_sensitivity_grid to avoid recomputing it).
+    """
+    hold_years = hold_years if hold_years is not None else HOLD_PERIOD_YEARS
+    exit_cap_rate = exit_cap_rate if exit_cap_rate is not None else MARKET_CAP_RATE
+    sale_cost_pct = sale_cost_pct if sale_cost_pct is not None else SALE_COST_PCT
+    discount_rate = discount_rate if discount_rate is not None else DISCOUNT_RATE
+    years = (base_years if base_years is not None
+             else run_multi_year_projection(years=hold_years + 1))
+
+    noi_by_year = [ann["total_noi"] for _, _, ann in years]
+    ncf_by_year = [ann["total_net_cash"] for _, _, ann in years]
+
+    reversion_noi = noi_by_year[hold_years]        # year hold+1's NOI (forward cap convention)
+    reversion_gross = reversion_noi / exit_cap_rate if exit_cap_rate > 0 else 0
+    reversion_net = reversion_gross * (1 - sale_cost_pct)
+
+    unlevered_cash_flows = ([-TOTAL_CAPITALIZED_BASIS] + noi_by_year[:hold_years - 1]
+                            + [noi_by_year[hold_years - 1] + reversion_net])
+    levered_cash_flows = ([-EQUITY_BASIS] + ncf_by_year[:hold_years - 1]
+                          + [ncf_by_year[hold_years - 1] + reversion_net - LOC_AMOUNT])
+
+    return {
+        "hold_years": hold_years, "exit_cap_rate": exit_cap_rate,
+        "sale_cost_pct": sale_cost_pct, "discount_rate": discount_rate,
+        "reversion_gross": reversion_gross, "reversion_net": reversion_net,
+        "unlevered_cash_flows": unlevered_cash_flows,
+        "levered_cash_flows": levered_cash_flows,
+        "unlevered_irr": _irr(unlevered_cash_flows),
+        "levered_irr": _irr(levered_cash_flows),
+        "unlevered_npv": _npv(discount_rate, unlevered_cash_flows),
+        "levered_npv": _npv(discount_rate, levered_cash_flows),
+        "unlevered_equity_multiple": sum(unlevered_cash_flows[1:]) / TOTAL_CAPITALIZED_BASIS,
+        "levered_equity_multiple": (sum(levered_cash_flows[1:]) / EQUITY_BASIS
+                                    if EQUITY_BASIS > 0 else None),
+        "cash_on_cash_year1": ncf_by_year[0] / EQUITY_BASIS if EQUITY_BASIS > 0 else None,
+    }
+
+
+def run_cre_sensitivity_grid(revenue_deltas=(-0.10, 0.0, 0.10),
+                             exit_cap_rates=(0.08, 0.09, 0.10, 0.11),
+                             hold_years=None,
+                             base_weekday_customers=None, base_weekend_customers=None,
+                             base_check=None, base_truck_avg_sales=None,
+                             truck_slots=None, truck_rent=None, truck_share_rate=None,
+                             truck_occupancy=None, seasonal_pct=1.0,
+                             daytime_beverage_attach_rate=None,
+                             daytime_beverage_avg_price=None):
+    """
+    Unlevered IRR grid: revenue scenario x exit cap rate, for the CRE tab's
+    sensitivity table. Scales bar traffic, avg check, and truck avg sales
+    together by revenue_delta (a blanket revenue-strength scenario, not a
+    single-lever sensitivity). Every base_* argument mirrors a dashboard
+    slider, same convention as run_monte_carlo/run_multi_year_projection -
+    passing none of them reproduces the module defaults.
+    """
+    hold_years = hold_years if hold_years is not None else HOLD_PERIOD_YEARS
+    wd0 = base_weekday_customers if base_weekday_customers is not None else BAR_WEEKDAY_CUSTOMERS
+    we0 = base_weekend_customers if base_weekend_customers is not None else BAR_WEEKEND_CUSTOMERS
+    check0 = base_check if base_check is not None else BAR_AVG_CHECK
+    tsales0 = base_truck_avg_sales if base_truck_avg_sales is not None else TRUCK_AVG_MONTHLY_SALES
+
+    grid = []
+    for delta in revenue_deltas:
+        row = {"revenue_delta": delta}
+        years = run_multi_year_projection(
+            base_weekday_customers=wd0 * (1 + delta),
+            base_weekend_customers=we0 * (1 + delta),
+            base_check=check0 * (1 + delta),
+            truck_avg_sales=tsales0 * (1 + delta),
+            truck_slots=truck_slots, truck_rent=truck_rent,
+            truck_share_rate=truck_share_rate, truck_occupancy=truck_occupancy,
+            seasonal_pct=seasonal_pct,
+            daytime_beverage_attach_rate=daytime_beverage_attach_rate,
+            daytime_beverage_avg_price=daytime_beverage_avg_price,
+            years=hold_years + 1,
+        )
+        for cap in exit_cap_rates:
+            result = run_returns_analysis(hold_years=hold_years, exit_cap_rate=cap, base_years=years)
+            row[cap] = result["unlevered_irr"]
+        grid.append(row)
+    return grid
+
+
+# =============================================================================
+# SECTION 10: CLI MENU
 # =============================================================================
 
 def print_annual_summary(months, annual, label=""):

@@ -62,14 +62,20 @@ Two files, strict separation of concerns:
   followed by revenue/cost functions (Section 2), annual/multi-year
   projection runners (Section 3), a Monte Carlo simulator (Section 4), named
   scenarios (Section 5), break-even/sensitivity analysis (Section 6), a
-  cash-reserve tracker + LOC payoff schedule (Section 7), and a tax-strategy
-  analysis (depreciation + S-corp election, Section 8). Section 9 is a plain
-  `input()`-driven CLI menu (`main()`) for running the same analyses from a
-  terminal.
+  cash-reserve tracker + LOC payoff schedule (Section 7), a tax-strategy
+  analysis (depreciation + S-corp election, Section 8), and a CRE valuation
+  & returns engine (cap-rate value, LTC/LTV, debt yield, unlevered/levered
+  IRR/NPV/equity multiple, Section 9 — see "NOI vs. cash flow" and "Land
+  basis" above). Section 10 is a plain `input()`-driven CLI menu (`main()`)
+  for running the same analyses from a terminal.
 - **`streamlit_app_ftp.py`** — imports `food_truck_park_model` as `model` and
-  wraps it in an 11-tab dashboard (Dashboard, Annual Projection, Sensitivity,
+  wraps it in a 12-tab dashboard (Dashboard, Annual Projection, Sensitivity,
   Break-Even, Monte Carlo, Scenarios, Multi-Year, Waterfall, Owner Summary,
-  Tax Strategies, Model Overview). All sidebar sliders default to the
+  Tax Strategies, Model Overview, CRE Investment Summary). The first 11 tabs
+  are deliberately plain-language and stay that way — CRE-specific
+  vocabulary (NOI before debt service, cap rate, LTV, debt yield, IRR,
+  equity multiple) lives only in the CRE Investment Summary tab, which reads
+  the Section 9 functions above. All sidebar sliders default to the
   module's constants (e.g. `model.TRUCK_SLOTS`, `model.BAR_WEEKDAY_CUSTOMERS`),
   and `@st.cache_data`-wrapped wrapper functions (`get_annual`,
   `get_multi_year`, `get_monte_carlo`, `get_scenario_results`) call straight
@@ -91,21 +97,84 @@ this in two places that must stay consistent when either changes:
    consistent but deliberately pessimistic about financing cost.
 2. **`run_loc_payoff_schedule()`** is the realistic counterpart: it
    simulates the LOC balance actually declining month-by-month as free cash
-   flow (computed by adding `LOC_MONTHLY_INTEREST` back into each month's
-   `noi`, then re-subtracting *actual* interest on the declining balance) is
-   swept against principal, and reports the real payoff month and total
-   interest paid — always lower than what the flat-nut assumption implies.
-   If you change `LOC_INTEREST_RATE` or `LOC_AMOUNT`, both places pick it up
-   automatically since they derive from the same constants.
+   flow (`m["noi"]`, already pre-debt-service — see below) is swept against
+   interest on the declining balance first, then principal, and reports the
+   real payoff month and total interest paid — always lower than what the
+   flat-nut assumption implies. If you change `LOC_INTEREST_RATE` or
+   `LOC_AMOUNT`, both places pick it up automatically since they derive from
+   the same constants.
 
 `DSCR` (the lender-facing coverage ratio from the RV-park version of this
-model) doesn't apply — there's no lender covenant on a personal LOC.
-`monthly_nut_coverage` / `avg_monthly_nut_coverage` play the same analytical
-role, but measure operating income before fixed costs against the *total
-monthly nut* (including LOC interest) rather than against a debt-service
-payment. `fcf_yield` (labeled "FCF Yield on Total Cost" in the UI) is annual
-NOI divided by `TOTAL_PROJECT_COST` — a returns metric independent of how
-the $81.6K was actually financed.
+model) doesn't apply in the owner-facing sense — there's no lender covenant
+on a personal LOC. `monthly_nut_coverage` / `avg_monthly_nut_coverage` play
+the same analytical role, but measure operating income before fixed costs
+against the *total monthly nut* (including LOC interest) rather than
+against a debt-service payment — this is a Fixed Charge Coverage Ratio
+(FCCR), not a DSCR, and is labeled that way in the CRE Investment Summary
+tab. `fcf_yield` (labeled "FCF Yield on Total Cost" in the UI) is
+`total_net_cash` (cash flow AFTER debt service) divided by
+`TOTAL_PROJECT_COST` — a levered returns metric on cash actually spent,
+independent of how the $81.6K was financed. See "NOI vs. cash flow" below
+for how this differs from `total_noi`.
+
+### NOI vs. cash flow — two different bases, don't conflate them
+
+`total_noi` and `total_net_cash` (and their monthly counterparts `noi`/
+`net_cash_flow`) are **deliberately different numbers**, split out in
+`calc_monthly_total()`:
+
+- **`noi`** = operating income before fixed overhead, less `MONTHLY_OPEX_NUT`
+  (fixed costs *excluding* LOC interest) and the new management fee /
+  replacement reserve (see below). This is **NOI in the standard CRE
+  sense — before debt service** — the correct numerator for a cap-rate
+  valuation, yield-on-cost, or debt-yield calculation.
+- **`net_cash_flow`** = `noi - MONTHLY_DEBT_SERVICE` (the LOC interest
+  line). This is what the dashboard's plain-language "Free Cash Flow"
+  metrics mean, and what's actually available to the owner.
+
+`MONTHLY_NUT`/`ANNUAL_NUT` (opex + debt service combined) are unchanged and
+remain the correct denominator for the coverage ratio above.
+`OPERATING_FIXED_COSTS`/`MONTHLY_OPEX_NUT`/`ANNUAL_OPEX_NUT` and
+`MONTHLY_DEBT_SERVICE`/`ANNUAL_DEBT_SERVICE` are the split-out pieces.
+
+**Tax base:** federal income tax (`income_tax` in `summarize_annual`) and
+the Tax Strategies tab's "Taxable Profit Basis" both apply to
+`total_net_cash`, not `total_noi` — LOC interest is a deductible business
+expense, so the owner's actual taxable profit is *after* debt service, not
+before it. Do not repoint these back to `total_noi`; that was the bug this
+split fixed (NOI used to be net of interest, conflating the two).
+
+### Management fee & replacement reserve — real costs, not a display adjustment
+
+`MANAGEMENT_FEE_RATE` (4%) and `REPLACEMENT_RESERVE_RATE` (3%) are real,
+variable operating costs computed in `calc_monthly_total()` off EGI
+excluding the utility pass-through (a fee on wash revenue would be
+meaningless). They reduce `total_net_before_fixed` — and therefore every
+downstream cash-flow figure across the whole dashboard, not just the CRE
+tab — by roughly $25-30K/yr at stabilized. This is deliberate: a lender or
+buyer always normalizes for a market management fee and a capital
+replacement reserve regardless of how the current owner actually staffs
+the property (the manager here works in exchange for free housing, not a
+fee), and a working F&B property needs a real reserve whether or not this
+owner sets one aside. If these rates change, `test_management_fee_and_reserve_scale_with_egi`
+guards the identity.
+
+### Land basis — `TOTAL_PROJECT_COST` vs. `TOTAL_CAPITALIZED_BASIS`
+
+`TOTAL_PROJECT_COST` ($81,600, buildout only) remains the denominator for
+every plain-language "FCF Yield" metric elsewhere in the dashboard — that's
+"return on cash actually spent," a legitimate and different question from
+a CRE yield-on-cost. `TOTAL_CAPITALIZED_BASIS = LAND_PURCHASE_PRICE +
+TOTAL_PROJECT_COST` ($1,481,600) is the land-inclusive basis used **only**
+by the CRE Valuation & Returns functions (`calc_valuation_and_leverage()`,
+`run_returns_analysis()`, `run_cre_sensitivity_grid()`, Section 9) and
+surfaced in the CRE Investment Summary tab. `EQUITY_BASIS =
+TOTAL_CAPITALIZED_BASIS - LOC_AMOUNT` is the owner's actual equity in the
+deal — since `LOC_AMOUNT == TOTAL_PROJECT_COST` (the LOC fully finances the
+buildout and nothing else), `EQUITY_BASIS` numerically equals
+`LAND_PURCHASE_PRICE`. Don't exclude land from a yield-on-cost calculation
+just because it was owned outright rather than purchased with this
+project's capital — no CRE metric does that.
 
 ### Staffing: two people, no fixed labor line in the nut
 
@@ -361,12 +430,17 @@ the in-line comments flag which items are researched versus estimated.
 `total_cc_processing`,
 `total_shrinkage`, `total_bartender_share`, `total_payroll_burden`,
 `total_cota_parking_upkeep`, `total_cota_parking_sales_tax`,
-`total_cota_cost`, `total_utility_cost`) so the dashboard's Owner Summary
-and Waterfall tabs read them directly instead of re-deriving `rate x
-revenue` locally in multiple places. Prefer reading these fields over
-recomputing - see the COTA-total note above for what goes wrong when a
+`total_cota_cost`, `total_utility_cost`, `total_management_fee`,
+`total_replacement_reserve`) plus the real-estate/business segment split
+(`total_real_estate_contribution`, `total_business_contribution` — see
+"NOI vs. cash flow" above for what these are and aren't) so the dashboard's
+Owner Summary and Waterfall tabs read them directly instead of re-deriving
+`rate x revenue` locally in multiple places. Prefer reading these fields
+over recomputing - see the COTA-total note above for what goes wrong when a
 derived total is duplicated across call sites instead of computed once in
-the engine.
+the engine. The Waterfall tab additionally asserts its hand-rolled cost
+stack reconciles to `annual["after_tax_noi"]` at render time, so a
+mismatched addition there fails loudly instead of silently drifting.
 
 ### Scenario / sensitivity / Monte Carlo relationship
 
