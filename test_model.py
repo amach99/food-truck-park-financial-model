@@ -578,3 +578,35 @@ def test_cre_sensitivity_grid_varies_with_revenue_and_cap_rate():
     low, base, high = grid
     assert low[0.08] < base[0.08] < high[0.08]      # more revenue -> higher IRR
     assert base[0.10] < base[0.08]                   # higher exit cap -> lower IRR
+
+
+def test_construction_period_delays_returns_engine_cash_flows():
+    """run_returns_analysis() should discount every post-Year-0 cash flow
+    CONSTRUCTION_PERIOD_MONTHS later than a same-cash-flows, zero-offset IRR
+    would - capital sits in construction before Year 1 operations begin, so
+    it shouldn't appear to earn a return during that gap. This is a timing
+    correction only: same dollar cash flows, later discount points, and a
+    strictly lower IRR/NPV as a result (assuming a positive construction
+    period and a return-positive deal, both true at defaults)."""
+    assert m.CONSTRUCTION_PERIOD_MONTHS > 0
+    result = m.run_returns_analysis()
+    construction_years = m.CONSTRUCTION_PERIOD_MONTHS / 12
+
+    no_offset_irr = m._irr(result["unlevered_cash_flows"], period_offset=0.0)
+    with_offset_irr = m._irr(result["unlevered_cash_flows"], period_offset=construction_years)
+    assert with_offset_irr == pytest.approx(result["unlevered_irr"])
+    assert with_offset_irr < no_offset_irr
+
+    no_offset_npv = m._npv(m.DISCOUNT_RATE, result["unlevered_cash_flows"], period_offset=0.0)
+    with_offset_npv = m._npv(m.DISCOUNT_RATE, result["unlevered_cash_flows"], period_offset=construction_years)
+    assert with_offset_npv == pytest.approx(result["unlevered_npv"])
+    assert with_offset_npv < no_offset_npv
+
+
+def test_irr_npv_period_offset_defaults_to_zero():
+    """Backward-compat: calling _irr/_npv without period_offset (as every
+    call site did before CONSTRUCTION_PERIOD_MONTHS existed) must reproduce
+    the plain annual-period convention exactly."""
+    cash_flows = [-100_000, 20_000, 30_000, 40_000, 130_000]
+    assert m._irr(cash_flows) == pytest.approx(m._irr(cash_flows, period_offset=0.0))
+    assert m._npv(0.10, cash_flows) == pytest.approx(m._npv(0.10, cash_flows, period_offset=0.0))

@@ -690,6 +690,17 @@ DISCOUNT_RATE = 0.10                 # NPV discount rate default
 # buildout only (LOC_AMOUNT == TOTAL_PROJECT_COST, never the land), so
 # everything above that in TOTAL_CAPITALIZED_BASIS is equity.
 EQUITY_BASIS = TOTAL_CAPITALIZED_BASIS - LOC_AMOUNT
+# Months between capital deployment (t=0 in the returns engine below) and
+# the first month of operations (OPENING_MONTH) - site work + buildout for a
+# park this size, before any revenue exists to discount. This is a TIMING
+# correction only: it delays every cash flow in run_returns_analysis()'s IRR/
+# NPV by this many months, so capital doesn't appear to earn a return during
+# a period when it's actually sitting in a construction budget. It does NOT
+# model a draw schedule (USE_OF_FUNDS is still spent as a lump sum at t=0),
+# a capitalized interest reserve, land carry during construction, or a
+# developer fee - those remain open items on the CRE review's implementation
+# tracker (items 6b-6d) and would each add real cost, not just shift timing.
+CONSTRUCTION_PERIOD_MONTHS = 4
 
 
 # =============================================================================
@@ -2042,14 +2053,25 @@ def calc_valuation_and_leverage(annual, cap_rate=None):
     }
 
 
-def _irr(cash_flows, lo=-0.95, hi=10.0, iterations=200):
+def _period_times(n, period_offset=0.0):
+    """Discount-period timeline for a cash-flow list of length n: t=0 for the
+    initial outlay (index 0), then i + period_offset for every later entry -
+    i.e. every post-t=0 cash flow arrives period_offset years later than the
+    no-offset convention (used to push the whole operating cash-flow stream
+    out by the construction period - see CONSTRUCTION_PERIOD_MONTHS)."""
+    return [0.0] + [i + period_offset for i in range(1, n)]
+
+
+def _irr(cash_flows, lo=-0.95, hi=10.0, iterations=200, period_offset=0.0):
     """Bisection IRR solver - no external dependency required.
 
     Returns None if there's no sign change across [lo, hi] (IRR undefined
     or outside a sane range for this size of cash flow stream).
     """
+    times = _period_times(len(cash_flows), period_offset)
+
     def npv_at(rate):
-        return sum(cf / (1 + rate) ** i for i, cf in enumerate(cash_flows))
+        return sum(cf / (1 + rate) ** t for t, cf in zip(times, cash_flows))
 
     if npv_at(lo) * npv_at(hi) > 0:
         return None
@@ -2062,8 +2084,9 @@ def _irr(cash_flows, lo=-0.95, hi=10.0, iterations=200):
     return (lo + hi) / 2
 
 
-def _npv(rate, cash_flows):
-    return sum(cf / (1 + rate) ** i for i, cf in enumerate(cash_flows))
+def _npv(rate, cash_flows, period_offset=0.0):
+    times = _period_times(len(cash_flows), period_offset)
+    return sum(cf / (1 + rate) ** t for t, cf in zip(times, cash_flows))
 
 
 def run_returns_analysis(hold_years=None, exit_cap_rate=None, sale_cost_pct=None,
@@ -2082,6 +2105,15 @@ def run_returns_analysis(hold_years=None, exit_cap_rate=None, sale_cost_pct=None
     fed into ANNUAL_NUT: this model's convention is to keep the headline
     figures conservative and show the realistic view as a distinct,
     clearly-labeled alternative).
+
+    The t=0 outlay (-TOTAL_CAPITALIZED_BASIS / -EQUITY_BASIS) still happens
+    at time zero, but every subsequent year's cash flow is discounted
+    CONSTRUCTION_PERIOD_MONTHS/12 years later than the no-construction-period
+    convention would put it - capital sits in a buildout for that long before
+    Year 1 operations (and their cash flow) begin. This is a timing
+    correction only; the dollar amounts of TOTAL_CAPITALIZED_BASIS and each
+    year's NOI/net cash flow are unchanged (no draw schedule, capitalized
+    interest, land carry, or developer fee - see CONSTRUCTION_PERIOD_MONTHS).
 
     base_years: optionally pass a pre-computed run_multi_year_projection()
     result (used by run_cre_sensitivity_grid to avoid recomputing it).
@@ -2104,6 +2136,7 @@ def run_returns_analysis(hold_years=None, exit_cap_rate=None, sale_cost_pct=None
                             + [noi_by_year[hold_years - 1] + reversion_net])
     levered_cash_flows = ([-EQUITY_BASIS] + ncf_by_year[:hold_years - 1]
                           + [ncf_by_year[hold_years - 1] + reversion_net - LOC_AMOUNT])
+    construction_years = CONSTRUCTION_PERIOD_MONTHS / 12
 
     return {
         "hold_years": hold_years, "exit_cap_rate": exit_cap_rate,
@@ -2111,10 +2144,10 @@ def run_returns_analysis(hold_years=None, exit_cap_rate=None, sale_cost_pct=None
         "reversion_gross": reversion_gross, "reversion_net": reversion_net,
         "unlevered_cash_flows": unlevered_cash_flows,
         "levered_cash_flows": levered_cash_flows,
-        "unlevered_irr": _irr(unlevered_cash_flows),
-        "levered_irr": _irr(levered_cash_flows),
-        "unlevered_npv": _npv(discount_rate, unlevered_cash_flows),
-        "levered_npv": _npv(discount_rate, levered_cash_flows),
+        "unlevered_irr": _irr(unlevered_cash_flows, period_offset=construction_years),
+        "levered_irr": _irr(levered_cash_flows, period_offset=construction_years),
+        "unlevered_npv": _npv(discount_rate, unlevered_cash_flows, period_offset=construction_years),
+        "levered_npv": _npv(discount_rate, levered_cash_flows, period_offset=construction_years),
         "unlevered_equity_multiple": sum(unlevered_cash_flows[1:]) / TOTAL_CAPITALIZED_BASIS,
         "levered_equity_multiple": (sum(levered_cash_flows[1:]) / EQUITY_BASIS
                                     if EQUITY_BASIS > 0 else None),

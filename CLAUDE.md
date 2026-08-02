@@ -176,6 +176,27 @@ buildout and nothing else), `EQUITY_BASIS` numerically equals
 just because it was owned outright rather than purchased with this
 project's capital — no CRE metric does that.
 
+### Development-period timing — `CONSTRUCTION_PERIOD_MONTHS`
+
+`run_returns_analysis()`'s IRR/NPV used to discount the t=0 capital outlay
+(`-TOTAL_CAPITALIZED_BASIS`/`-EQUITY_BASIS`) and Year 1's cash flow as if
+they were exactly one year apart — i.e. as if the park opened the instant
+capital was deployed, with zero construction time. `CONSTRUCTION_PERIOD_MONTHS`
+(4 months) fixes that: `_irr`/`_npv` now take a `period_offset` (in years),
+and `run_returns_analysis()` passes `CONSTRUCTION_PERIOD_MONTHS / 12` so
+every post-Year-0 cash flow is discounted that much later — capital sitting
+in a buildout for four months shouldn't appear to earn a return during that
+gap. This is a **timing correction only** (drops unlevered IRR from 20.3%
+to 18.7% at defaults): it does not add a construction draw schedule (
+`USE_OF_FUNDS` is still spent as a lump sum at t=0), a capitalized interest
+reserve, land carry during construction, or a developer fee — those are
+real *costs*, not just a timing shift, and remain open items on
+`CRE_UNDERWRITING_REVIEW.md`'s implementation tracker (item 6). Nothing
+outside `run_returns_analysis()`/`run_cre_sensitivity_grid()` reads this
+constant — `run_loc_payoff_schedule()`, `run_cash_reserve_tracker()`, and
+every other tab's "month 1" still mean the first month of operations,
+unaffected by this change.
+
 ### Staffing: two people, no fixed labor line in the nut
 
 The park runs on exactly two people, both living on-site rent-free: a park

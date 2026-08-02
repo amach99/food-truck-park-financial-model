@@ -610,7 +610,17 @@ modules. Run `pytest -q` after every change.
       convention as `MONTHLY_NUT` elsewhere), not the declining balance from `run_loc_payoff_schedule()` —
       a deliberate consistency choice, documented in the function's docstring.
 - [ ] **6. Model the development period.** Construction draw schedule over `USE_OF_FUNDS`, capitalized
-      interest reserve, land carry, developer fee. Shift operating month 1 to follow it. **Not started.**
+      interest reserve, land carry, developer fee. **Partially done, by explicit user scope decision:**
+      only the timing shift landed — `CONSTRUCTION_PERIOD_MONTHS` (4 months) now delays every post-Year-0
+      cash flow in `run_returns_analysis()`'s IRR/NPV by that many months (`_irr`/`_npv` take a
+      `period_offset` in years), so capital deployed at t=0 no longer appears to earn a return during
+      construction. This drops unlevered IRR from 20.3% to 18.7% at defaults — a real but modest
+      correction. **Still not started:** the construction draw schedule itself (`USE_OF_FUNDS` is still
+      spent as a lump sum at t=0, not spread over the construction months), the capitalized interest
+      reserve (interest accruing on draws during construction, which would raise total project cost), land
+      carry (property tax etc. during construction, before revenue exists to cover it), and the developer
+      fee. None of these add cost yet — this item only fixed *when* existing dollars are discounted, not
+      *how much* the development period actually costs. Revisit when ready to model the draw schedule.
 - [ ] **7. Obtain signed leases on ≥50% of pads** before treating `TRUCK_Y1_FILL_RAMP` as anything but a
       guess. *(Business action, not code.)*
 

@@ -1588,6 +1588,14 @@ with tabs[11]:
     # --- 4. Returns ---
     st.markdown("---")
     st.subheader("4. Returns — Unlevered & Levered")
+    st.caption(
+        f"IRR/NPV assume a {model.CONSTRUCTION_PERIOD_MONTHS}-month construction "
+        "period between capital deployment (Year 0) and Year 1 operations — "
+        "cash flows are discounted from when they actually start, not from "
+        "day one. Draw schedule, capitalized interest, and land carry during "
+        "that period aren't modeled yet, so this is a timing correction only, "
+        "not a full development-cost build-out."
+    )
     r1, r2, r3, r4 = st.columns(4)
     hold_years = r1.slider("Hold Period (yrs)", 3, 10, model.HOLD_PERIOD_YEARS, step=1)
     exit_cap_pct = r2.slider("Exit Cap Rate (%)", 6.0, 14.0, model.MARKET_CAP_RATE * 100, step=0.25)
