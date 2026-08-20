@@ -9,6 +9,19 @@
 > All figures in this memo were computed directly from the model at the commit above, not estimated.
 > Re-run the calculations in [Appendix A](#appendix-a--reproducing-the-figures) after any engine change.
 
+> **⚠️ SUPERSEDED — financing structure changed after this memo was written.**
+> This memo's capital-stack analysis (Section 5) and every dollar figure
+> derived from it assume the **original $81,600 personal LOC at 12.5%,
+> interest-only/revolving** — exactly the structure this memo itself
+> flagged as "insufficient the moment an institution is approached" (see
+> Section 2). That institution has now been approached: the model is
+> financed by a real **$500,000 bank term loan** (fixed-payment, fully
+> amortizing — see `CLAUDE.md`'s "Financing" section for current terms).
+> Treat this memo as a historical record of the *prior* financing
+> structure's shortcomings, not as a current capital-stack reference —
+> re-run [Appendix A](#appendix-a--reproducing-the-figures) against the
+> live model for up-to-date figures rather than trusting the numbers below.
+
 ---
 
 ## Table of contents

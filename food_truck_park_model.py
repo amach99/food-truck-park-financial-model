@@ -14,24 +14,38 @@ Concept:
     (Texas PUC utility-resale rules: PURA Sec. 39.107 - resale at cost, no
     markup)
 
-Startup cost: ~$76K, drawn entirely from a personal line of credit (LOC) at
-12.5% interest - not a bank term loan. USE_OF_FUNDS is sourced from the
-owner's actual "Phase 0.5 Master Plan" cost tracker (Notion), itemized with
-real vendor-quoted prices rather than estimated buckets, plus a few real
-costs the tracker doesn't capture yet (refrigerators, initial beer/liquor
-inventory). Of that, ~$39.2K is already paid, ~$2.3K is in progress, and
-~$34.6K (including permits/contingency) is not yet started. Line items the
-owner flagged as planning-only and never implemented (generator, grease
-removal service, propane tank service) are excluded entirely rather than
-estimated.
+Loan request: $500,000, financed by a bank term loan (fixed-payment, fully
+amortizing - rate/term are placeholders pending an actual bank quote; see
+LOAN_INTEREST_RATE/LOAN_TERM_YEARS). USE_OF_FUNDS is the Sources & Uses of
+that $500,000: payoff of the owner's existing personal LOC ($120,000
+actually drawn against it), septic, paving, the container bar buildout,
+permits, contingency, and a Reserve & Safety Cash plug that absorbs
+whatever's left after those named items. The owner's real "Phase 0.5
+Master Plan" cost tracker (Notion) totaled $80,100 of itemized, real
+vendor-quoted buildout, mostly already done or in progress; the $66,800
+of it actually drawn against that (now-being-paid-off) personal LOC lives
+separately in PHASE_0_5_CAPITAL_IMPROVEMENTS - it isn't part of the new
+loan's Use of Funds (that would double-count the LOC payoff), but it's
+real capital investment in the property and still feeds depreciation and
+the capitalized basis (Section 9). The remaining $13,300 (permits +
+contingency) was never spent under the old LOC, so it's a real cost in
+USE_OF_FUNDS instead. Of the $500,000 loan, $120,000 is already committed
+(the LOC payoff) and $380,000 is new cash still to be drawn.
+Line items the owner flagged as planning-only and never implemented
+(generator, grease removal service, propane tank service) are excluded
+entirely rather than estimated.
 
-The LOC is revolving and interest-only (no fixed amortization schedule), so
-the model treats the full LOC balance as outstanding for planning purposes
-(conservative) inside the fixed monthly nut, while a separate payoff
-schedule (Section 7) simulates the balance actually shrinking as free cash
-flow gets swept against principal. A "Nut Coverage Ratio" (operating income
-before fixed costs / monthly nut, nut now including LOC interest) plays the
-analytical role DSCR played in the RV-park version.
+The loan is a fixed-payment amortizing term loan (unlike the smaller
+personal LOC that financed the original Phase 0.5 buildout), so the fixed
+monthly nut already reflects the real, contractual P&I payment - no
+"conservative flat balance" assumption needed. A separate amortization
+schedule (Section 7) shows the year-by-year principal/interest split, plus
+an optional scenario for sweeping extra free cash flow toward early payoff.
+A "Nut Coverage Ratio" (operating income before fixed costs / monthly nut,
+nut now including the loan payment) plays the analytical role DSCR played
+in the RV-park version - though with a real bank loan now in place, it's
+worth comparing against an actual DSCR calc too (see the CRE Investment
+Summary tab).
 
 Location advantages baked into assumptions:
   - Dollar General next door = easy groceries for park customers/staff
@@ -48,29 +62,35 @@ MONTH_NAMES = ["", "Jan", "Feb", "Mar", "Apr", "May", "Jun",
 # SECTION 1: CORE ASSUMPTIONS
 # =============================================================================
 
-# --- Use of Funds ---
+# --- Historical Phase 0.5 buildout (financed by the OLD personal LOC) ---
 # Sourced from the owner's real "Phase 0.5 Master Plan" cost tracker
 # (Notion), itemized at actual vendor-quoted prices, plus a few real costs
 # the tracker doesn't capture yet (refrigerators, initial bar inventory).
 # Each entry carries its real build status. Excluded entirely (per owner
 # instruction - these were planning-only line items never actually
 # implemented, with no cost attached): a second/backup generator, grease
-# removal service, propane tank service. "Container Bar" (no price ever set
-# in the tracker) is replaced below by the actual plan: a $1,500 Walmart
-# shed fitted out with fridges, shelves, and a POS station.
-# The permits line was raised from the tracker's $1,500 placeholder to
-# $7,000 after checking real TABC pricing: a Mixed Beverage Permit (MB) -
-# required to sell liquor shots by the drink - is $5,300 for the first two
-# years alone (TABC two-year fee schedule, in force since Sept 2021), on top
-# of the health permit and business license. It is held at $7,000 even after
-# the tobacco stream was dropped (which removed the TX Comptroller
-# cigarette/tobacco + e-cigarette retailer permits, ~$270/2yr) because this
-# is a rounded planning bucket, not an itemized total: a new MB permittee
-# may also have to post a conduct surety bond and a tax security bond, and
-# only the annual premium of those would be an operating cost. Bonding is
-# NOT modeled - confirm requirements with TABC.
-USE_OF_FUNDS = [
-    # -- Done (already paid) --
+# removal service, propane tank service. The original Phase 0.5 plan
+# floated a container bar with no price ever set, then substituted a
+# cheap $1,500 Walmart shed instead - the loan-funded Phase 2 buildout
+# below now funds the real container bar (see USE_OF_FUNDS), which
+# supersedes and replaces the placeholder shed.
+#
+# This list is real capital investment in the property regardless of how
+# it was financed, so it still feeds depreciation classification and the
+# property's capitalized basis (Section 9) below. But it is NOT part of
+# the new $500,000 bank loan's Use of Funds (USE_OF_FUNDS, below): the
+# owner's original Phase 0.5 tracker totaled $80,100, of which the $66,800
+# below (Electrical, Gravel, Plumbing, and 22 smaller items) was already
+# drawn against the owner's original, separate personal LOC. That LOC gets
+# paid off in full by the new loan (see the "Payoff of existing line of
+# credit" line in USE_OF_FUNDS) - counting these items again in the new
+# loan's Use of Funds, on top of paying off the LOC that already funded
+# them, would double-count the same real dollars. The remaining $13,300 of
+# the original $80,100 - permits and contingency, the two items that
+# genuinely hadn't been spent yet under the old LOC - live in USE_OF_FUNDS
+# instead, as real forward-looking costs the new loan needs to cover.
+PHASE_0_5_CAPITAL_IMPROVEMENTS = [
+    # -- Done (already paid, via the original personal LOC) --
     ("Turf", 1_500, "done"),
     ("Sail Shades", 3_378, "done"),
     ("Security system", 710, "done"),
@@ -92,24 +112,101 @@ USE_OF_FUNDS = [
     # -- In progress --
     ("Cleaning", 2_100, "in_progress"),
     ("Sound System / Speakers", 200, "in_progress"),
-    # -- Not started --
+    # -- Not started (LOC funds already drawn/allocated, work pending) --
     ("Gravel", 15_400, "not_started"),
     ("Trash Cans", 200, "not_started"),
     ("Storage Shed (wooden, general)", 3_119, "not_started"),
-    ("Bar shed - Walmart (fridges, shelves, POS)", 1_500, "not_started"),
     ("Refrigerators (bar coolers)", 3_000, "not_started"),
     ("Initial beverage inventory (beer + liquor stock)", 3_600, "not_started"),
+]
+PHASE_0_5_TOTAL = sum(a for _, a, _ in PHASE_0_5_CAPITAL_IMPROVEMENTS)  # $80,100
+
+# --- $500,000 Bank Loan: Sources & Uses ---
+# The owner is financing a larger next phase via a $500,000 bank term loan
+# rather than continuing to draw the original Phase 0.5 personal LOC.
+# Septic and paving are new infrastructure the Phase 0.5 tracker above
+# never covered; the container bar replaces the $1,500 Walmart shed
+# placeholder (see PHASE_0_5_CAPITAL_IMPROVEMENTS) with a real full
+# buildout; the LOC payoff retires the existing personal LOC in full
+# ($120,000 actually drawn against it - not its full $170,000 facility
+# limit); permits and contingency are the two Phase 0.5 items that hadn't
+# been spent yet (see above). The permits line was raised from the
+# tracker's $1,500 placeholder to $7,000 after checking real TABC pricing:
+# a Mixed Beverage Permit (MB) - required to sell liquor shots by the
+# drink - is $5,300 for the first two years alone (TABC two-year fee
+# schedule, in force since Sept 2021), on top of the health permit and
+# business license. It is held at $7,000 even after the tobacco stream was
+# dropped (which removed the TX Comptroller cigarette/tobacco +
+# e-cigarette retailer permits, ~$270/2yr) because this is a rounded
+# planning bucket, not an itemized total: a new MB permittee may also have
+# to post a conduct surety bond and a tax security bond, and only the
+# annual premium of those would be an operating cost. Bonding is NOT
+# modeled - confirm requirements with TABC.
+#
+# "Reserve & Safety Cash" is what's left of the $500,000 ask after every
+# named big-ticket item above it - held back rather than earmarked to a
+# specific cost, sized as a plug so the grand total lands on exactly
+# $500,000. The owner deliberately chose to keep the loan request at the
+# full $500,000 (rather than trimming it to match itemized buildout costs)
+# so the leftover sits in reserve as safety cash instead.
+USE_OF_FUNDS = [
+    ("Payoff of existing high-interest line of credit (Phase 0.5 & pre-loan soft costs)", 120_000, "done"),
+    ("Septic system installation", 100_000, "not_started"),
+    ("Paved asphalt roads / internal access improvements", 50_000, "not_started"),
+    ("Container Bar (full buildout)", 50_000, "not_started"),
     ("Permits & soft costs (TABC MB permit, health, business license)", 7_000, "not_started"),
     ("Contingency", 6_300, "not_started"),
+    ("Reserve & Safety Cash", 166_700, "not_started"),
 ]
-TOTAL_PROJECT_COST = sum(a for _, a, _ in USE_OF_FUNDS)  # $81,600
-ALREADY_SPENT = sum(a for _, a, status in USE_OF_FUNDS if status == "done")  # $39,181
-NEW_CASH_NEEDED = TOTAL_PROJECT_COST - ALREADY_SPENT                          # $42,419
+TOTAL_PROJECT_COST = sum(a for _, a, _ in USE_OF_FUNDS)  # $500,000
+ALREADY_SPENT = sum(a for _, a, status in USE_OF_FUNDS if status == "done")  # $120,000
+NEW_CASH_NEEDED = TOTAL_PROJECT_COST - ALREADY_SPENT                          # $380,000
 
-# --- Capital (financed via personal line of credit, not a bank term loan) ---
-LOC_AMOUNT = TOTAL_PROJECT_COST  # fully drawn to fund the buildout
-LOC_INTEREST_RATE = 0.125        # revolving LOC rate (interest-only, no fixed term)
-LOC_MONTHLY_INTEREST = round(LOC_AMOUNT * LOC_INTEREST_RATE / 12)  # assumes full balance stays drawn (conservative)
+# --- Capital (financed via a $500,000 bank term loan, fixed-payment,
+# fully amortizing - NOT the original personal LOC financing the Phase 0.5
+# buildout above relied on). Rate/term are placeholders pending an actual
+# bank quote: 10% is the conservative end of a 9.5-10% range the owner
+# gave, and 25 years matches typical SBA-loan amortization. LOAN_AMOUNT is
+# re-derived from TOTAL_PROJECT_COST (not a second hardcoded 500_000) so
+# the two stay in sync by construction if USE_OF_FUNDS ever changes again.
+LOAN_AMOUNT = TOTAL_PROJECT_COST      # fully drawn at closing to fund the buildout
+LOAN_INTEREST_RATE = 0.10             # placeholder pending an actual bank quote
+LOAN_TERM_YEARS = 25                  # placeholder - typical SBA amortization
+
+
+def _amortization_payment(principal, annual_rate, term_years):
+    """Fixed monthly principal + interest payment for a fully amortizing loan."""
+    monthly_rate = annual_rate / 12
+    n_payments = term_years * 12
+    return principal * monthly_rate / (1 - (1 + monthly_rate) ** -n_payments)
+
+
+def _amortization_balance(principal, annual_rate, term_years, months_elapsed):
+    """Remaining principal balance after `months_elapsed` monthly payments."""
+    monthly_rate = annual_rate / 12
+    n_payments = term_years * 12
+    months_elapsed = min(months_elapsed, n_payments)
+    growth = (1 + monthly_rate) ** n_payments
+    return principal * (growth - (1 + monthly_rate) ** months_elapsed) / (growth - 1)
+
+
+def _amortization_interest_for_year(principal, annual_rate, term_years, year_index):
+    """Total interest paid during loan-year `year_index` (1-based) - the
+    deductible portion of that year's debt service (principal is not)."""
+    n_payments = term_years * 12
+    months_start = (year_index - 1) * 12
+    months_end = min(year_index * 12, n_payments)
+    if months_start >= n_payments:
+        return 0.0
+    balance_start = _amortization_balance(principal, annual_rate, term_years, months_start)
+    balance_end = _amortization_balance(principal, annual_rate, term_years, months_end)
+    payment = _amortization_payment(principal, annual_rate, term_years)
+    total_paid = payment * (months_end - months_start)
+    principal_paid = balance_start - balance_end
+    return total_paid - principal_paid
+
+
+LOAN_MONTHLY_PAYMENT = round(_amortization_payment(LOAN_AMOUNT, LOAN_INTEREST_RATE, LOAN_TERM_YEARS))
 
 # --- Land / Site ---
 LAND_ACRES = 4.5
@@ -119,24 +216,42 @@ LAND_VALUE = LAND_PURCHASE_PRICE  # kept for reference; use TOTAL_CAPITALIZED_BA
 # The real capitalized basis for any yield-on-cost / cap-rate valuation: no
 # CRE metric excludes land from basis just because it was owned outright
 # rather than purchased with this project's capital. TOTAL_PROJECT_COST
-# alone (buildout only) remains the right denominator for "return on what I
-# actually spent in cash" - that's what the existing FCF Yield metrics on
-# the main dashboard tabs mean and continue to mean. This basis is used only
-# by the CRE valuation/returns functions (Section 9).
-TOTAL_CAPITALIZED_BASIS = LAND_PURCHASE_PRICE + TOTAL_PROJECT_COST
+# alone (the $500,000 loan) is no longer the right basis here, since it now
+# includes two purely financial line items that aren't capital improvements
+# at all - the LOC payoff (refinancing existing debt) and Reserve & Safety
+# Cash (uncommitted cash, not yet spent on anything). Instead: land, plus
+# PHASE_0_5_TOTAL (the real historical buildout - a capital investment in
+# the property regardless of which loan financed it), plus every
+# USE_OF_FUNDS line except those same two financial items. This basis is
+# used only by the CRE valuation/returns functions (Section 9);
+# TOTAL_PROJECT_COST (buildout-only, but now meaning "the loan") remains the
+# right denominator for "return on what I actually spent in cash" - that's
+# what the existing FCF Yield metrics on the main dashboard tabs mean and
+# continue to mean.
+_LOC_PAYOFF_AND_RESERVE_LABELS = {
+    "Payoff of existing high-interest line of credit (Phase 0.5 & pre-loan soft costs)",
+    "Reserve & Safety Cash",
+}
+TOTAL_CAPITALIZED_BASIS = (
+    LAND_PURCHASE_PRICE + PHASE_0_5_TOTAL
+    + sum(a for label, a, _ in USE_OF_FUNDS if label not in _LOC_PAYOFF_AND_RESERVE_LABELS)
+)
 # The existing $4,000/yr bill taxes RAW LAND only. Once the buildout is
 # finished, Travis County adds the improvements (gravel lot, electrical,
 # plumbing, structures, shade, lighting) to the tax roll and the bill goes
 # up - a real recurring cost the model previously ignored. Conservatively
-# assume the FULL project cost becomes assessed value (some line items -
-# inventory, contingency, permits - arguably aren't taxable real property,
-# so this overstates rather than understates) at a 2.0% effective rate.
+# assume the FULL capitalized buildout (TOTAL_CAPITALIZED_BASIS less land -
+# i.e. excluding the LOC payoff and Reserve, which are financial, not
+# physical, and would badly overstate a county assessment if taxed as
+# improvements) becomes assessed value (some line items - inventory,
+# contingency, permits - arguably aren't taxable real property, so this
+# still overstates rather than understates) at a 2.0% effective rate.
 # 2.0% is above the ~1.33% the owner's own land bill implies ($4,000 on a
 # $300K assessment) and above the ~1.54% Travis County median, chosen
 # deliberately on the "conservative = higher expense" rule.
 PROPERTY_TAX_IMPROVEMENT_RATE = 0.020
 PROPERTY_TAX_IMPROVEMENTS_MONTHLY = round(
-    TOTAL_PROJECT_COST * PROPERTY_TAX_IMPROVEMENT_RATE / 12)
+    (TOTAL_CAPITALIZED_BASIS - LAND_PURCHASE_PRICE) * PROPERTY_TAX_IMPROVEMENT_RATE / 12)
 # Dedicated 3-acre lot within the property, laid out for COTA event parking.
 # Owner estimate: fits 240-300 cars -> using the midpoint.
 EVENT_PARKING_SPACES = 270       # spaces available for COTA event parking
@@ -583,9 +698,9 @@ COTA_EVENTS_BY_MONTH = {
 
 # --- Fixed Monthly Costs ("The Nut") ---
 # This dict IS the answer to "what are the monthly operating costs" -
-# including the LOC interest-only carrying cost (conservative: assumes the
-# full LOC balance stays drawn; see run_loc_payoff_schedule for the more
-# realistic declining-balance view as free cash flow pays it down).
+# including the fixed monthly principal + interest payment on the $500,000
+# bank term loan (see run_loan_amortization_schedule for the year-by-year
+# principal/interest split, and for the optional extra-prepayment scenario).
 # No cleaning/maintenance labor line: the park manager lives on-site rent-free
 # in exchange for running the park (cleaning, upkeep, day-to-day ops), so
 # that labor cost is a housing trade, not a cash expense. The bartender also
@@ -628,7 +743,7 @@ FIXED_COSTS = {
     "property_tax": 333,             # actual: $4,000/yr bill / 12 (county assesses LAND at $300K, not the $1.4M purchase price)
     "property_tax_improvements": PROPERTY_TAX_IMPROVEMENTS_MONTHLY,  # buildout gets added to the tax roll once complete
     "accounting_tax_prep": 250,      # bookkeeping + monthly TX tax filings + annual returns (see note above)
-    "loc_interest": LOC_MONTHLY_INTEREST,  # 12.5% interest-only on the LOC draw
+    "loan_payment": LOAN_MONTHLY_PAYMENT,  # fixed P&I on the $500,000 bank term loan @ 10%/25yr (placeholder terms)
 }
 MONTHLY_NUT = sum(FIXED_COSTS.values())
 ANNUAL_NUT = MONTHLY_NUT * 12
@@ -638,10 +753,10 @@ ANNUAL_NUT = MONTHLY_NUT * 12
 # minus the one financing line). NOI is defined before debt service in CRE
 # terms; MONTHLY_NUT/ANNUAL_NUT (opex + debt service) remain the correct,
 # unchanged denominator for the nut coverage ratio elsewhere in this file.
-OPERATING_FIXED_COSTS = {k: v for k, v in FIXED_COSTS.items() if k != "loc_interest"}
+OPERATING_FIXED_COSTS = {k: v for k, v in FIXED_COSTS.items() if k != "loan_payment"}
 MONTHLY_OPEX_NUT = sum(OPERATING_FIXED_COSTS.values())
 ANNUAL_OPEX_NUT = MONTHLY_OPEX_NUT * 12
-MONTHLY_DEBT_SERVICE = FIXED_COSTS["loc_interest"]
+MONTHLY_DEBT_SERVICE = FIXED_COSTS["loan_payment"]
 ANNUAL_DEBT_SERVICE = MONTHLY_DEBT_SERVICE * 12
 
 # --- Multi-Year Growth ---
@@ -650,15 +765,16 @@ ANNUAL_RENT_GROWTH = 0.03        # truck rent escalation
 ANNUAL_COST_INFLATION = 0.03
 
 # --- Working Capital / Cash Reserve ---
-OPENING_CASH_RESERVE = 15_000    # operating buffer held back beyond the $75K buildout
+OPENING_CASH_RESERVE = 15_000    # operating buffer held back beyond the $500K buildout
 
 # --- Income Tax ---
 # Texas has no state income tax, but the park's profit is still federal
 # taxable income to the owner (pass-through: self-employment + federal
 # income tax). 28% is a blended effective-rate ESTIMATE for profit in the
 # $150K-$250K range - the real rate depends on entity structure, other
-# household income, and deductions (Section 179 on the buildout, LOC
-# interest, etc.). Confirm with a CPA. Applied to positive annual NOI only;
+# household income, and deductions (Section 179 on the buildout, loan
+# interest, etc.). Confirm with a CPA. Applied to positive taxable profit
+# only (NOI minus deductible loan interest - see summarize_annual);
 # pre-tax figures remain the primary operating metrics.
 EFFECTIVE_INCOME_TAX_RATE = 0.28
 
@@ -686,10 +802,22 @@ MARKET_CAP_RATE = 0.09
 HOLD_PERIOD_YEARS = 5
 SALE_COST_PCT = 0.03                 # broker + closing costs at exit
 DISCOUNT_RATE = 0.10                 # NPV discount rate default
-# Owner's actual land + cash equity in the deal - the LOC finances the
-# buildout only (LOC_AMOUNT == TOTAL_PROJECT_COST, never the land), so
-# everything above that in TOTAL_CAPITALIZED_BASIS is equity.
-EQUITY_BASIS = TOTAL_CAPITALIZED_BASIS - LOC_AMOUNT
+# +150bp over LOAN_INTEREST_RATE (itself a placeholder pending an actual
+# bank quote) for the "Bank Case" underwriting stress test below - standard
+# lender practice is to stress the rate above the point estimate, not just
+# use it as given.
+BANK_CASE_RATE_STRESS = 0.015
+# Owner's actual land + cash equity in the deal. LOAN_AMOUNT (== the
+# $500,000 TOTAL_PROJECT_COST) funds more than just the capitalized
+# buildout in TOTAL_CAPITALIZED_BASIS - it also pays off the old LOC
+# (refinancing, not a new asset) and funds Reserve & Safety Cash
+# (uncommitted, not yet a capital improvement), both excluded from
+# TOTAL_CAPITALIZED_BASIS above. So EQUITY_BASIS is smaller than
+# LAND_PURCHASE_PRICE alone - the loan is effectively returning some of the
+# owner's prior cash investment (via the LOC payoff) and pre-funding a cash
+# cushion, on top of financing the new buildout - everything in
+# TOTAL_CAPITALIZED_BASIS not covered by the loan is equity.
+EQUITY_BASIS = TOTAL_CAPITALIZED_BASIS - LOAN_AMOUNT
 # Months between capital deployment (t=0 in the returns engine below) and
 # the first month of operations (OPENING_MONTH) - site work + buildout for a
 # park this size, before any revenue exists to discount. This is a TIMING
@@ -1095,25 +1223,34 @@ def run_annual_projection(weekday_customers=None, weekend_customers=None, year=1
         )
         months.append(result)
 
-    annual = summarize_annual(months)
+    annual = summarize_annual(months, loan_year=year)
     return months, annual
 
 
-def summarize_annual(months):
+def summarize_annual(months, loan_year=1):
     """Build the annual summary dict from 12 monthly results.
     Includes after-tax views: income_tax applies EFFECTIVE_INCOME_TAX_RATE
-    to positive annual net cash flow (pass-through federal tax; TX has no
-    state income tax; LOC interest is a deductible business expense, so the
-    tax base is cash flow AFTER debt service, not NOI - NOI is defined
-    before debt service in CRE terms and is no longer the right tax base
-    now that the two diverge). Pre-tax NOI remains the primary operating
-    metric; fcf_yield/after_tax_fcf_yield are the owner-facing "return on
-    what I actually spent" figures against TOTAL_PROJECT_COST (buildout
-    only) - see calc_valuation_and_leverage() in Section 9 for the
-    land-inclusive CRE yield-on-cost metric."""
+    to taxable profit, which is NOI minus the loan's INTEREST portion for
+    that year only - loan principal is not a deductible business expense,
+    only interest is (total_net_cash, by contrast, is cash flow after the
+    full P&I payment, since principal is a real cash outflow even though
+    it isn't deductible). `loan_year` (1-based) picks which year of the
+    loan's amortization schedule to pull the interest/principal split from;
+    `run_annual_projection` passes its own `year` argument through here
+    directly. For standalone calls where `year` means "ramp-state" rather
+    than a true loan-calendar-year (1 = ramp, 2 = generic steady-state),
+    this is a documented approximation - see run_multi_year_projection for
+    the exact per-calendar-year version. Pre-tax NOI remains the primary
+    operating metric; fcf_yield/after_tax_fcf_yield are the owner-facing
+    "return on what I actually spent" figures against TOTAL_PROJECT_COST
+    (buildout only) - see calc_valuation_and_leverage() in Section 9 for
+    the land-inclusive CRE yield-on-cost metric."""
     total_noi = sum(m["noi"] for m in months)
     total_net_cash = sum(m["net_cash_flow"] for m in months)
-    income_tax = max(0.0, total_net_cash) * EFFECTIVE_INCOME_TAX_RATE
+    interest_paid = _amortization_interest_for_year(
+        LOAN_AMOUNT, LOAN_INTEREST_RATE, LOAN_TERM_YEARS, loan_year)
+    taxable_profit = max(0.0, total_noi - interest_paid)
+    income_tax = taxable_profit * EFFECTIVE_INCOME_TAX_RATE
     after_tax_noi = total_net_cash - income_tax
     return {
         "total_gross": sum(m["total_gross_revenue"] for m in months),
@@ -1146,6 +1283,7 @@ def summarize_annual(months):
         "total_business_contribution": sum(m["business_contribution"] for m in months),
         "total_noi": total_noi,
         "total_net_cash": total_net_cash,
+        "loan_interest_paid": interest_paid,
         "income_tax": income_tax,
         "after_tax_noi": after_tax_noi,
         "after_tax_fcf_yield": after_tax_noi / TOTAL_PROJECT_COST,
@@ -1195,15 +1333,19 @@ def run_multi_year_projection(base_weekday_customers=None, base_weekend_customer
         )
 
         if yr > 1:
-            # Only OPERATING costs inflate - debt service is a flat-rate LOC
-            # carrying cost, not subject to ANNUAL_COST_INFLATION.
+            # Only OPERATING costs inflate - debt service is fixed by the
+            # loan's amortization schedule, not subject to ANNUAL_COST_INFLATION.
             inflation_penalty = ANNUAL_OPEX_NUT * (cost_mult - 1)
             annual["total_noi"] -= inflation_penalty
             annual["total_net_cash"] -= inflation_penalty
             annual["cost_inflation_adj"] = inflation_penalty
-            # Recompute after-tax figures on the inflation-adjusted, POST-
-            # debt-service cash flow (the correct tax base - see summarize_annual).
-            annual["income_tax"] = max(0.0, annual["total_net_cash"]) * EFFECTIVE_INCOME_TAX_RATE
+            # Recompute after-tax figures on the inflation-adjusted NOI,
+            # taxed on NOI minus THIS loan-year's interest only (principal
+            # isn't deductible - see summarize_annual). loan_interest_paid
+            # was already computed for the correct loan_year=yr inside
+            # summarize_annual above, so it doesn't need re-deriving here.
+            taxable_profit = max(0.0, annual["total_noi"] - annual["loan_interest_paid"])
+            annual["income_tax"] = taxable_profit * EFFECTIVE_INCOME_TAX_RATE
             annual["after_tax_noi"] = annual["total_net_cash"] - annual["income_tax"]
             annual["fcf_yield"] = annual["total_net_cash"] / TOTAL_PROJECT_COST
             annual["after_tax_fcf_yield"] = annual["after_tax_noi"] / TOTAL_PROJECT_COST
@@ -1495,7 +1637,7 @@ def run_breakeven_analysis(verbose=True):
         print("  BREAK-EVEN ANALYSIS")
         print(f"{'=' * 70}")
         print(f"\n  Monthly Nut (all fixed operating costs): ${MONTHLY_NUT:>10,.0f}")
-        print(f"  (Includes ${LOC_MONTHLY_INTEREST:,.0f}/mo LOC interest-only carrying cost)")
+        print(f"  (Includes ${LOAN_MONTHLY_PAYMENT:,.0f}/mo bank loan payment, {LOAN_INTEREST_RATE:.1%}/{LOAN_TERM_YEARS}yr)")
         print(f"\n  1. ZERO-BAR TEST (4 trucks, no bar, no COTA):")
         print(f"     Annual NOI:  ${no_bar['total_noi']:>12,.0f}")
         print(f"     Nut Coverage: {no_bar['avg_monthly_nut_coverage']:>11.2f}x")
@@ -1567,12 +1709,12 @@ def run_sensitivity_analysis():
 
 
 # =============================================================================
-# SECTION 7: CASH RESERVE + LOC PAYOFF TRACKER
+# SECTION 7: CASH RESERVE + LOAN AMORTIZATION TRACKER
 # =============================================================================
 
 def run_cash_reserve_tracker(all_years=None, verbose=True):
     """Track working-capital balance month-by-month from OPENING_CASH_RESERVE,
-    plus the month cumulative NOI reaches the $75K total capital deployed."""
+    plus the month cumulative NOI reaches the $500K total capital deployed."""
     if all_years is None:
         all_years = run_multi_year_projection()
 
@@ -1591,7 +1733,7 @@ def run_cash_reserve_tracker(all_years=None, verbose=True):
             cf = m["net_cash_flow"]
             if yr > 1:
                 cost_mult = (1 + ANNUAL_COST_INFLATION) ** (yr - 1)
-                cf -= MONTHLY_OPEX_NUT * (cost_mult - 1)   # only opex inflates, not the flat-rate LOC interest
+                cf -= MONTHLY_OPEX_NUT * (cost_mult - 1)   # only opex inflates, not the fixed loan payment
             cumulative_cf += cf
             cumulative_noi += cf
             balance += cf
@@ -1628,38 +1770,54 @@ def run_cash_reserve_tracker(all_years=None, verbose=True):
             "payback_month": payback_month, "series": series}
 
 
-def run_loc_payoff_schedule(all_years=None, sweep_pct=1.0, verbose=True):
+def run_loan_amortization_schedule(all_years=None, sweep_pct=1.0, verbose=True):
     """
-    Simulate the LOC balance actually shrinking over time, rather than the
-    conservative "full balance always drawn" assumption baked into
-    MONTHLY_NUT. Each month, `sweep_pct` of free cash flow (before the flat
-    LOC_MONTHLY_INTEREST assumption) goes to interest on the DECLINING
-    balance first, then principal. Returns the payoff month and total
-    interest actually paid, which will run lower than the conservative nut
-    implies once the balance starts coming down.
+    Simulate the bank loan's balance over time. The REQUIRED fixed P&I
+    payment (LOAN_MONTHLY_PAYMENT) already fully amortizes the loan on its
+    own per LOAN_TERM_YEARS - unlike the old revolving personal LOC, there's
+    no "conservative flat assumption" to contrast against, because a
+    fixed-payment amortizing loan already has a real, defined schedule.
+    What's still worth simulating: `sweep_pct` (1.0 by default) of free
+    cash flow BEYOND the required payment optionally sweeps to EXTRA
+    principal prepayment each month, showing how much sooner the loan
+    retires and how much interest is saved if the owner chooses to overpay.
+    Set sweep_pct=0.0 to see the contractual schedule alone. (Caveat: many
+    bank/SBA term loans restrict or penalize early prepayment - this models
+    the cash-flow upside only, not any prepayment-penalty cost.)
     """
     if all_years is None:
         all_years = run_multi_year_projection()
 
-    balance = LOC_AMOUNT
+    monthly_rate = LOAN_INTEREST_RATE / 12
+    balance = LOAN_AMOUNT
+    required_balance = LOAN_AMOUNT  # contractual schedule, no extra prepayment - the comparison baseline
     total_interest_paid = 0.0
+    total_required_interest = 0.0
     payoff_month = None
     series = []
 
     for yr, months, annual in all_years:
         cost_mult = (1 + ANNUAL_COST_INFLATION) ** (yr - 1) if yr > 1 else 1.0
         for m in months:
-            # m["noi"] is already pre-debt-service (true NOI) - no add-back needed here anymore.
+            # m["noi"] is already pre-debt-service (true NOI) - no add-back needed here.
             noi_before_financing = m["noi"]
             if yr > 1:
                 noi_before_financing -= MONTHLY_OPEX_NUT * (cost_mult - 1)
 
+            if required_balance > 0.01:
+                req_interest = required_balance * monthly_rate
+                req_principal = min(required_balance, LOAN_MONTHLY_PAYMENT - req_interest)
+                required_balance -= req_principal
+                total_required_interest += req_interest
+
             if balance <= 0.01:
                 interest, principal_payment = 0.0, 0.0
             else:
-                interest = balance * LOC_INTEREST_RATE / 12
-                available = max(0.0, noi_before_financing - interest) * sweep_pct
-                principal_payment = min(balance, available)
+                interest = balance * monthly_rate
+                scheduled_principal = min(balance, LOAN_MONTHLY_PAYMENT - interest)
+                extra_available = max(0.0, noi_before_financing - LOAN_MONTHLY_PAYMENT) * sweep_pct
+                extra_principal = min(balance - scheduled_principal, extra_available)
+                principal_payment = scheduled_principal + extra_principal
                 balance -= principal_payment
                 total_interest_paid += interest
 
@@ -1671,49 +1829,56 @@ def run_loc_payoff_schedule(all_years=None, sweep_pct=1.0, verbose=True):
 
     if verbose:
         print(f"\n{'=' * 70}")
-        print("  LOC PAYOFF SCHEDULE")
+        print("  LOAN AMORTIZATION SCHEDULE")
         print(f"{'=' * 70}")
-        print(f"\n  Starting LOC Balance: ${LOC_AMOUNT:,.0f} @ {LOC_INTEREST_RATE:.1%}")
-        print(f"  Conservative nut assumption: ${LOC_MONTHLY_INTEREST:,.0f}/mo "
-              f"interest (full balance held flat)")
-        if payoff_month:
-            print(f"  Actual payoff (sweeping {sweep_pct:.0%} of free cash flow "
-                  f"to principal): Year {payoff_month[0]}, {MONTH_NAMES[payoff_month[1]]}")
+        print(f"\n  Loan: ${LOAN_AMOUNT:,.0f} @ {LOAN_INTEREST_RATE:.1%}, {LOAN_TERM_YEARS}-year amortization")
+        print(f"  Required payment: ${LOAN_MONTHLY_PAYMENT:,.0f}/mo (${LOAN_MONTHLY_PAYMENT * 12:,.0f}/yr)")
+        if sweep_pct > 0:
+            if payoff_month:
+                print(f"  Payoff sweeping {sweep_pct:.0%} of free cash flow beyond the "
+                      f"required payment to extra principal: Year {payoff_month[0]}, {MONTH_NAMES[payoff_month[1]]}")
+            else:
+                print(f"  Not paid off within the projection window at this sweep rate.")
+            print(f"  Interest paid over the window: ${total_interest_paid:,.0f} "
+                  f"(vs. ${total_required_interest:,.0f} on the required schedule alone - "
+                  f"${total_required_interest - total_interest_paid:,.0f} saved)")
         else:
-            print(f"  Not paid off within the projection window at this sweep rate.")
-        print(f"  Total interest actually paid: ${total_interest_paid:,.0f} "
-              f"(vs. ${LOC_MONTHLY_INTEREST * len(series):,.0f} under the flat assumption)")
+            print(f"  Contractual schedule only (no extra prepayment) - "
+                  f"interest paid over the window: ${total_interest_paid:,.0f}")
 
     return {"payoff_month": payoff_month, "total_interest_paid": total_interest_paid,
+            "required_schedule_interest": total_required_interest,
             "final_balance": max(balance, 0.0), "series": series}
 
 
 def print_owner_summary():
-    """Owner-facing summary for the LOC-financed food truck park + bar & beverage stand concept."""
+    """Owner-facing summary for the bank-loan-financed food truck park + bar & beverage stand concept."""
     print(f"\n{'=' * 70}")
     print("  OWNER SUMMARY")
     print("  Food Truck Park + Bar & Beverage Stand | Del Valle, TX")
     print(f"{'=' * 70}")
 
-    print(f"\n  STARTUP COST — FINANCED VIA PERSONAL LINE OF CREDIT")
-    print(f"  {'Total Startup Cost:':<30} ${TOTAL_PROJECT_COST:>14,.0f}")
-    print(f"  {'LOC Draw / Rate:':<30} ${LOC_AMOUNT:>10,.0f} @ {LOC_INTEREST_RATE:.1%}")
-    print(f"  {'Already Spent (Phase 0.5):':<30} ${ALREADY_SPENT:>14,.0f}")
-    print(f"  {'New Draw Needed:':<30} ${NEW_CASH_NEEDED:>14,.0f}")
+    print(f"\n  STARTUP COST — FINANCED VIA $500,000 BANK TERM LOAN")
+    print(f"  {'Total Project Cost:':<30} ${TOTAL_PROJECT_COST:>14,.0f}")
+    print(f"  {'Loan Amount / Rate / Term:':<30} ${LOAN_AMOUNT:>10,.0f} @ {LOAN_INTEREST_RATE:.1%}, {LOAN_TERM_YEARS}yr")
+    print(f"  {'Already Spent:':<30} ${ALREADY_SPENT:>14,.0f}")
+    print(f"  {'Remaining to Spend:':<30} ${NEW_CASH_NEEDED:>14,.0f}")
 
     print(f"\n  USE OF FUNDS")
     for label, amt, status in USE_OF_FUNDS:
         print(f"  {label:<52} ${amt:>10,.0f}  [{status}]")
     print(f"  {'TOTAL':<52} ${TOTAL_PROJECT_COST:>10,.0f}")
 
-    print(f"\n  MONTHLY OPERATING COSTS (The Nut, incl. LOC interest)")
+    print(f"\n  MONTHLY OPERATING COSTS (The Nut, incl. loan payment)")
     for label, amt in FIXED_COSTS.items():
         print(f"  {label.replace('_', ' ').title():<35} ${amt:>10,.0f}")
     print(f"  {'Total Monthly Nut':<35} ${MONTHLY_NUT:>10,.0f}")
     print(f"  {'Total Annual Nut':<35} ${ANNUAL_NUT:>10,.0f}")
-    print(f"  (LOC interest line assumes the full ${LOC_AMOUNT:,.0f} balance stays "
-          f"drawn - conservative. See run_loc_payoff_schedule() for the declining-"
-          f"balance view as free cash flow pays it down.)")
+    print(f"  (Loan payment line is the fixed monthly P&I on a fully "
+          f"amortizing ${LOAN_AMOUNT:,.0f} loan - see "
+          f"run_loan_amortization_schedule() for the year-by-year "
+          f"principal/interest split, and for the optional extra-"
+          f"prepayment scenario.)")
 
     _, conservative = run_scenario_projection(SCENARIOS["Conservative"])
     _, base = run_scenario_projection(SCENARIOS["Base Case"])
@@ -1725,7 +1890,7 @@ def print_owner_summary():
     print(f"  {'Management Fee (4% EGI)':<25} ${conservative['total_management_fee']:>15,.0f} ${base['total_management_fee']:>15,.0f}")
     print(f"  {'Replacement Reserve (3%)':<25} ${conservative['total_replacement_reserve']:>15,.0f} ${base['total_replacement_reserve']:>15,.0f}")
     print(f"  {'Annual NOI (pre-tax)':<25} ${conservative['total_noi']:>15,.0f} ${base['total_noi']:>15,.0f}")
-    print(f"  {'  (before LOC interest)':<25}")
+    print(f"  {'  (before loan payment)':<25}")
     print(f"  {'Free Cash Flow (pre-tax)':<25} ${conservative['total_net_cash']:>15,.0f} ${base['total_net_cash']:>15,.0f}")
     print(f"  {'Est. Income Tax (28%)':<25} ${conservative['income_tax']:>15,.0f} ${base['income_tax']:>15,.0f}")
     print(f"  {'After-Tax Cash Flow':<25} ${conservative['after_tax_noi']:>15,.0f} ${base['after_tax_noi']:>15,.0f}")
@@ -1742,11 +1907,11 @@ def print_owner_summary():
     print(f"  {'Utility Pass-Through (at cost)':<32} ${base['total_utility_billed']:>14,.0f}")
 
     print(f"\n  RISK MITIGANTS")
-    print(f"  - LOC is revolving/interest-only (no fixed amortization) - free cash "
-          f"flow can sweep the ${LOC_AMOUNT:,.0f} balance down faster than the "
-          f"conservative flat-interest nut assumes")
-    print(f"  - Land owned outright - no rent/mortgage in the nut, and most of "
-          f"the buildout ({ALREADY_SPENT/TOTAL_PROJECT_COST:.0%}) is already paid for")
+    print(f"  - Free cash flow beyond the required payment can be swept to "
+          f"extra principal, retiring the ${LOAN_AMOUNT:,.0f} loan faster and "
+          f"saving interest vs. the contractual {LOAN_TERM_YEARS}-year schedule")
+    print(f"  - Land owned outright - no rent/mortgage in the nut, and "
+          f"${ALREADY_SPENT:,.0f} of the total project cost is already spent")
     print(f"  - Simple offering (beer + sealed shots only) = minimal labor skill/speed needs")
     print(f"  - Utilities sub-metered and billed at cost (no margin leakage)")
     print(f"  - COTA event upside preserved: parking + bar uplift")
@@ -1778,27 +1943,44 @@ def print_owner_summary():
 # confirm entity choice, reasonable-compensation level, and depreciation
 # elections with a CPA before filing.
 
-# --- Depreciation: classify the real Phase 0.5 buildout into MACRS-style
-# classes (IRS Pub 946): 5-year for equipment/electronics/fixtures, 15-year
-# for land improvements (fencing, lighting, drainage, grading). Inventory,
-# permits, and contingency are excluded - not depreciable capital assets.
+# --- Depreciation: classify the real Phase 0.5 + Phase 2 buildout into
+# MACRS-style classes (IRS Pub 946): 5-year for equipment/electronics/
+# fixtures, 15-year for land improvements and structures (fencing,
+# lighting, drainage, grading, septic, paving, the container bar shell).
+# Items are looked up by label across BOTH PHASE_0_5_CAPITAL_IMPROVEMENTS
+# (the historical buildout - real capital investment regardless of which
+# loan financed it) and USE_OF_FUNDS (the new loan's septic/paving/
+# container-bar lines). Inventory, permits, and contingency are excluded -
+# not depreciable capital assets. Also excluded: the LOC-payoff item (a
+# refinancing event, not a new capital asset) and Reserve & Safety Cash
+# (conservative - no depreciation shield assumed for cash held back, not
+# yet spent on a specific asset). All three fall into NON_DEPRECIABLE_COST
+# automatically since it's derived, not a separate list to maintain.
 DEPRECIATION_5YR_ITEMS = [
     "TVs", "TV Mounts", "TV encasing", "Security system",
     "Sound System / Speakers", "StarLink Internet equipment",
-    "Mist Fans (pole-mounted)", "Refrigerators (bar coolers)",
-    "Bar shed - Walmart (fridges, shelves, POS)", "Benches",
+    "Mist Fans (pole-mounted)", "Refrigerators (bar coolers)", "Benches",
 ]
 DEPRECIATION_15YR_ITEMS = [
     "Turf", "Sail Shades", "Gates", "Pole Lighting / String Lights",
     "Signs", "Electrical", "Plumbing", "Telephone pole",
     "Full land clearing", "Yard Multi-Purpose Poles (set & anchor)",
     "Gravel", "Trash Cans", "Storage Shed (wooden, general)",
+    "Septic system installation",
+    "Paved asphalt roads / internal access improvements",
+    "Container Bar (full buildout)",
 ]
-_use_of_funds_cost = {label: amt for label, amt, _ in USE_OF_FUNDS}
+_use_of_funds_cost = {label: amt for label, amt, _ in PHASE_0_5_CAPITAL_IMPROVEMENTS + USE_OF_FUNDS}
 DEPRECIABLE_BASIS_5YR = sum(_use_of_funds_cost[i] for i in DEPRECIATION_5YR_ITEMS)
 DEPRECIABLE_BASIS_15YR = sum(_use_of_funds_cost[i] for i in DEPRECIATION_15YR_ITEMS)
 TOTAL_DEPRECIABLE_BASIS = DEPRECIABLE_BASIS_5YR + DEPRECIABLE_BASIS_15YR
-NON_DEPRECIABLE_COST = TOTAL_PROJECT_COST - TOTAL_DEPRECIABLE_BASIS  # inventory, permits, contingency
+# The non-depreciable slice of the real capitalized buildout (inventory,
+# permits, contingency) - i.e. TOTAL_CAPITALIZED_BASIS less land (which was
+# never depreciable capital-improvement basis to begin with) less what IS
+# depreciable. The LOC payoff and Reserve & Safety Cash are already
+# excluded from TOTAL_CAPITALIZED_BASIS (see Section 1), so they don't leak
+# into this figure either.
+NON_DEPRECIABLE_COST = (TOTAL_CAPITALIZED_BASIS - LAND_PURCHASE_PRICE) - TOTAL_DEPRECIABLE_BASIS
 
 # Straight-line, no half-year convention (a CPA would apply the IRS
 # half-year/mid-quarter convention). The "accelerated" alternative below
@@ -1971,13 +2153,16 @@ def print_tax_strategy_analysis(annual_noi=None):
     """CLI view of the depreciation + S-corp tax strategy analysis, on Base
     Case Year 1 taxable profit by default.
 
-    `annual_noi` here means taxable profit AFTER LOC interest (a deductible
-    business expense) - despite the parameter name (kept for backward
-    compatibility with callers), this should be total_net_cash, not
-    total_noi, which is now defined BEFORE debt service."""
+    `annual_noi` here means taxable profit AFTER loan INTEREST only (a
+    deductible business expense) - despite the parameter name (kept for
+    backward compatibility with callers), this is NOI minus loan_interest_paid,
+    NOT total_net_cash. Loan principal is a real cash outflow but is not
+    tax-deductible, so total_net_cash (NOI minus the FULL principal +
+    interest payment) would understate taxable profit now that debt service
+    is a fixed-payment amortizing loan rather than interest-only."""
     if annual_noi is None:
         _, base = run_scenario_projection(SCENARIOS["Base Case"])
-        annual_noi = base["total_net_cash"]
+        annual_noi = base["total_noi"] - base["loan_interest_paid"]
 
     no_strategy = run_tax_strategy_analysis(annual_noi, apply_depreciation=False, apply_scorp=False)
     dep_only = run_tax_strategy_analysis(annual_noi, accelerated_depreciation=False, apply_scorp=False)
@@ -1987,7 +2172,7 @@ def print_tax_strategy_analysis(annual_noi=None):
     print(f"\n{'=' * 70}")
     print("  TAX STRATEGY ANALYSIS")
     print(f"{'=' * 70}")
-    print(f"\n  Annual Taxable Profit (pre-tax, after LOC interest): ${annual_noi:,.0f}")
+    print(f"\n  Annual Taxable Profit (NOI after loan interest only): ${annual_noi:,.0f}")
     print(f"\n  DEPRECIATION BASIS")
     print(f"  {'5-Year (equipment/fixtures)':<32} ${DEPRECIABLE_BASIS_5YR:>10,.0f}")
     print(f"  {'15-Year (land improvements)':<32} ${DEPRECIABLE_BASIS_15YR:>10,.0f}")
@@ -2028,27 +2213,37 @@ def print_tax_strategy_analysis(annual_noi=None):
 # basis for a CRE yield-on-cost or valuation figure. Surfaced in the
 # dashboard's dedicated "CRE Investment Summary" tab.
 
-def calc_valuation_and_leverage(annual, cap_rate=None):
+def calc_valuation_and_leverage(annual, cap_rate=None, loan_rate=None):
     """
-    Cap-rate valuation, yield on cost, LTC/LTV, and debt yield off a given
-    year's annual NOI (before debt service - see summarize_annual).
+    Cap-rate valuation, yield on cost, LTC/LTV, debt yield, and DSCR off a
+    given year's annual NOI (before debt service - see summarize_annual).
 
     cap_rate: the market capitalization rate used to convert NOI into an
     implied asset value (value = NOI / cap_rate). Defaults to MARKET_CAP_RATE.
+
+    loan_rate: the rate used to size annual debt service for DSCR. Defaults
+    to LOAN_INTEREST_RATE (10%, itself a placeholder pending an actual bank
+    quote - see CLAUDE.md's "Financing" section) - pass a different rate to
+    see DSCR under a different quote (see run_rate_sensitivity_analysis).
     """
     cap_rate = cap_rate if cap_rate is not None else MARKET_CAP_RATE
+    loan_rate = loan_rate if loan_rate is not None else LOAN_INTEREST_RATE
     noi = annual["total_noi"]
     implied_value = noi / cap_rate if cap_rate > 0 else 0
     yield_on_cost = noi / TOTAL_CAPITALIZED_BASIS
+    annual_debt_service = round(_amortization_payment(LOAN_AMOUNT, loan_rate, LOAN_TERM_YEARS)) * 12
     return {
         "cap_rate": cap_rate,
+        "loan_rate": loan_rate,
         "implied_value": implied_value,
         "yield_on_cost": yield_on_cost,
         "development_spread": yield_on_cost - cap_rate,
         "total_capitalized_basis": TOTAL_CAPITALIZED_BASIS,
-        "ltc": LOC_AMOUNT / TOTAL_CAPITALIZED_BASIS,
-        "ltv": LOC_AMOUNT / implied_value if implied_value > 0 else 0,
-        "debt_yield": noi / LOC_AMOUNT if LOC_AMOUNT > 0 else 0,
+        "ltc": LOAN_AMOUNT / TOTAL_CAPITALIZED_BASIS,
+        "ltv": LOAN_AMOUNT / implied_value if implied_value > 0 else 0,
+        "debt_yield": noi / LOAN_AMOUNT if LOAN_AMOUNT > 0 else 0,
+        "annual_debt_service": annual_debt_service,
+        "dscr": noi / annual_debt_service if annual_debt_service > 0 else None,
         "equity_basis": EQUITY_BASIS,
     }
 
@@ -2090,21 +2285,21 @@ def _npv(rate, cash_flows, period_offset=0.0):
 
 
 def run_returns_analysis(hold_years=None, exit_cap_rate=None, sale_cost_pct=None,
-                         discount_rate=None, base_years=None):
+                         discount_rate=None, base_years=None, loan_rate=None):
     """
     Unlevered and levered IRR/NPV/equity multiple over a hold period, with
     reversion (sale) at a forward-looking cap rate applied to the NOI of the
     year immediately AFTER the hold ends (standard convention - the buyer is
     pricing off their first year of ownership, not the seller's last).
 
-    Debt is held FLAT at LOC_AMOUNT through the hold and paid off in full at
-    sale - the same conservative "full balance always drawn" convention
-    MONTHLY_NUT/ANNUAL_NUT use everywhere else in this model (see
-    run_loc_payoff_schedule for the separate, more realistic declining-
-    balance view - not fed into this analysis for the same reason it isn't
-    fed into ANNUAL_NUT: this model's convention is to keep the headline
-    figures conservative and show the realistic view as a distinct,
-    clearly-labeled alternative).
+    Debt is paid off at sale using its ACTUAL remaining amortized balance
+    at the exit year (via _amortization_balance), not the original
+    LOAN_AMOUNT - a fixed-payment amortizing loan genuinely pays down
+    principal over the hold, unlike the old revolving personal LOC this
+    engine originally modeled, so there's no "conservative flat balance"
+    convention to preserve here anymore. ncf_by_year already reflects the
+    real fixed monthly P&I payment (see MONTHLY_DEBT_SERVICE), so levered
+    cash flows are consistent with the exit payoff amount below.
 
     The t=0 outlay (-TOTAL_CAPITALIZED_BASIS / -EQUITY_BASIS) still happens
     at time zero, but every subsequent year's cash flow is discounted
@@ -2117,31 +2312,48 @@ def run_returns_analysis(hold_years=None, exit_cap_rate=None, sale_cost_pct=None
 
     base_years: optionally pass a pre-computed run_multi_year_projection()
     result (used by run_cre_sensitivity_grid to avoid recomputing it).
+
+    loan_rate: defaults to LOAN_INTEREST_RATE (the placeholder 10% baked
+    into every year's annual["total_net_cash"]). Pass a different rate to
+    see levered returns under a different quote - NOI/unlevered returns are
+    financing-neutral and don't change, but levered cash flow and the exit
+    payoff balance are recomputed off this rate instead of reusing
+    total_net_cash (see run_rate_sensitivity_analysis, which sweeps this).
     """
     hold_years = hold_years if hold_years is not None else HOLD_PERIOD_YEARS
     exit_cap_rate = exit_cap_rate if exit_cap_rate is not None else MARKET_CAP_RATE
     sale_cost_pct = sale_cost_pct if sale_cost_pct is not None else SALE_COST_PCT
     discount_rate = discount_rate if discount_rate is not None else DISCOUNT_RATE
+    loan_rate = loan_rate if loan_rate is not None else LOAN_INTEREST_RATE
     years = (base_years if base_years is not None
              else run_multi_year_projection(years=hold_years + 1))
 
     noi_by_year = [ann["total_noi"] for _, _, ann in years]
-    ncf_by_year = [ann["total_net_cash"] for _, _, ann in years]
+    if loan_rate == LOAN_INTEREST_RATE:
+        ncf_by_year = [ann["total_net_cash"] for _, _, ann in years]
+    else:
+        rate_debt_service = round(_amortization_payment(LOAN_AMOUNT, loan_rate, LOAN_TERM_YEARS)) * 12
+        ncf_by_year = [noi - rate_debt_service for noi in noi_by_year]
 
     reversion_noi = noi_by_year[hold_years]        # year hold+1's NOI (forward cap convention)
     reversion_gross = reversion_noi / exit_cap_rate if exit_cap_rate > 0 else 0
     reversion_net = reversion_gross * (1 - sale_cost_pct)
 
+    exit_loan_balance = _amortization_balance(
+        LOAN_AMOUNT, loan_rate, LOAN_TERM_YEARS, hold_years * 12)
+
     unlevered_cash_flows = ([-TOTAL_CAPITALIZED_BASIS] + noi_by_year[:hold_years - 1]
                             + [noi_by_year[hold_years - 1] + reversion_net])
     levered_cash_flows = ([-EQUITY_BASIS] + ncf_by_year[:hold_years - 1]
-                          + [ncf_by_year[hold_years - 1] + reversion_net - LOC_AMOUNT])
+                          + [ncf_by_year[hold_years - 1] + reversion_net - exit_loan_balance])
     construction_years = CONSTRUCTION_PERIOD_MONTHS / 12
 
     return {
         "hold_years": hold_years, "exit_cap_rate": exit_cap_rate,
         "sale_cost_pct": sale_cost_pct, "discount_rate": discount_rate,
+        "loan_rate": loan_rate,
         "reversion_gross": reversion_gross, "reversion_net": reversion_net,
+        "exit_loan_balance": exit_loan_balance,
         "unlevered_cash_flows": unlevered_cash_flows,
         "levered_cash_flows": levered_cash_flows,
         "unlevered_irr": _irr(unlevered_cash_flows, period_offset=construction_years),
@@ -2202,6 +2414,97 @@ def run_cre_sensitivity_grid(revenue_deltas=(-0.10, 0.0, 0.10),
     return grid
 
 
+def run_rate_sensitivity_analysis(rates=None, annual=None, hold_years=None,
+                                  exit_cap_rate=None, base_years=None):
+    """
+    DSCR and levered returns across a range of candidate loan interest
+    rates. LOAN_INTEREST_RATE (10%) is explicitly a placeholder pending an
+    actual bank quote (see CLAUDE.md's "Financing" section) - this shows
+    how sensitive debt-service coverage and levered returns actually are to
+    the rate that gets quoted, which is the number most likely to move
+    before closing. Unlevered IRR and yield on cost are financing-neutral
+    and don't vary by row - shown once by the caller, not repeated here.
+
+    annual: the stabilized (year 2) annual dict used for DSCR. Defaults to
+    a default-assumption run if not supplied.
+    """
+    rates = rates if rates is not None else (0.085, 0.09, 0.095, 0.10, 0.105, 0.11, 0.115, 0.12)
+    if annual is None:
+        _, annual = run_annual_projection(year=2)
+    noi = annual["total_noi"]
+
+    rows = []
+    for rate in rates:
+        monthly_payment = round(_amortization_payment(LOAN_AMOUNT, rate, LOAN_TERM_YEARS))
+        annual_debt_service = monthly_payment * 12
+        returns = run_returns_analysis(hold_years=hold_years, exit_cap_rate=exit_cap_rate,
+                                       base_years=base_years, loan_rate=rate)
+        rows.append({
+            "rate": rate,
+            "monthly_payment": monthly_payment,
+            "annual_debt_service": annual_debt_service,
+            "dscr": noi / annual_debt_service if annual_debt_service > 0 else None,
+            "levered_irr": returns["levered_irr"],
+            "levered_equity_multiple": returns["levered_equity_multiple"],
+        })
+    return rows
+
+
+def run_bank_case_underwriting(loan_rate=None, hold_years=None, exit_cap_rate=None):
+    """
+    A single packaged conservative case for a lender's underwriting file -
+    more useful to a loan officer than the five generic SCENARIOS (which
+    drive the plain-language Scenarios tab via single-year
+    run_scenario_projection) because it stacks the SPECIFIC risks this
+    deal actually carries into one number, at CRE vocabulary:
+
+      - No signed truck leases yet (six LOIs are not executed leases) -
+        occupancy stressed to 0.75 (below TRUCK_OCCUPANCY's 0.85, above
+        the Worst-Case scenario's 0.70).
+      - A softer evening bar - traffic/check at the "Stress Test" scenario
+        level rather than Base Case.
+      - No contractual relationship with COTA (parking/bar/beverage uplift
+        depends on a third party's event calendar) - cota_impact_multiplier
+        halved rather than zeroed, since COTA events are real and
+        calendared, just not guaranteed to recur at full strength.
+      - A softer season overall (seasonal_pct 0.85 vs. 1.0).
+      - A rate stress of +150bp over LOAN_INTEREST_RATE (BANK_CASE_RATE_STRESS)
+        rather than the placeholder point estimate, since that's the number
+        most likely to move before closing.
+
+    Uses the multi-year/CRE engine (run_multi_year_projection +
+    run_returns_analysis), not SCENARIOS, so it can report DSCR, LTC/LTV,
+    yield on cost, and levered/unlevered IRR under the stacked stresses.
+    """
+    hold_years = hold_years if hold_years is not None else HOLD_PERIOD_YEARS
+    exit_cap_rate = exit_cap_rate if exit_cap_rate is not None else MARKET_CAP_RATE
+    loan_rate = loan_rate if loan_rate is not None else LOAN_INTEREST_RATE + BANK_CASE_RATE_STRESS
+
+    years = run_multi_year_projection(
+        base_weekday_customers=15, base_weekend_customers=43, base_check=8.05,
+        truck_occupancy=0.75, seasonal_pct=0.85,
+        daytime_beverage_attach_rate=0.25,
+        cota_impact_multiplier=0.5,
+        years=hold_years + 1,
+    )
+    stabilized = years[1][2]   # year 2 = first steady-state year, same convention as elsewhere
+
+    valuation = calc_valuation_and_leverage(stabilized, cap_rate=exit_cap_rate, loan_rate=loan_rate)
+    returns = run_returns_analysis(hold_years=hold_years, exit_cap_rate=exit_cap_rate,
+                                   base_years=years, loan_rate=loan_rate)
+
+    return {
+        "loan_rate": loan_rate,
+        "stabilized_egi": stabilized["total_gross"],
+        "stabilized_noi": stabilized["total_noi"],
+        **valuation,
+        "unlevered_irr": returns["unlevered_irr"],
+        "levered_irr": returns["levered_irr"],
+        "unlevered_equity_multiple": returns["unlevered_equity_multiple"],
+        "levered_equity_multiple": returns["levered_equity_multiple"],
+    }
+
+
 # =============================================================================
 # SECTION 10: CLI MENU
 # =============================================================================
@@ -2251,7 +2554,7 @@ def main():
   5. Scenario Comparison
   6. Owner Summary
   7. Cash Reserve Tracker
-  8. LOC Payoff Schedule
+  8. Loan Amortization Schedule
   9. Tax Strategy Analysis
   0. Exit
 =================================================="""
@@ -2290,7 +2593,7 @@ def main():
         elif choice == "7":
             run_cash_reserve_tracker()
         elif choice == "8":
-            run_loc_payoff_schedule()
+            run_loan_amortization_schedule()
         elif choice == "9":
             print_tax_strategy_analysis()
         elif choice == "0":

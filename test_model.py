@@ -322,21 +322,23 @@ def test_depreciation_cannot_exceed_noi():
 
 
 def test_depreciable_basis_within_project_cost():
-    assert 0 < m.TOTAL_DEPRECIABLE_BASIS <= m.TOTAL_PROJECT_COST
+    buildout_only_basis = m.TOTAL_CAPITALIZED_BASIS - m.LAND_PURCHASE_PRICE
+    assert 0 < m.TOTAL_DEPRECIABLE_BASIS <= buildout_only_basis
     assert (m.DEPRECIABLE_BASIS_5YR + m.DEPRECIABLE_BASIS_15YR
             == m.TOTAL_DEPRECIABLE_BASIS)
 
 
 def test_depreciation_item_labels_resolve():
-    """Guard: the basis lists look items up by exact USE_OF_FUNDS label.
+    """Guard: the basis lists look items up by exact label across
+    PHASE_0_5_CAPITAL_IMPROVEMENTS + USE_OF_FUNDS.
 
-    Renaming a line item in USE_OF_FUNDS silently breaks the basis (or
+    Renaming a line item in either list silently breaks the basis (or
     KeyErrors) unless the lists are updated with it.
     """
-    labels = {label for label, _, _ in m.USE_OF_FUNDS}
+    labels = {label for label, _, _ in m.PHASE_0_5_CAPITAL_IMPROVEMENTS + m.USE_OF_FUNDS}
     for item in (m.DEPRECIATION_5YR_ITEMS + m.DEPRECIATION_15YR_ITEMS
                  + m.STARTUP_COST_ITEMS):
-        assert item in labels, f"{item!r} no longer matches a USE_OF_FUNDS label"
+        assert item in labels, f"{item!r} no longer matches a known label"
 
 
 def test_startup_costs_follow_section_195_structure():
@@ -481,21 +483,61 @@ def test_monte_carlo_varies_the_beverage_attach_rate():
 # Financing
 # ---------------------------------------------------------------------------
 
-def test_loc_actual_interest_beats_flat_assumption():
-    """The declining-balance sweep must cost less than the flat-nut view."""
-    result = m.run_loc_payoff_schedule(verbose=False)
-    flat = m.LOC_MONTHLY_INTEREST * len(result["series"])
-    assert result["total_interest_paid"] < flat
+def test_loan_amortization_sweep_beats_contractual_schedule():
+    """Sweeping extra free cash flow to principal must cost less interest
+    than the contractual required-payment-only schedule."""
+    result = m.run_loan_amortization_schedule(sweep_pct=1.0, verbose=False)
+    assert result["total_interest_paid"] < result["required_schedule_interest"]
 
 
-def test_loc_monthly_interest_derives_from_rate_and_amount():
-    assert m.LOC_MONTHLY_INTEREST == round(
-        m.LOC_AMOUNT * m.LOC_INTEREST_RATE / 12)
+def test_loan_monthly_payment_derives_from_amortization_formula():
+    assert m.LOAN_MONTHLY_PAYMENT == round(m._amortization_payment(
+        m.LOAN_AMOUNT, m.LOAN_INTEREST_RATE, m.LOAN_TERM_YEARS))
+
+
+def test_amortization_balance_reaches_zero_at_term_end():
+    balance = m._amortization_balance(
+        m.LOAN_AMOUNT, m.LOAN_INTEREST_RATE, m.LOAN_TERM_YEARS,
+        m.LOAN_TERM_YEARS * 12)
+    assert balance == pytest.approx(0.0, abs=1.0)
+
+
+def test_taxable_income_excludes_loan_principal():
+    """Loan principal isn't deductible - only interest is - so the taxable
+    base (NOI - interest) must exceed total_net_cash (NOI - full P&I) by
+    exactly that year's principal paid, and narrow toward NOI over time as
+    the loan amortizes (principal's share of the fixed payment grows)."""
+    _, y1 = m.run_annual_projection(year=1)
+    interest_y1 = m._amortization_interest_for_year(
+        m.LOAN_AMOUNT, m.LOAN_INTEREST_RATE, m.LOAN_TERM_YEARS, 1)
+    principal_y1 = m.ANNUAL_DEBT_SERVICE - interest_y1
+    taxable_base_y1 = y1["total_noi"] - interest_y1
+    assert taxable_base_y1 == pytest.approx(y1["total_net_cash"] + principal_y1)
+    assert y1["income_tax"] == pytest.approx(
+        max(0.0, taxable_base_y1) * m.EFFECTIVE_INCOME_TAX_RATE)
+
+    all_years = m.run_multi_year_projection(years=5)
+    interest_by_year = [
+        m._amortization_interest_for_year(
+            m.LOAN_AMOUNT, m.LOAN_INTEREST_RATE, m.LOAN_TERM_YEARS, yr)
+        for yr, _, _ in all_years
+    ]
+    assert interest_by_year == sorted(interest_by_year, reverse=True), \
+        "interest paid should shrink each year as the loan amortizes"
 
 
 def test_use_of_funds_sums_to_total_project_cost():
     assert sum(a for _, a, _ in m.USE_OF_FUNDS) == m.TOTAL_PROJECT_COST
     assert m.ALREADY_SPENT + m.NEW_CASH_NEEDED == m.TOTAL_PROJECT_COST
+
+
+def test_phase_0_5_items_excluded_from_new_loan_use_of_funds():
+    """The historical Phase 0.5 buildout (already funded via the old LOC)
+    must not appear a second time in the new $500K loan's Use of Funds -
+    that would double-count real dollars on top of the LOC payoff line."""
+    phase_0_5_labels = {label for label, _, _ in m.PHASE_0_5_CAPITAL_IMPROVEMENTS}
+    use_of_funds_labels = {label for label, _, _ in m.USE_OF_FUNDS}
+    assert phase_0_5_labels.isdisjoint(use_of_funds_labels)
 
 
 def test_monthly_nut_matches_fixed_costs():
@@ -506,14 +548,21 @@ def test_monthly_nut_matches_fixed_costs():
 def test_opex_and_debt_service_split_matches_fixed_costs():
     assert m.MONTHLY_OPEX_NUT == sum(m.OPERATING_FIXED_COSTS.values())
     assert m.ANNUAL_OPEX_NUT == m.MONTHLY_OPEX_NUT * 12
-    assert m.MONTHLY_DEBT_SERVICE == m.FIXED_COSTS["loc_interest"]
+    assert m.MONTHLY_DEBT_SERVICE == m.FIXED_COSTS["loan_payment"]
     assert m.ANNUAL_DEBT_SERVICE == m.MONTHLY_DEBT_SERVICE * 12
     assert m.MONTHLY_OPEX_NUT + m.MONTHLY_DEBT_SERVICE == m.MONTHLY_NUT
 
 
 def test_yield_on_cost_includes_land():
-    assert m.TOTAL_CAPITALIZED_BASIS == m.LAND_PURCHASE_PRICE + m.TOTAL_PROJECT_COST
-    assert m.EQUITY_BASIS == m.TOTAL_CAPITALIZED_BASIS - m.LOC_AMOUNT
+    loc_payoff_and_reserve = {
+        "Payoff of existing high-interest line of credit (Phase 0.5 & pre-loan soft costs)",
+        "Reserve & Safety Cash",
+    }
+    real_new_loan_capex = sum(
+        a for label, a, _ in m.USE_OF_FUNDS if label not in loc_payoff_and_reserve)
+    assert m.TOTAL_CAPITALIZED_BASIS == (
+        m.LAND_PURCHASE_PRICE + m.PHASE_0_5_TOTAL + real_new_loan_capex)
+    assert m.EQUITY_BASIS == m.TOTAL_CAPITALIZED_BASIS - m.LOAN_AMOUNT
     _, annual = m.run_annual_projection(year=2)
     result = m.calc_valuation_and_leverage(annual)
     assert result["yield_on_cost"] == pytest.approx(
@@ -546,7 +595,13 @@ def test_returns_analysis_irr_is_sane():
     """Unlevered/levered IRR at default assumptions should land in a sane
     band, not pinned to an exact value (assumptions will get tuned over
     time). Levered IRR should exceed unlevered when yield on cost beats the
-    cost of debt, which holds at these defaults (positive leverage)."""
+    cost of debt, which holds at these defaults (positive leverage): the
+    $500K loan's 10% rate sits below the ~11.3% yield on cost (computed off
+    TOTAL_CAPITALIZED_BASIS, which now excludes the LOC payoff and Reserve
+    & Safety Cash from the basis - see CLAUDE.md's "Land basis" section).
+    That spread could still flip to negative leverage if
+    LOAN_INTEREST_RATE is tightened toward the top of its 9.5-10%
+    placeholder range, or once a real bank quote replaces it."""
     result = m.run_returns_analysis()
     assert result["unlevered_irr"] is not None
     assert result["levered_irr"] is not None
@@ -578,6 +633,63 @@ def test_cre_sensitivity_grid_varies_with_revenue_and_cap_rate():
     low, base, high = grid
     assert low[0.08] < base[0.08] < high[0.08]      # more revenue -> higher IRR
     assert base[0.10] < base[0.08]                   # higher exit cap -> lower IRR
+
+
+def test_dscr_matches_noi_over_annual_debt_service():
+    _, annual = m.run_annual_projection(year=2)
+    result = m.calc_valuation_and_leverage(annual)
+    assert result["annual_debt_service"] == pytest.approx(m.ANNUAL_DEBT_SERVICE)
+    assert result["dscr"] == pytest.approx(annual["total_noi"] / m.ANNUAL_DEBT_SERVICE)
+
+
+def test_dscr_falls_as_loan_rate_rises():
+    """Fixed NOI, higher rate -> bigger required payment -> lower DSCR."""
+    _, annual = m.run_annual_projection(year=2)
+    low_rate = m.calc_valuation_and_leverage(annual, loan_rate=0.08)
+    high_rate = m.calc_valuation_and_leverage(annual, loan_rate=0.12)
+    assert high_rate["dscr"] < low_rate["dscr"]
+
+
+def test_rate_sensitivity_dscr_decreases_monotonically_with_rate():
+    _, annual = m.run_annual_projection(year=2)
+    rows = m.run_rate_sensitivity_analysis(
+        rates=(0.08, 0.09, 0.10, 0.11, 0.12), annual=annual)
+    dscrs = [row["dscr"] for row in rows]
+    assert dscrs == sorted(dscrs, reverse=True)
+
+
+def test_rate_sensitivity_leaves_unlevered_irr_unaffected():
+    """NOI and unlevered cash flows are financing-neutral - only the
+    levered side should move with the loan rate."""
+    low = m.run_returns_analysis(loan_rate=0.08)
+    high = m.run_returns_analysis(loan_rate=0.12)
+    assert low["unlevered_irr"] == pytest.approx(high["unlevered_irr"])
+    assert low["levered_irr"] > high["levered_irr"]
+
+
+def test_run_returns_analysis_loan_rate_defaults_match_module_rate():
+    """Omitting loan_rate must reproduce the exact figures every existing
+    caller (the CRE tab, run_cre_sensitivity_grid) relies on."""
+    default = m.run_returns_analysis()
+    explicit = m.run_returns_analysis(loan_rate=m.LOAN_INTEREST_RATE)
+    assert default["levered_irr"] == pytest.approx(explicit["levered_irr"])
+    assert default["levered_cash_flows"] == explicit["levered_cash_flows"]
+
+
+def test_bank_case_underwriting_is_more_conservative_than_base_case():
+    _, base_annual = m.run_annual_projection(year=2)
+    base = m.calc_valuation_and_leverage(base_annual)
+    bank_case = m.run_bank_case_underwriting()
+
+    assert bank_case["loan_rate"] > m.LOAN_INTEREST_RATE
+    assert bank_case["loan_rate"] == pytest.approx(
+        m.LOAN_INTEREST_RATE + m.BANK_CASE_RATE_STRESS)
+    assert bank_case["stabilized_noi"] < base_annual["total_noi"]
+    assert bank_case["dscr"] < base["dscr"]
+    # The stacked stresses should still clear a lender's F&B DSCR floor at
+    # today's assumptions - if this ever fails it's a real finding, not a
+    # test bug; don't loosen the assertion without understanding why.
+    assert bank_case["dscr"] > 1.35
 
 
 def test_construction_period_delays_returns_engine_cash_flows():

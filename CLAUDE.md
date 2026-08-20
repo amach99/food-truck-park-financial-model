@@ -9,8 +9,12 @@ A financial feasibility model for a food truck park + bar & beverage stand
 — no cocktails, no RV park) on the same 4.5-acre property at 13901 FM
 812, Del Valle, TX as the earlier "The Cube" sports bar plan and the
 food-truck-+-RV-park alternative. This is the leanest of the three concepts:
-~$81,600 startup cost, financed via a personal line of credit (LOC) at 12.5%
-interest rather than a bank term loan.
+$500,000 total project cost, financed via a bank term loan (fixed-payment,
+fully amortizing — placeholder terms pending an actual bank quote). The
+buildout started smaller and personal-LOC-financed (~$81,600), but the
+owner is now pursuing a real $500,000 bank loan to fund a larger next
+phase (septic, paving, payoff of the existing personal LOC, and remaining
+construction) — see "Financing" below.
 
 ## Commands
 
@@ -29,6 +33,9 @@ python food_truck_park_model.py
 
 ```bash
 pytest -q
+
+# Run a single test
+pytest -q test_model.py::test_annual_reconciles_to_noi
 ```
 
 `test_model.py` locks down the invariants that have actually broken during
@@ -45,7 +52,7 @@ functions also run directly:
 python3 -c "import food_truck_park_model as m; m.run_scenario_comparison()"
 python3 -c "import food_truck_park_model as m; m.run_sensitivity_analysis()"
 python3 -c "import food_truck_park_model as m; m.run_breakeven_analysis()"
-python3 -c "import food_truck_park_model as m; m.run_loc_payoff_schedule()"
+python3 -c "import food_truck_park_model as m; m.run_loan_amortization_schedule()"
 ```
 
 When editing dashboard-facing constants (bar/truck assumptions), verify both
@@ -62,7 +69,7 @@ Two files, strict separation of concerns:
   followed by revenue/cost functions (Section 2), annual/multi-year
   projection runners (Section 3), a Monte Carlo simulator (Section 4), named
   scenarios (Section 5), break-even/sensitivity analysis (Section 6), a
-  cash-reserve tracker + LOC payoff schedule (Section 7), a tax-strategy
+  cash-reserve tracker + loan amortization schedule (Section 7), a tax-strategy
   analysis (depreciation + S-corp election, Section 8), and a CRE valuation
   & returns engine (cap-rate value, LTC/LTV, debt yield, unlevered/levered
   IRR/NPV/equity multiple, Section 9 — see "NOI vs. cash flow" and "Land
@@ -82,40 +89,73 @@ Two files, strict separation of concerns:
   into the model's `run_*` functions — the dashboard has no calculation
   logic of its own.
 
-### Financing: revolving LOC, not a term loan
+### Financing: $500,000 bank term loan, fixed-payment amortizing
 
-The ~$81,600 buildout is drawn from a personal line of credit at 12.5%,
-**not** an SBA/bank term loan. That means there is no fixed monthly
-principal-and-interest payment or amortization schedule. The model handles
-this in two places that must stay consistent when either changes:
+The buildout was originally financed by a smaller personal line of credit
+(LOC) at 12.5%, interest-only/revolving. The owner's real "Phase 0.5
+Master Plan" cost tracker (Notion) itemizes $80,100 of real, vendor-quoted
+buildout across 27 line items, mostly already done or in progress — but
+only $66,800 of that (25 of the 27 items - everything except permits and
+contingency, which hadn't been spent yet) was actually drawn against the
+old LOC (not its full $170,000 facility limit; only $120,000 was drawn).
+The owner is now pursuing a real **$500,000 bank term loan** instead, to
+pay that LOC off in full ($120,000) and fund a larger buildout (septic,
+paving, container bar, plus the still-unspent permits and contingency
+lines), with whatever's left over held back as reserve cash — see
+`USE_OF_FUNDS` in `food_truck_park_model.py` for the itemized $500,000
+Sources & Uses. `LOAN_AMOUNT`, `LOAN_INTEREST_RATE` (10%), and
+`LOAN_TERM_YEARS` (25) are placeholder terms pending an actual bank quote
+— 10% is the conservative end of a 9.5-10% range the owner gave, and 25
+years matches typical SBA-loan amortization.
 
-1. **`FIXED_COSTS["loc_interest"]`** (`LOC_MONTHLY_INTEREST`, ~$850/mo) is a
-   conservative, constant interest-only carrying cost baked into
-   `MONTHLY_NUT`/`ANNUAL_NUT`, computed by assuming the *full* $81.6K balance
-   stays drawn indefinitely. Every sensitivity/scenario/Monte Carlo/
-   break-even function uses this fixed nut, so they're all internally
-   consistent but deliberately pessimistic about financing cost.
-2. **`run_loc_payoff_schedule()`** is the realistic counterpart: it
-   simulates the LOC balance actually declining month-by-month as free cash
-   flow (`m["noi"]`, already pre-debt-service — see below) is swept against
-   interest on the declining balance first, then principal, and reports the
-   real payoff month and total interest paid — always lower than what the
-   flat-nut assumption implies. If you change `LOC_INTEREST_RATE` or
-   `LOC_AMOUNT`, both places pick it up automatically since they derive from
-   the same constants.
+`LOAN_AMOUNT = TOTAL_PROJECT_COST` by construction, both $500,000 — but
+unlike the original single-purpose loan version of this model,
+`TOTAL_PROJECT_COST` no longer means "the buildout cost." It means "the
+loan," which funds three different things: real new construction/soft
+costs, payoff of old debt (not a new asset), and an uncommitted cash
+reserve. The $66,800 of the Phase 0.5 tracker that was actually drawn
+against the old LOC lives in a **separate** constant,
+`PHASE_0_5_CAPITAL_IMPROVEMENTS` (`PHASE_0_5_TOTAL` for its sum),
+explicitly excluded from `USE_OF_FUNDS`/`TOTAL_PROJECT_COST` so paying off
+the old LOC and re-listing the assets it already bought don't
+double-count the same dollars. That list still feeds depreciation
+classification and the property's capitalized basis (see "Land basis"
+below) — it's real capital investment in the property no matter which loan
+financed it. The remaining $13,300 of the original $80,100 tracker
+(permits + contingency, never spent under the old LOC) lives in
+`USE_OF_FUNDS` instead, as a real forward-looking cost the new loan needs
+to cover.
 
-`DSCR` (the lender-facing coverage ratio from the RV-park version of this
-model) doesn't apply in the owner-facing sense — there's no lender covenant
-on a personal LOC. `monthly_nut_coverage` / `avg_monthly_nut_coverage` play
-the same analytical role, but measure operating income before fixed costs
-against the *total monthly nut* (including LOC interest) rather than
-against a debt-service payment — this is a Fixed Charge Coverage Ratio
-(FCCR), not a DSCR, and is labeled that way in the CRE Investment Summary
-tab. `fcf_yield` (labeled "FCF Yield on Total Cost" in the UI) is
-`total_net_cash` (cash flow AFTER debt service) divided by
-`TOTAL_PROJECT_COST` — a levered returns metric on cash actually spent,
-independent of how the $81.6K was financed. See "NOI vs. cash flow" below
-for how this differs from `total_noi`.
+Unlike the old revolving LOC, a fixed-payment amortizing loan already has
+a real, defined schedule — there's no "conservative flat balance"
+assumption needed:
+
+1. **`FIXED_COSTS["loan_payment"]`** (`LOAN_MONTHLY_PAYMENT`, computed via
+   `_amortization_payment()`, ~$4,544/mo) is the fixed monthly principal +
+   interest payment, baked into `MONTHLY_NUT`/`ANNUAL_NUT`. This genuinely
+   doesn't change month to month for the life of the loan — no
+   "conservative vs. realistic" split needed here anymore.
+2. **`run_loan_amortization_schedule()`** shows the year-by-year
+   principal/interest split via `_amortization_balance()`, plus an
+   optional scenario (`sweep_pct`, default 1.0) for sweeping free cash flow
+   *beyond* the required payment toward extra principal prepayment —
+   showing how much sooner the loan retires and how much interest is
+   saved if the owner chooses to overpay. `_amortization_interest_for_year()`
+   computes just the deductible interest portion of a given loan year (see
+   "NOI vs. cash flow" below — this matters for the tax base, since loan
+   principal isn't deductible but interest is).
+
+With a real bank loan now in place, `DSCR` is a real, meaningful metric
+(shown in the CRE Investment Summary tab), not just an analogy.
+`monthly_nut_coverage` / `avg_monthly_nut_coverage` still play a related
+but distinct role — a **Fixed Charge Coverage Ratio** (FCCR) measuring
+operating income before fixed costs against the *total monthly nut*
+(opex + the loan payment), which is broader than a lender's DSCR (opex
+isn't usually in a DSCR denominator). `fcf_yield` (labeled "FCF Yield on
+Total Cost" in the UI) is `total_net_cash` (cash flow AFTER the full loan
+payment) divided by `TOTAL_PROJECT_COST` — a levered returns metric on
+cash actually spent, independent of the specific loan structure. See "NOI
+vs. cash flow" below for how this differs from `total_noi`.
 
 ### NOI vs. cash flow — two different bases, don't conflate them
 
@@ -124,13 +164,14 @@ for how this differs from `total_noi`.
 `calc_monthly_total()`:
 
 - **`noi`** = operating income before fixed overhead, less `MONTHLY_OPEX_NUT`
-  (fixed costs *excluding* LOC interest) and the new management fee /
+  (fixed costs *excluding* the loan payment) and the new management fee /
   replacement reserve (see below). This is **NOI in the standard CRE
   sense — before debt service** — the correct numerator for a cap-rate
   valuation, yield-on-cost, or debt-yield calculation.
-- **`net_cash_flow`** = `noi - MONTHLY_DEBT_SERVICE` (the LOC interest
-  line). This is what the dashboard's plain-language "Free Cash Flow"
-  metrics mean, and what's actually available to the owner.
+- **`net_cash_flow`** = `noi - MONTHLY_DEBT_SERVICE` (the loan's full
+  principal + interest payment). This is what the dashboard's
+  plain-language "Free Cash Flow" metrics mean, and what's actually
+  available to the owner.
 
 `MONTHLY_NUT`/`ANNUAL_NUT` (opex + debt service combined) are unchanged and
 remain the correct denominator for the coverage ratio above.
@@ -138,11 +179,20 @@ remain the correct denominator for the coverage ratio above.
 `MONTHLY_DEBT_SERVICE`/`ANNUAL_DEBT_SERVICE` are the split-out pieces.
 
 **Tax base:** federal income tax (`income_tax` in `summarize_annual`) and
-the Tax Strategies tab's "Taxable Profit Basis" both apply to
-`total_net_cash`, not `total_noi` — LOC interest is a deductible business
-expense, so the owner's actual taxable profit is *after* debt service, not
-before it. Do not repoint these back to `total_noi`; that was the bug this
-split fixed (NOI used to be net of interest, conflating the two).
+the Tax Strategies tab's "Taxable Profit Basis" apply to `total_noi` minus
+`loan_interest_paid` — **not** `total_net_cash`. This is a real distinction
+now that debt service is a fixed-payment amortizing loan rather than
+interest-only: loan **interest** is a deductible business expense, but loan
+**principal** is not (it's a real cash outflow, just not a tax deduction),
+so `total_net_cash` (NOI minus the *full* P&I payment) understates taxable
+profit. `loan_interest_paid` (in the `summarize_annual`/
+`run_multi_year_projection` output) isolates just the deductible interest
+portion for the relevant loan year via `_amortization_interest_for_year()`
+— `run_multi_year_projection` uses the exact loan-calendar year; standalone
+`run_annual_projection()`/`summarize_annual()` calls (where `year` means
+ramp-state, not loan-calendar-year) approximate using loan Year 1 or Year 2
+interest. Do not repoint `income_tax` back to plain `total_net_cash`; that
+reintroduces the double-counted-principal bug this split fixed.
 
 ### Management fee & replacement reserve — real costs, not a display adjustment
 
@@ -161,20 +211,38 @@ guards the identity.
 
 ### Land basis — `TOTAL_PROJECT_COST` vs. `TOTAL_CAPITALIZED_BASIS`
 
-`TOTAL_PROJECT_COST` ($81,600, buildout only) remains the denominator for
-every plain-language "FCF Yield" metric elsewhere in the dashboard — that's
-"return on cash actually spent," a legitimate and different question from
-a CRE yield-on-cost. `TOTAL_CAPITALIZED_BASIS = LAND_PURCHASE_PRICE +
-TOTAL_PROJECT_COST` ($1,481,600) is the land-inclusive basis used **only**
-by the CRE Valuation & Returns functions (`calc_valuation_and_leverage()`,
+`TOTAL_PROJECT_COST` ($500,000, the loan) remains the denominator for every
+plain-language "FCF Yield" metric elsewhere in the dashboard — that's
+"return on cash actually spent via this loan," a legitimate and different
+question from a CRE yield-on-cost. It is **not** the right basis for CRE
+valuation anymore, though, since it now includes two purely financial line
+items that are not capital assets: the LOC payoff (retiring old debt) and
+Reserve & Safety Cash (uncommitted). `TOTAL_CAPITALIZED_BASIS` is built
+instead from the real capital stack: `LAND_PURCHASE_PRICE +
+PHASE_0_5_TOTAL + (every USE_OF_FUNDS line except the LOC payoff and
+Reserve & Safety Cash)` — land, plus the real historical buildout already
+drawn against the old LOC ($66,800), plus the real new construction/soft
+costs this loan directly funds (septic + paving + container bar + permits
++ contingency, $213,300). At current figures that's $1,400,000 + $66,800 +
+$213,300 = $1,680,100 (down from a prior-version $1,900,000 that
+double-counted the LOC-funded buildout and also, wrongly, treated the
+reserve as capitalized basis). Used **only** by
+the CRE Valuation & Returns functions (`calc_valuation_and_leverage()`,
 `run_returns_analysis()`, `run_cre_sensitivity_grid()`, Section 9) and
 surfaced in the CRE Investment Summary tab. `EQUITY_BASIS =
-TOTAL_CAPITALIZED_BASIS - LOC_AMOUNT` is the owner's actual equity in the
-deal — since `LOC_AMOUNT == TOTAL_PROJECT_COST` (the LOC fully finances the
-buildout and nothing else), `EQUITY_BASIS` numerically equals
-`LAND_PURCHASE_PRICE`. Don't exclude land from a yield-on-cost calculation
-just because it was owned outright rather than purchased with this
-project's capital — no CRE metric does that.
+TOTAL_CAPITALIZED_BASIS - LOAN_AMOUNT` is the owner's actual equity in the
+deal — it **no longer** numerically equals `LAND_PURCHASE_PRICE`, because
+the $500,000 loan finances more than the capitalized buildout (it also
+returns cash via the LOC payoff and pre-funds the reserve), so
+`EQUITY_BASIS` ($1,180,100) comes out *below* `LAND_PURCHASE_PRICE`
+($1,400,000) — a real, expected consequence of a loan sized for reserve
+cash rather than trimmed to match itemized costs, not a bug. Don't exclude
+land from a yield-on-cost calculation just because it was owned outright
+rather than purchased with this project's capital — no CRE metric does
+that. Also don't "fix" `PROPERTY_TAX_IMPROVEMENTS_MONTHLY` back onto
+`TOTAL_PROJECT_COST` — it taxes `TOTAL_CAPITALIZED_BASIS - LAND_PURCHASE_PRICE`
+instead, specifically so the LOC payoff and Reserve & Safety Cash (neither
+a physical improvement) don't inflate a simulated county tax assessment.
 
 ### Development-period timing — `CONSTRUCTION_PERIOD_MONTHS`
 
@@ -186,16 +254,20 @@ capital was deployed, with zero construction time. `CONSTRUCTION_PERIOD_MONTHS`
 and `run_returns_analysis()` passes `CONSTRUCTION_PERIOD_MONTHS / 12` so
 every post-Year-0 cash flow is discounted that much later — capital sitting
 in a buildout for four months shouldn't appear to earn a return during that
-gap. This is a **timing correction only** (drops unlevered IRR from 20.3%
-to 18.7% at defaults): it does not add a construction draw schedule (
-`USE_OF_FUNDS` is still spent as a lump sum at t=0), a capitalized interest
-reserve, land carry during construction, or a developer fee — those are
-real *costs*, not just a timing shift, and remain open items on
-`CRE_UNDERWRITING_REVIEW.md`'s implementation tracker (item 6). Nothing
-outside `run_returns_analysis()`/`run_cre_sensitivity_grid()` reads this
-constant — `run_loc_payoff_schedule()`, `run_cash_reserve_tracker()`, and
-every other tab's "month 1" still mean the first month of operations,
-unaffected by this change.
+gap. This is a **timing correction only** (a few points of unlevered IRR at
+current defaults - the exact figure moves with `TOTAL_CAPITALIZED_BASIS`
+and the loan terms, see below): it does not add a
+construction draw schedule (`USE_OF_FUNDS` is still spent as a lump sum at
+t=0), a capitalized interest reserve, land carry during construction, or a
+developer fee — those are real *costs*, not just a timing shift, and
+remain open items on `CRE_UNDERWRITING_REVIEW.md`'s implementation tracker
+(item 6). Don't hardcode these IRR figures elsewhere - they move whenever
+`TOTAL_CAPITALIZED_BASIS` or the loan terms change; treat them as
+directional, not exact. Nothing outside
+`run_returns_analysis()`/`run_cre_sensitivity_grid()` reads this constant —
+`run_loan_amortization_schedule()`, `run_cash_reserve_tracker()`, and every
+other tab's "month 1" still mean the first month of operations, unaffected
+by this change.
 
 ### Staffing: two people, no fixed labor line in the nut
 
@@ -516,5 +588,7 @@ by hand when the underlying assumptions change (e.g. bar check size).
 
 - `../ftp-rv-park-financial-model` — food truck park + container bar + RV
   park, $300K SBA loan. This model is a scaled-down variant of that one with
-  the RV park removed, the bar simplified to beer+shots, and the financing
-  changed from an SBA term loan to a personal LOC.
+  the RV park removed and the bar simplified to beer+shots. Financing
+  briefly diverged (this model started on a smaller personal LOC) but has
+  converged back to a real bank term loan, now at $500,000 / 10% / 25yr
+  vs. the RV-park model's $300K / 10.5% / 10yr — see "Financing" above.

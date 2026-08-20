@@ -1,6 +1,6 @@
 """
 Food Truck Park + Bar & Beverage Stand | Del Valle
-Streamlit Financial Model Dashboard (financed via a 12.5% personal line of credit)
+Streamlit Financial Model Dashboard (financed via a $500,000 bank term loan)
 
 Run with: streamlit run streamlit_app_ftp.py
 """
@@ -209,8 +209,8 @@ df = months_to_df(months)
 # =============================================================================
 st.title("Food Truck Park + Bar & Beverage Stand")
 st.caption(f"13901 FM 812, Del Valle, TX 78617  •  "
-           f"Startup Cost: \\${model.TOTAL_PROJECT_COST:,.0f} "
-           f"(LOC @ {model.LOC_INTEREST_RATE:.1%})  •  "
+           f"Project Cost: \\${model.TOTAL_PROJECT_COST:,.0f} "
+           f"(loan @ {model.LOAN_INTEREST_RATE:.1%}/{model.LOAN_TERM_YEARS}yr)  •  "
            f"Monthly Nut: \\${model.MONTHLY_NUT:,.0f}")
 
 tabs = st.tabs([
@@ -481,7 +481,7 @@ with tabs[3]:
     c1, c2, c3 = st.columns(3)
     c1.metric("Monthly Fixed Costs (Nut)", fmt_dollar(model.MONTHLY_NUT))
     c2.metric("Annual Nut", fmt_dollar(model.ANNUAL_NUT))
-    c3.metric("Startup Cost (LOC)", fmt_dollar(model.TOTAL_PROJECT_COST))
+    c3.metric("Total Project Cost (Loan)", fmt_dollar(model.TOTAL_PROJECT_COST))
 
     be = model.run_breakeven_analysis(verbose=False)
     no_bar = be["no_bar_annual"]
@@ -744,39 +744,40 @@ with tabs[6]:
     )
     st.plotly_chart(fig_cr, use_container_width=True)
 
-    # LOC payoff schedule
-    st.subheader("LOC Payoff Schedule")
-    st.caption(f"Simulates the \\${model.LOC_AMOUNT:,.0f} LOC balance actually "
-               "declining as free cash flow sweeps against principal — more "
-               "realistic than the flat interest-only assumption baked into "
-               "the monthly nut.")
-    loc_sched = model.run_loc_payoff_schedule(all_years, verbose=False)
-    loc_rows = [{
+    # Loan amortization schedule
+    st.subheader("Loan Amortization Schedule")
+    st.caption(f"The \\${model.LOAN_AMOUNT:,.0f} loan (@ {model.LOAN_INTEREST_RATE:.1%}, "
+               f"{model.LOAN_TERM_YEARS}-year amortization) already has a fixed, "
+               "contractual payoff schedule — this shows how much sooner it "
+               "retires, and how much interest is saved, if free cash flow "
+               "beyond the required payment is swept to extra principal.")
+    loan_sched = model.run_loan_amortization_schedule(all_years, verbose=False)
+    loan_rows = [{
         "Period": f"Y{s['year']} {MONTH_NAMES[s['month'] - 1]}",
         "Balance": s["balance"], "Interest": s["interest"],
-    } for s in loc_sched["series"]]
-    loc_df = pd.DataFrame(loc_rows)
+    } for s in loan_sched["series"]]
+    loan_df = pd.DataFrame(loan_rows)
 
     l1, l2, l3 = st.columns(3)
-    payoff = loc_sched["payoff_month"]
-    l1.metric("LOC Payoff Month", f"Y{payoff[0]} {MONTH_NAMES[payoff[1]-1]}"
+    payoff = loan_sched["payoff_month"]
+    l1.metric("Loan Payoff Month (with sweep)", f"Y{payoff[0]} {MONTH_NAMES[payoff[1]-1]}"
               if payoff else "Not within window")
-    l2.metric("Total Interest Paid (actual)", fmt_dollar(loc_sched["total_interest_paid"]))
-    l3.metric("vs. Flat-Assumption Interest",
-              fmt_dollar(model.LOC_MONTHLY_INTEREST * len(loc_sched["series"])))
+    l2.metric("Interest Paid (with sweep)", fmt_dollar(loan_sched["total_interest_paid"]))
+    l3.metric("vs. Required-Schedule Interest",
+              fmt_dollar(loan_sched["required_schedule_interest"]))
 
-    fig_loc = go.Figure()
-    fig_loc.add_trace(go.Scatter(
-        x=loc_df["Period"], y=loc_df["Balance"],
-        name="LOC Balance", fill="tozeroy",
+    fig_loan = go.Figure()
+    fig_loan.add_trace(go.Scatter(
+        x=loan_df["Period"], y=loan_df["Balance"],
+        name="Loan Balance", fill="tozeroy",
         line=dict(color="#E15759", width=2),
         fillcolor="rgba(225, 87, 89, 0.2)"
     ))
-    fig_loc.update_layout(
-        yaxis=dict(title="LOC Balance ($)", tickformat="$,.0f"),
+    fig_loan.update_layout(
+        yaxis=dict(title="Loan Balance ($)", tickformat="$,.0f"),
         margin=dict(t=40, b=40), xaxis=dict(tickangle=-45),
     )
-    st.plotly_chart(fig_loc, use_container_width=True)
+    st.plotly_chart(fig_loan, use_container_width=True)
 
 
 # =============================================================================
@@ -805,14 +806,19 @@ with tabs[7]:
     management_fee = annual["total_management_fee"]
     replacement_reserve = annual["total_replacement_reserve"]
     opex = model.ANNUAL_OPEX_NUT
-    loc_interest = model.ANNUAL_DEBT_SERVICE
+    loan_payment = model.ANNUAL_DEBT_SERVICE
     pre_tax_cf = (gross - cogs - grt - mb_sales_tax
                   - daytime_bev_cogs - daytime_bev_tax - cc
                   - shrinkage - utility_cost - parking_cost - parking_tax
                   - cota_cost - bartender_share - payroll_burden
                   - management_fee - replacement_reserve
-                  - opex - loc_interest)
-    income_tax = max(0.0, pre_tax_cf) * model.EFFECTIVE_INCOME_TAX_RATE
+                  - opex - loan_payment)
+    # Taxable profit is NOI minus the loan's INTEREST portion only - loan
+    # principal (part of loan_payment above) isn't deductible, so this must
+    # mirror summarize_annual's tax-base fix, not just re-tax pre_tax_cf
+    # (which is already net of the full, non-deductible principal too).
+    taxable_profit = max(0.0, annual["total_noi"] - annual["loan_interest_paid"])
+    income_tax = taxable_profit * model.EFFECTIVE_INCOME_TAX_RATE
     free_cf = pre_tax_cf - income_tax
 
     # The hand-built waterfall above must reconcile to the engine's own
@@ -834,7 +840,7 @@ with tabs[7]:
               "COTA Costs", "Bartender Share", "Employer Payroll Burden",
               f"Management Fee ({model.MANAGEMENT_FEE_RATE:.0%})",
               f"Replacement Reserve ({model.REPLACEMENT_RESERVE_RATE:.0%})",
-              "Operating Fixed Costs", "LOC Interest",
+              "Operating Fixed Costs", "Loan Payment (P&I)",
               f"Income Tax ({model.EFFECTIVE_INCOME_TAX_RATE:.0%})",
               "After-Tax Cash Flow"]
     values = [gross, -cogs, -grt, -mb_sales_tax,
@@ -842,7 +848,7 @@ with tabs[7]:
               -utility_cost, -parking_cost, -parking_tax,
               -cota_cost, -bartender_share, -payroll_burden,
               -management_fee, -replacement_reserve,
-              -opex, -loc_interest, -income_tax, 0]
+              -opex, -loan_payment, -income_tax, 0]
     measures = ["absolute"] + ["relative"] * (len(values) - 2) + ["total"]
 
     fig_wf = go.Figure(go.Waterfall(
@@ -878,26 +884,52 @@ with tabs[8]:
     st.subheader("Food Truck Park + Bar & Beverage Stand | Del Valle, TX")
 
     st.markdown("---")
-    st.subheader("Startup Cost — Financed via Personal Line of Credit")
+    st.subheader("Total Project Cost — Financed via $500,000 Bank Term Loan")
     lt1, lt2, lt3, lt4 = st.columns(4)
-    lt1.metric("Total Startup Cost", fmt_dollar(model.TOTAL_PROJECT_COST))
-    lt2.metric("LOC Rate", f"{model.LOC_INTEREST_RATE:.1%}")
-    lt3.metric("Already Spent (Phase 0.5)", fmt_dollar(model.ALREADY_SPENT))
-    lt4.metric("New Draw Needed", fmt_dollar(model.NEW_CASH_NEEDED))
+    lt1.metric("Total Project Cost", fmt_dollar(model.TOTAL_PROJECT_COST))
+    lt2.metric("Loan Rate / Term", f"{model.LOAN_INTEREST_RATE:.1%} / {model.LOAN_TERM_YEARS}yr")
+    lt3.metric("Already Spent", fmt_dollar(model.ALREADY_SPENT))
+    lt4.metric("Remaining to Spend", fmt_dollar(model.NEW_CASH_NEEDED))
 
     st.markdown("---")
-    st.subheader("Use of Funds")
+    st.subheader("Use of Funds — $500,000 Bank Loan")
     status_labels = {"done": "✅ Done", "in_progress": "🔧 In Progress", "not_started": "⬜ Not Started"}
     use_df = pd.DataFrame(model.USE_OF_FUNDS, columns=["Item", "Amount", "Status"])
     use_df["Status"] = use_df["Status"].map(status_labels)
     use_df["Amount"] = use_df["Amount"].apply(fmt_dollar)
     st.dataframe(use_df, use_container_width=True, hide_index=True)
     st.markdown(f"**Total: {fmt_dollar(model.TOTAL_PROJECT_COST)}**")
-    st.caption("Sourced from the owner's real Phase 0.5 cost tracker — "
-               "itemized at actual vendor-quoted prices, not estimated "
-               "buckets. Planning-only line items that were never actually "
-               "implemented (generator, grease removal, propane tank "
-               "service) are excluded rather than estimated.")
+    st.caption("Payoff of the owner's existing personal line of credit "
+               "($120,000 actually drawn against it — not its full "
+               "$170,000 facility limit), septic, paving, a full "
+               "container-bar buildout (replacing the Phase 0.5 tracker's "
+               "$1,500 Walmart-shed placeholder), permits, contingency, "
+               "and Reserve & Safety Cash — whatever's left of the "
+               "$500,000 after every named item above it. The owner chose "
+               "to keep the loan request at the full $500,000 rather than "
+               "trim it to match itemized costs, so the leftover sits in "
+               "reserve as safety cash.")
+
+    with st.expander("Historical Phase 0.5 buildout (already funded, not part of this loan)"):
+        phase_df = pd.DataFrame(model.PHASE_0_5_CAPITAL_IMPROVEMENTS,
+                                 columns=["Item", "Amount", "Status"])
+        phase_df["Status"] = phase_df["Status"].map(status_labels)
+        phase_df["Amount"] = phase_df["Amount"].apply(fmt_dollar)
+        st.dataframe(phase_df, use_container_width=True, hide_index=True)
+        st.markdown(f"**Total: {fmt_dollar(model.PHASE_0_5_TOTAL)}**")
+        st.caption("Real, itemized construction spend from the owner's "
+                   "actual Phase 0.5 cost tracker (Notion), at actual "
+                   "vendor-quoted prices — not estimated buckets. This was "
+                   "already financed via a smaller, separate personal line "
+                   "of credit, which the $500,000 loan above pays off in "
+                   "full — so these items aren't counted again in the loan's "
+                   "Use of Funds (that would double-count the same dollars), "
+                   "but they're real capital investment in the property and "
+                   "still factor into depreciation and the CRE Investment "
+                   "Summary tab's capitalized basis. Planning-only line "
+                   "items that were never actually implemented (generator, "
+                   "grease removal, propane tank service) are excluded "
+                   "rather than estimated.")
 
     st.markdown("---")
     st.subheader("Monthly Operating Costs (The Nut)")
@@ -906,13 +938,14 @@ with tabs[8]:
     st.dataframe(pd.DataFrame(nut_rows), use_container_width=True, hide_index=True)
     st.markdown(f"**Total Monthly Nut: \\${model.MONTHLY_NUT:,.0f}** | "
                 f"**Annual: \\${model.ANNUAL_NUT:,.0f}**")
-    st.caption(f"Includes \\${model.LOC_MONTHLY_INTEREST:,.0f}/mo interest-only "
-               f"carrying cost on the \\${model.LOC_AMOUNT:,.0f} LOC draw, "
-               "conservatively assuming the full balance stays outstanding — "
-               "see the Multi-Year tab for the LOC payoff schedule as free "
-               "cash flow pays the balance down. This is FIXED costs only — "
-               "see Variable Operating Costs below for COGS, taxes, and "
-               "everything else that scales with revenue.")
+    st.caption(f"Includes \\${model.LOAN_MONTHLY_PAYMENT:,.0f}/mo fixed "
+               f"principal + interest on the \\${model.LOAN_AMOUNT:,.0f} bank "
+               f"loan (@ {model.LOAN_INTEREST_RATE:.1%}, {model.LOAN_TERM_YEARS}-year "
+               "amortization) — see the Multi-Year tab for the year-by-year "
+               "principal/interest split and the optional extra-prepayment "
+               "scenario. This is FIXED costs only — see Variable Operating "
+               "Costs below for COGS, taxes, and everything else that scales "
+               "with revenue.")
 
     st.markdown("---")
     st.subheader("Variable Operating Costs (Scale with Revenue)")
@@ -1020,13 +1053,15 @@ with tabs[8]:
     st.markdown("---")
     st.subheader("Risk Mitigants")
     mitigants = [
-        f"LOC is revolving/interest-only — \\${model.LOC_AMOUNT:,.0f} draw at "
-        f"{model.LOC_INTEREST_RATE:.1%} with no fixed amortization, so free cash "
-        "flow can sweep the balance down faster than the conservative flat-"
-        "interest nut assumes (see LOC Payoff Schedule)",
+        f"Free cash flow beyond the required payment can be swept to extra "
+        f"principal, retiring the \\${model.LOAN_AMOUNT:,.0f} loan faster and "
+        f"saving interest vs. the contractual {model.LOAN_TERM_YEARS}-year "
+        "schedule (see Loan Amortization Schedule)",
         f"Land owned outright — no rent or mortgage in the monthly nut, and "
-        f"{model.ALREADY_SPENT / model.TOTAL_PROJECT_COST:.0%} of the buildout "
-        "is already paid for",
+        f"\\${model.ALREADY_SPENT:,.0f} of the \\${model.TOTAL_PROJECT_COST:,.0f} "
+        "loan is already committed (payoff of the owner's existing LOC), on "
+        f"top of \\${model.PHASE_0_5_TOTAL:,.0f} of real buildout already "
+        "financed and largely complete outside this loan",
         "Simple beer + sealed-shot offering = minimal labor skill/speed "
         "requirements, low equipment cost",
         "Utilities sub-metered and billed at cost (PURA §39.107) — "
@@ -1053,36 +1088,39 @@ with tabs[9]:
                "model — it only estimates incremental tax savings.")
     st.info(
         "**This tab covers the FEDERAL layer only** — income tax plus "
-        "self-employment/payroll tax, applied to profit AFTER the LOC's "
-        "interest expense (a deductible business cost). Texas has no "
-        "personal income tax, but the business pays plenty of other Texas "
-        "taxes (mixed beverage GRT and sales tax, sales tax on parking and "
-        "daytime beverages, property tax, employer payroll). Those, plus "
-        "the LOC interest itself, are ordinary operating expenses and are "
-        "**already deducted inside the profit figure below** — see the "
-        "Owner Summary tab's Variable Operating Costs table for that side."
+        "self-employment/payroll tax, applied to profit AFTER the loan's "
+        "INTEREST expense only (a deductible business cost — loan principal "
+        "is not). Texas has no personal income tax, but the business pays "
+        "plenty of other Texas taxes (mixed beverage GRT and sales tax, "
+        "sales tax on parking and daytime beverages, property tax, employer "
+        "payroll). Those, plus the loan interest itself, are ordinary "
+        "operating expenses and are **already deducted inside the profit "
+        "figure below** — see the Owner Summary tab's Variable Operating "
+        "Costs table for that side."
     )
 
     st.markdown("---")
     st.subheader("Taxable Profit Basis")
-    st.caption("This is cash flow AFTER the LOC's interest expense (a "
-               "deductible cost) — not NOI, which by definition is measured "
-               "BEFORE debt service. See the CRE Investment Summary tab for "
-               "the property-level NOI figure.")
+    st.caption("This is NOI after the loan's INTEREST expense only (a "
+               "deductible cost) — NOT total_net_cash, which nets out the "
+               "loan's full principal + interest payment; principal isn't "
+               "tax-deductible. See the CRE Investment Summary tab for the "
+               "property-level NOI figure.")
     noi_source = st.radio(
         "Run the analysis on:",
         ["Current Dashboard Inputs", "Base Case", "Conservative", "Custom"],
         horizontal=True,
     )
     if noi_source == "Current Dashboard Inputs":
-        tax_noi = annual["total_net_cash"]
+        tax_noi = annual["total_noi"] - annual["loan_interest_paid"]
         st.metric("Year 1 Taxable Profit (sidebar inputs)", fmt_dollar(tax_noi))
     elif noi_source == "Custom":
         tax_noi = st.slider("Annual Taxable Profit ($)", 0, 400_000,
-                            int(annual["total_net_cash"]), step=5_000, format="$%d")
+                            int(annual["total_noi"] - annual["loan_interest_paid"]),
+                            step=5_000, format="$%d")
     else:
         _, scen_ann = model.run_scenario_projection(model.SCENARIOS[noi_source])
-        tax_noi = scen_ann["total_net_cash"]
+        tax_noi = scen_ann["total_noi"] - scen_ann["loan_interest_paid"]
         st.metric(f"{noi_source} Year 1 Taxable Profit", fmt_dollar(tax_noi))
 
     st.markdown("---")
@@ -1211,8 +1249,8 @@ with tabs[9]:
 with tabs[10]:
     st.header("📊 How The Model Works")
     st.caption("Leanest concept on the Del Valle land: food truck park + a "
-               "bar & beverage stand, financed via a personal line of "
-               "credit — no RV park, no bank term loan")
+               "bar & beverage stand, financed via a $500,000 bank term "
+               "loan — no RV park")
 
     st.markdown(
         f"""
@@ -1221,13 +1259,15 @@ with tabs[10]:
         the evening bar adds beer and single-serve liquor shot sales, the
         all-day stand adds soda/juice/water/coffee, and COTA event weekends
         layer parking and bar upside on top. The
-        \\${model.TOTAL_PROJECT_COST:,.0f} buildout (itemized from the owner's
-        real Phase 0.5 cost tracker) is financed through a personal line of
-        credit at {model.LOC_INTEREST_RATE:.1%} rather than a bank term loan — revolving,
-        interest-only, no fixed amortization schedule. The model tracks the
-        **monthly operating nut** (which includes the LOC's interest-only
-        carrying cost) and **FCF yield on total cost** instead of a lender's
-        DSCR covenant, plus a dedicated LOC payoff schedule.
+        \\${model.TOTAL_PROJECT_COST:,.0f} total project cost (the owner's
+        real Phase 0.5 buildout tracker plus septic, paving, and the
+        remaining construction phase) is financed through a **bank term
+        loan** at {model.LOAN_INTEREST_RATE:.1%}, {model.LOAN_TERM_YEARS}-year
+        amortization — fixed monthly principal + interest, not the smaller
+        interest-only personal line of credit that financed the original
+        Phase 0.5 buildout alone. The model tracks the **monthly operating
+        nut** (which includes the fixed loan payment) and **FCF yield on
+        total cost**, plus a dedicated loan amortization schedule.
         """
     )
     st.warning(
@@ -1312,11 +1352,12 @@ with tabs[10]:
         with col_l:
             st.subheader("Capital")
             cap_df = pd.DataFrame([
-                ("Total Startup Cost", fmt_dollar(model.TOTAL_PROJECT_COST)),
-                ("Funding", f"Personal LOC @ {model.LOC_INTEREST_RATE:.1%}, revolving/interest-only"),
-                ("Already Spent (Phase 0.5)", fmt_dollar(model.ALREADY_SPENT)),
-                ("New Draw Needed", fmt_dollar(model.NEW_CASH_NEEDED)),
-                ("Monthly Operating Nut (incl. LOC interest)", fmt_dollar(model.MONTHLY_NUT)),
+                ("Total Project Cost", fmt_dollar(model.TOTAL_PROJECT_COST)),
+                ("Funding", f"Bank term loan @ {model.LOAN_INTEREST_RATE:.1%}, "
+                            f"{model.LOAN_TERM_YEARS}yr fully amortizing"),
+                ("Already Spent", fmt_dollar(model.ALREADY_SPENT)),
+                ("Remaining to Spend", fmt_dollar(model.NEW_CASH_NEEDED)),
+                ("Monthly Operating Nut (incl. loan payment)", fmt_dollar(model.MONTHLY_NUT)),
             ], columns=["Parameter", "Value"])
             st.dataframe(cap_df, use_container_width=True, hide_index=True)
         with col_r:
@@ -1396,27 +1437,31 @@ with tabs[10]:
 
     with st.expander("4. What Changed vs. the Food Truck + RV Park Model"):
         st.markdown(
-            r"""
+            rf"""
             | | Food Truck + RV Park | Food Truck Park (this model) |
             |---|---|---|
-            | Capital | \$300,000 SBA 7(a) term loan | \$81,600 personal LOC |
-            | Rate / structure | 10.5%, 10-yr amortizing | 12.5%, revolving interest-only |
-            | Financing cost | ~\$4,050/mo fixed P&I | ~\$850/mo interest (conservative; declines as paid down) |
-            | Monthly nut | ~\$15,200 | ~\$5,200 |
+            | Capital | \$300,000 SBA 7(a) term loan | \${model.TOTAL_PROJECT_COST:,.0f} bank term loan |
+            | Rate / structure | 10.5%, 10-yr amortizing | {model.LOAN_INTEREST_RATE:.1%}, {model.LOAN_TERM_YEARS}-yr amortizing |
+            | Financing cost | ~\$4,050/mo fixed P&I | ~\${model.LOAN_MONTHLY_PAYMENT:,.0f}/mo fixed P&I |
+            | Monthly nut | ~\$15,200 | ~\${model.MONTHLY_NUT:,.0f} |
             | RV pad rent | ~\$16-18K/mo | Removed entirely |
             | Truck count | 6 slots, ramps up | 4 hubs, leasing up over Year 1 (no more budgeted) |
-            | Cost basis | Estimated buckets | Itemized from real Phase 0.5 cost tracker |
+            | Cost basis | Estimated buckets | Itemized from real Phase 0.5 cost tracker + actual loan request |
             | Cleaning/maintenance labor | Part-time paid cleaner | Park manager lives on-site free, no labor cost |
             | Event staffing | Extra bartender for big events | One bartender always, no extra hire |
             | Bar offering | Beer, prepackaged cocktails, shots | $7 beer + $3 shots (no cocktails); $12/$5 during COTA events |
-            | Coverage metric | DSCR (vs. debt service) | Nut Coverage (vs. fixed opex incl. LOC interest) |
-            | Primary output | Lender summary | Owner summary + FCF yield + LOC payoff schedule |
+            | Coverage metric | DSCR (vs. debt service) | Nut Coverage (plain-language) + real DSCR (CRE tab) |
+            | Primary output | Lender summary | Owner summary + FCF yield + loan amortization schedule |
             """
         )
         st.caption(
-            "Both models share the same land, the same COTA calendar, and the "
-            "same analysis toolkit (Monte Carlo, scenarios, sensitivity, "
-            "break-even, multi-year, waterfall)."
+            "Both models now use a real, fixed-payment amortizing bank term "
+            "loan (this model no longer uses the smaller interest-only "
+            "personal LOC it started with) - the remaining contrast is "
+            "mainly loan size/term, property scope (no RV park here), and "
+            "staffing model. Both share the same land, the same COTA "
+            "calendar, and the same analysis toolkit (Monte Carlo, "
+            "scenarios, sensitivity, break-even, multi-year, waterfall)."
         )
 
     with st.expander("5. Function Reference"):
@@ -1429,13 +1474,15 @@ model.run_scenario_comparison()     # 5 named scenarios side by side
 model.run_breakeven_analysis()      # zero-bar test + min bar traffic targets
 model.run_sensitivity_analysis()    # one-lever-at-a-time sweeps
 model.run_cash_reserve_tracker()    # month-by-month cash balance + payback month
-model.run_loc_payoff_schedule()     # declining-balance LOC payoff vs. the flat nut
+model.run_loan_amortization_schedule() # loan balance/interest; optional extra-prepayment sweep
 model.run_tax_strategy_analysis()   # depreciation + Sec 195 + S-corp election
 model.print_tax_strategy_analysis() # same, printed (CLI)
 model.print_owner_summary()         # full owner-facing report (CLI)
-model.calc_valuation_and_leverage() # cap-rate value, LTC/LTV, debt yield
+model.calc_valuation_and_leverage() # cap-rate value, LTC/LTV, debt yield, DSCR
 model.run_returns_analysis()        # unlevered/levered IRR, NPV, equity multiple
 model.run_cre_sensitivity_grid()    # revenue x exit-cap-rate IRR grid
+model.run_rate_sensitivity_analysis() # DSCR + levered IRR across candidate loan rates
+model.run_bank_case_underwriting()  # packaged conservative case for a lender
 
 # Regression tests — run after ANY change to the calculation engine:
 #   pytest -q
@@ -1454,9 +1501,9 @@ with tabs[11]:
         "sources & uses, stabilized NOI, cap-rate valuation, leverage, and "
         "unlevered/levered returns. This tab intentionally uses standard "
         "CRE terminology that differs from the plain-language figures "
-        "elsewhere in this dashboard (e.g. NOI here excludes LOC interest, "
-        "where 'Free Cash Flow' on other tabs includes it) — each metric's "
-        "tooltip gives the exact formula."
+        "elsewhere in this dashboard (e.g. NOI here excludes the loan "
+        "payment, where 'Free Cash Flow' on other tabs includes it) — each "
+        "metric's tooltip gives the exact formula."
     )
 
     # Stabilized (steady-state, no ramps) figures at current sidebar inputs -
@@ -1473,39 +1520,53 @@ with tabs[11]:
 
     # --- 1. Sources & Uses ---
     st.subheader("1. Sources & Uses")
+    buildout_capitalized = model.TOTAL_CAPITALIZED_BASIS - model.LAND_PURCHASE_PRICE
     su1, su2, su3, su4 = st.columns(4)
     su1.metric("Land (Contributed, at Basis)", fmt_dollar(model.LAND_PURCHASE_PRICE),
                help="Owner's actual purchase price. Owned outright, not "
-                    "financed by this project's LOC.")
-    su2.metric("Buildout (Hard + Soft Costs)", fmt_dollar(model.TOTAL_PROJECT_COST))
+                    "financed by this project's bank loan.")
+    su2.metric("Buildout (Capitalized)", fmt_dollar(buildout_capitalized),
+               help="Phase 0.5 historical buildout ($66,800, already "
+                    "financed via the owner's prior personal LOC) plus new "
+                    "construction and soft costs (septic, paving, container "
+                    "bar, permits, contingency). Excludes the LOC-payoff "
+                    "line (refinancing, not a new asset) and Reserve & "
+                    "Safety Cash (uncommitted, not yet spent on an asset).")
     su3.metric("Total Capitalized Basis", fmt_dollar(model.TOTAL_CAPITALIZED_BASIS),
-               help="Land + buildout. The correct denominator for a "
-                    "yield-on-cost calculation — excluding land, as this "
-                    "dashboard's other 'FCF Yield' metrics do, only "
+               help="Land + capitalized buildout. The correct denominator "
+                    "for a yield-on-cost calculation — excluding land, as "
+                    "this dashboard's other 'FCF Yield' metrics do, only "
                     "measures return on cash actually spent, not on the "
                     "full capital committed to the project.")
-    su4.metric("LOC Draw (Debt)", fmt_dollar(model.LOC_AMOUNT),
-               help="Finances the buildout only — never the land.")
+    su4.metric("Bank Loan (Debt)", fmt_dollar(model.LOAN_AMOUNT),
+               help="$500,000 total. Funds new construction/soft costs "
+                    "directly, pays off the owner's prior personal LOC in "
+                    "full, and funds a Reserve & Safety Cash cushion — so "
+                    "it finances more than just the capitalized buildout "
+                    "above (see caption below).")
 
     su_df = pd.DataFrame([
-        {"Source / Use": "Land (equity, contributed at basis)",
-         "Amount": model.LAND_PURCHASE_PRICE,
-         "% of Basis": model.LAND_PURCHASE_PRICE / model.TOTAL_CAPITALIZED_BASIS},
-        {"Source / Use": "Buildout — cash equity",
-         "Amount": model.TOTAL_PROJECT_COST - model.LOC_AMOUNT,
-         "% of Basis": (model.TOTAL_PROJECT_COST - model.LOC_AMOUNT) / model.TOTAL_CAPITALIZED_BASIS},
-        {"Source / Use": f"Personal LOC (debt) @ {model.LOC_INTEREST_RATE:.1%}",
-         "Amount": model.LOC_AMOUNT,
-         "% of Basis": model.LOC_AMOUNT / model.TOTAL_CAPITALIZED_BASIS},
+        {"Source / Use": "Owner cash equity (land + net buildout contribution)",
+         "Amount": model.EQUITY_BASIS,
+         "% of Basis": model.EQUITY_BASIS / model.TOTAL_CAPITALIZED_BASIS},
+        {"Source / Use": f"Bank term loan (debt) @ {model.LOAN_INTEREST_RATE:.1%}, {model.LOAN_TERM_YEARS}yr",
+         "Amount": model.LOAN_AMOUNT,
+         "% of Basis": model.LOAN_AMOUNT / model.TOTAL_CAPITALIZED_BASIS},
         {"Source / Use": "Total Capitalized Basis", "Amount": model.TOTAL_CAPITALIZED_BASIS, "% of Basis": 1.0},
     ])
     su_df["Amount"] = su_df["Amount"].apply(fmt_dollar)
     su_df["% of Basis"] = su_df["% of Basis"].apply(lambda x: f"{x:.1%}")
     st.dataframe(su_df, use_container_width=True, hide_index=True)
-    st.caption(f"The LOC fully finances the buildout (\\${model.LOC_AMOUNT:,.0f} draw "
-               f"against \\${model.TOTAL_PROJECT_COST:,.0f} of cost), so cash equity in "
-               "the buildout is \\$0 — the owner's entire equity position in the deal "
-               "is the land.")
+    st.caption(f"The \\${model.LOAN_AMOUNT:,.0f} bank loan covers more than "
+               f"just the capitalized buildout — \\$120,000 of it pays off "
+               "the owner's prior personal LOC (returning cash the owner "
+               "already put into Phase 0.5, rather than financing a new "
+               "asset) and \\$166,700 sits in Reserve & Safety Cash "
+               "(uncommitted). So owner cash equity in the deal "
+               f"(\\${model.EQUITY_BASIS:,.0f}) comes out lower than the "
+               f"land purchase price alone (\\${model.LAND_PURCHASE_PRICE:,.0f}) "
+               "— the loan effectively both finances new construction and "
+               "returns some of the owner's prior cash investment.")
 
     # --- 2. Stabilized Operations ---
     st.markdown("---")
@@ -1524,8 +1585,8 @@ with tabs[11]:
     op4.metric("Net Operating Income (NOI)", fmt_dollar(stab["total_noi"]),
                help="EGI less all operating expenses (incl. management fee "
                     "and replacement reserve), BEFORE debt service. This is "
-                    "the standard CRE NOI figure — it excludes the LOC's "
-                    "interest expense, unlike the 'Free Cash Flow' figures "
+                    "the standard CRE NOI figure — it excludes the loan "
+                    "payment, unlike the 'Free Cash Flow' figures "
                     "elsewhere in this dashboard.")
 
     st.caption("**Real Estate vs. Operating Business Contribution** — pre-shared-overhead "
@@ -1568,22 +1629,57 @@ with tabs[11]:
                    "the project was built cheaper than it can be sold for "
                    "at a stabilized cap rate.")
 
-    l1, l2, l3, l4 = st.columns(4)
+    l1, l2, l3, l4, l5 = st.columns(5)
     l1.metric("Loan-to-Cost (LTC)", fmt_pct(val["ltc"] * 100),
-              help="LOC draw ÷ Total Capitalized Basis.")
+              help="Loan amount ÷ Total Capitalized Basis.")
     l2.metric("Loan-to-Value (LTV)", fmt_pct(val["ltv"] * 100),
-              help="LOC draw ÷ implied value at the cap rate above.")
+              help="Loan amount ÷ implied value at the cap rate above.")
     l3.metric("Debt Yield", fmt_pct(val["debt_yield"] * 100),
-              help="NOI ÷ LOC draw. A value-independent leverage test "
+              help="NOI ÷ loan amount. A value-independent leverage test "
                    "lenders use because it can't be moved by a cap-rate "
                    "assumption. Typical minimums: ~9-11% general CRE, "
                    "11-13% hospitality/F&B.")
-    l4.metric("Fixed Charge Coverage Ratio (FCCR)",
+    l4.metric("DSCR", f"{val['dscr']:.2f}x" if val["dscr"] is not None else "n/a",
+              help=f"NOI ÷ annual debt service (${val['annual_debt_service']:,.0f}/yr "
+                   f"at the {val['loan_rate']:.1%} loan rate). The actual lender "
+                   "covenant ratio for a real amortizing loan — typical "
+                   "minimums 1.20-1.30x general CRE, 1.35-1.50x hospitality/F&B, "
+                   "because operating income is less contractual than rent.")
+    l5.metric("Fixed Charge Coverage Ratio (FCCR)",
               f"{stab['avg_monthly_nut_coverage']:.2f}x",
               help="Operating income before fixed overhead ÷ total monthly "
-                   "nut (opex + debt service). Plays the role DSCR would "
-                   "play if this were a lender-covenant loan — shown "
-                   "elsewhere in this dashboard as 'Nut Coverage.'")
+                   "nut (opex + debt service) — a broader ratio than DSCR "
+                   "since the denominator also includes cash opex, shown "
+                   "elsewhere in this dashboard as 'Nut Coverage.' DSCR "
+                   "above is the ratio an actual lender covenant would use.")
+
+    st.markdown("**Interest Rate Sensitivity**")
+    st.caption(
+        f"{model.LOAN_INTEREST_RATE:.1%} is a placeholder pending an actual "
+        "bank quote — the rate most likely to move before closing. DSCR and "
+        "levered IRR at stabilized NOI across a candidate rate range:"
+    )
+    rate_sensitivity_years = get_multi_year(
+        weekday_customers, weekend_customers, avg_check,
+        truck_slots, truck_rent, truck_share, truck_sales,
+        truck_occupancy, seasonal_pct,
+        daytime_bev_attach, daytime_bev_price,
+        cota_impact_multiplier, years=model.HOLD_PERIOD_YEARS + 1)
+    rate_rows = model.run_rate_sensitivity_analysis(
+        annual=stab, base_years=rate_sensitivity_years, exit_cap_rate=cap_rate)
+    rate_df = pd.DataFrame(rate_rows)
+    rate_df["rate"] = rate_df["rate"].apply(lambda r: f"{r:.1%}")
+    rate_df["annual_debt_service"] = rate_df["annual_debt_service"].apply(fmt_dollar)
+    rate_df["dscr"] = rate_df["dscr"].apply(lambda x: f"{x:.2f}x" if x is not None else "n/a")
+    rate_df["levered_irr"] = rate_df["levered_irr"].apply(lambda x: f"{x:.1%}" if x is not None else "n/a")
+    rate_df["levered_equity_multiple"] = rate_df["levered_equity_multiple"].apply(
+        lambda x: f"{x:.2f}x" if x is not None else "n/a")
+    rate_df = rate_df.drop(columns=["monthly_payment"]).rename(columns={
+        "rate": "Loan Rate", "annual_debt_service": "Annual Debt Service",
+        "dscr": "DSCR", "levered_irr": "Levered IRR",
+        "levered_equity_multiple": "Levered Eq. Multiple",
+    })
+    st.dataframe(rate_df, use_container_width=True, hide_index=True)
 
     # --- 4. Returns ---
     st.markdown("---")
@@ -1615,12 +1711,12 @@ with tabs[11]:
 
     ru, rl = st.columns(2)
     with ru:
-        st.markdown("**Unlevered (all-cash, no LOC)**")
+        st.markdown("**Unlevered (all-cash, no loan)**")
         st.metric("IRR", fmt_pct(returns["unlevered_irr"] * 100) if returns["unlevered_irr"] is not None else "n/a")
         st.metric("Equity Multiple", f"{returns['unlevered_equity_multiple']:.2f}x")
         st.metric("NPV", fmt_dollar(returns["unlevered_npv"]))
     with rl:
-        st.markdown("**Levered (with the LOC)**")
+        st.markdown("**Levered (with the bank loan)**")
         st.metric("IRR", fmt_pct(returns["levered_irr"] * 100) if returns["levered_irr"] is not None else "n/a")
         st.metric("Equity Multiple",
                   f"{returns['levered_equity_multiple']:.2f}x" if returns["levered_equity_multiple"] is not None else "n/a")
@@ -1664,6 +1760,44 @@ with tabs[11]:
                                       **{c: f"{c:.0%} cap" for c in cap_cols}})
     st.dataframe(grid_df, use_container_width=True, hide_index=True)
 
+    # --- 6. Bank Case ---
+    st.markdown("---")
+    st.subheader("6. Bank Case — Conservative Underwriting")
+    st.caption(
+        "One packaged conservative case, more useful to a loan officer than "
+        "the plain-language Scenarios tab's generic Worst Case/Upside: it "
+        "stacks the *specific* risks this deal carries — no signed truck "
+        "leases yet, a softer bar, no contractual relationship with COTA's "
+        "event calendar, a softer season, and a +150bp rate stress over "
+        "the point-estimate quote — into one underwriting result."
+    )
+    bank_case = model.run_bank_case_underwriting()
+    bc1, bc2, bc3, bc4 = st.columns(4)
+    bc1.metric("Stabilized NOI", fmt_dollar(bank_case["stabilized_noi"]),
+               help=f"vs. \\${stab['total_noi']:,.0f} at Base Case assumptions.")
+    bc2.metric("DSCR", f"{bank_case['dscr']:.2f}x" if bank_case["dscr"] is not None else "n/a",
+               help=f"At a stressed {bank_case['loan_rate']:.1%} loan rate "
+                    f"(+150bp over the {model.LOAN_INTEREST_RATE:.1%} point "
+                    "estimate). Compare to the 1.35-1.50x typical F&B minimum.")
+    bc3.metric("Yield on Cost", fmt_pct(bank_case["yield_on_cost"] * 100))
+    bc4.metric("LTV", fmt_pct(bank_case["ltv"] * 100),
+               help=f"At a {bank_case['cap_rate']:.1%} cap rate on the "
+                    "stressed NOI above.")
+    bc5, bc6 = st.columns(2)
+    bc5.metric("Unlevered IRR", fmt_pct(bank_case["unlevered_irr"] * 100)
+               if bank_case["unlevered_irr"] is not None else "n/a")
+    bc6.metric("Levered IRR", fmt_pct(bank_case["levered_irr"] * 100)
+               if bank_case["levered_irr"] is not None else "n/a")
+    st.caption(
+        "Assumptions: 15/43 weekday/weekend bar customers (Stress Test "
+        "level), \\$8.05 avg check, 75% truck occupancy, 85% seasonal "
+        "factor, 25% daytime-beverage attach rate, COTA impact halved "
+        "(cota_impact_multiplier=0.5). These stack independently of the "
+        "sidebar sliders above — this section always shows the same fixed "
+        "stress case regardless of sidebar inputs, so it stays a stable "
+        "reference point."
+    )
+
     with st.expander("Glossary"):
         st.markdown(
             """
@@ -1674,7 +1808,8 @@ with tabs[11]:
             | **Yield on cost** | Stabilized NOI ÷ total capitalized basis. The gap vs. market cap rate is the **development spread** |
             | **LTC / LTV** | Loan ÷ total cost / Loan ÷ value |
             | **Debt yield** | NOI ÷ loan amount — a value-independent leverage test |
-            | **FCCR** | Fixed Charge Coverage Ratio — operating income before overhead ÷ (opex + debt service) |
+            | **DSCR** | Debt Service Coverage Ratio — NOI ÷ annual loan P&I. The actual lender covenant ratio. Typical minimums 1.20-1.30x general CRE, 1.35-1.50x hospitality/F&B |
+            | **FCCR** | Fixed Charge Coverage Ratio — operating income before overhead ÷ (opex + debt service). Broader than DSCR |
             | **Reversion** | Sale proceeds at end of hold = terminal-year NOI ÷ exit cap rate, less sale costs |
             | **Equity multiple** | Total distributions ÷ equity invested — not time-weighted |
             | **IRR** | Discount rate at which NPV of all cash flows = 0 — time-weighted |
