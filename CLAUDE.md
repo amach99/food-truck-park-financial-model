@@ -5,10 +5,10 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## What this is
 
 A financial feasibility model for a food truck park + bar & beverage stand
-(evening beer/liquor-shot bar plus an all-day soda/juice/water/coffee stand
-— no cocktails, no RV park) on the same 4.5-acre property at 13901 FM
-812, Del Valle, TX as the earlier "The Cube" sports bar plan and the
-food-truck-+-RV-park alternative. This is the leanest of the three concepts:
+(evening container bar — draft + canned beer, liquor shots, and cocktails —
+plus an all-day soda/juice/water/coffee stand) on the 4.5-acre property at
+13901 FM 812, Del Valle, TX — the same land as the earlier "The Cube"
+sports bar plan. This is the leanest concept modeled for the site:
 $500,000 total project cost, financed via a bank term loan (fixed-payment,
 fully amortizing — placeholder terms pending an actual bank quote). The
 buildout started smaller and personal-LOC-financed (~$81,600), but the
@@ -386,26 +386,67 @@ toward *higher expenses and lower revenue*. Understating the business is
 acceptable; overstating it is not. Several assumptions here are
 deliberately pessimistic for that reason and are flagged in-line.
 
-### Bar operating-model constraint (important, easy to regress)
+### Bar operating model — full container bar (four items, easy to regress)
 
-The bar is **evening-only** (6pm–close, ~4.5 hrs/day) and serves
-**prepackaged beer and liquor shots only** — canned/bottled beer at
-`BEER_PRICE` ($7) and liquor poured/sealed into single-serve plastic shot
-glasses at `SHOT_PRICE` ($3). **No cocktails, no mixed drinks made to
-order.** `BAR_AVG_CHECK` is `DRINKS_PER_VISIT` (1.5) times the item mix
-(`BEER_MIX_PCT`/`SHOT_MIX_PCT`, 75%/25%) — **not** a single item's price;
-don't conflate "average check" with "price of one drink" when tuning this.
+The bar is **evening-only** (6pm–close, ~4.5 hrs/day) and is a **full
+container bar** ($50,000, the `USE_OF_FUNDS` "Container Bar (full
+buildout)" line) pouring **four** items: draft beer via taps
+(`DRAFT_BEER_PRICE`, $6), canned/bottled beer via coolers (`BEER_PRICE`,
+$7), single-serve liquor shots (`SHOT_PRICE`, $3), and made-to-order
+cocktails (`COCKTAIL_PRICE`, $12).
+
+**This reverses an earlier, deliberately locked-down constraint.** Prior
+versions of this model served *prepackaged beer and sealed shots only —
+no cocktails, no mixed drinks* — and that restriction was documented here
+as an invariant. The owner is now building the full container bar, so the
+restriction is gone. Don't reintroduce "no cocktails" language; equally,
+don't assume anything downstream still holds from the two-item era without
+checking, because the change cascaded:
+
+- `BAR_AVG_CHECK` is `DRINKS_PER_VISIT` (1.5) times the blended
+  `AVG_ITEM_PRICE` across all four items — **not** a single item's price;
+  don't conflate "average check" with "price of one drink" when tuning it.
+  It moved $9.00 → **$11.45** (+27%).
+- Item mix is `DRAFT_BEER_MIX_PCT`/`BEER_MIX_PCT`/`SHOT_MIX_PCT`/
+  `COCKTAIL_MIX_PCT` = 31.5%/13.5%/20%/35%. Beer is 45% of items overall,
+  split 70/30 draft-vs-canned now that taps exist. `DRINKS_PER_VISIT`
+  stayed at 1.5 deliberately — a fuller bar changes *what* people order,
+  not how many rounds they have.
+- `COGS_RATE` is **revenue**-weighted (not item-count-weighted, since
+  prices differ): draft/canned beer 37% each, shots 25%, cocktails 30%.
+  It *improved* 35.5% → **32.2%** because cocktails carry a better markup
+  than reselling manufactured single-serve items. The 30% cocktail COGS is
+  an ESTIMATE padded above the typical 20–25% per the project's
+  err-toward-higher-expenses rule — replace it with real recipe costing
+  when available.
 
 On COTA/major-event days, the bar extends hours to capture the event crowd
-**and** charges premium event pricing (`COTA_EVENT_BEER_PRICE`/
-`COTA_EVENT_SHOT_PRICE`, $12/$5 vs. the normal $7/$3), so
-`COTA_EVENT_TIERS[...]["bar_uplift_per_weekend"]` values are the normal-
-check uplift scaled by `COTA_EVENT_AVG_CHECK / BAR_AVG_CHECK` (~1.71x) on
-top of the original (larger) customer-*volume* assumptions carried over
-from the earlier mixed-drink models. Don't apply the reduced-customer-count
-logic to event-day figures — that would double-count the hours restriction,
-and don't forget the premium-pricing multiplier if these numbers are
-re-derived.
+**and** charges premium event pricing across all four items
+(`COTA_EVENT_DRAFT_BEER_PRICE`/`COTA_EVENT_BEER_PRICE`/
+`COTA_EVENT_SHOT_PRICE`/`COTA_EVENT_COCKTAIL_PRICE` = $10/$12/$5/$16 vs.
+the normal $6/$7/$3/$12), giving `COTA_EVENT_AVG_CHECK` $17.06.
+`COTA_EVENT_TIERS[...]["bar_uplift_per_weekend"]` values are dollar
+figures = customer-*volume* uplift × the event check; when the check
+changes they must be rescaled by the **event**-check ratio (they were
+rescaled ×1.109 for this change, $15.375 → $17.055), and
+`SEASONAL_EVENTS[...]["rev_base"]` by the **normal**-check ratio (×1.2725).
+Both sets are hardcoded and hand-maintained — same drift risk `SCENARIOS`
+carries. Don't apply the reduced-customer-count logic to event-day figures
+— that would double-count the hours restriction — and don't forget the
+premium-pricing multiplier if these numbers are re-derived.
+
+The `SCENARIOS` `avg_check` values were rescaled by the same ×1.2725 normal
+-check ratio ($7.45/$8.05/$8.55/$9.00/$9.95 →
+$9.48/$10.24/$10.88/`BAR_AVG_CHECK`/$12.66); Base Case now references
+`BAR_AVG_CHECK` directly rather than duplicating the number.
+
+Staffing is unchanged: still one bartender comped via `BARTENDER_SHARE_RATE`
+(5% of bar-like revenue), so a higher check raises her share
+proportionally with no new fixed labor line — even though cocktails carry a
+real skill/speed requirement the prepackaged plan avoided. The
+`FIXED_COSTS["insurance"]` estimate ($900/mo) is flagged in-line for
+revisiting now that the bar pours cocktails rather than only prepackaged
+items.
 
 ### Daytime beverage stream (important, easy to regress)
 
@@ -586,9 +627,11 @@ by hand when the underlying assumptions change (e.g. bar check size).
 
 ## Related models on the same land
 
-- `../ftp-rv-park-financial-model` — food truck park + container bar + RV
-  park, $300K SBA loan. This model is a scaled-down variant of that one with
-  the RV park removed and the bar simplified to beer+shots. Financing
-  briefly diverged (this model started on a smaller personal LOC) but has
-  converged back to a real bank term loan, now at $500,000 / 10% / 25yr
-  vs. the RV-park model's $300K / 10.5% / 10yr — see "Financing" above.
+Sibling repos exist for earlier/alternative concepts on this property (`The
+Cube`, a $3M sports bar; and a $300K-SBA-loan variant in
+`../ftp-rv-park-financial-model`). This model's engine descends from the
+latter's codebase, which is why some inherited comments and figures trace
+back to it — but **the concept modeled here does not include an RV park,
+and no user-facing output should mention one.** Those sibling repos are
+historical reference only; don't reintroduce their scope into this model's
+docs, dashboard, or assumptions.

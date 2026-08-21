@@ -1,14 +1,13 @@
 #!/usr/bin/env python3
 """
 Food Truck Park + Bar & Beverage Stand | Del Valle
-Interactive Financial Model (leanest concept on the same land as The Cube /
-the food-truck-+-RV-park alternative)
+Interactive Financial Model
 
 Concept:
   - Food truck park (pad rent $500-$1,000 + 5-10% revenue share)
-  - Bar & beverage stand: evening bar with prepackaged canned/bottled beer +
-    liquor shots in sealed plastic shot glasses only (NO mixed drinks, no
-    cocktails, no RV park), plus an all-day non-alcohol window selling
+  - Bar & beverage stand: evening container bar pouring draft beer (taps),
+    canned/bottled beer (coolers), liquor shots, and made-to-order cocktails,
+    plus an all-day non-alcohol window selling
     soda/juice/water/coffee (NO tobacco/nicotine - see Section 1)
   - Power/water/waste/wifi for the truck hubs, sub-metered and billed at cost
     (Texas PUC utility-resale rules: PURA Sec. 39.107 - resale at cost, no
@@ -42,10 +41,9 @@ monthly nut already reflects the real, contractual P&I payment - no
 schedule (Section 7) shows the year-by-year principal/interest split, plus
 an optional scenario for sweeping extra free cash flow toward early payoff.
 A "Nut Coverage Ratio" (operating income before fixed costs / monthly nut,
-nut now including the loan payment) plays the analytical role DSCR played
-in the RV-park version - though with a real bank loan now in place, it's
-worth comparing against an actual DSCR calc too (see the CRE Investment
-Summary tab).
+nut now including the loan payment) is the plain-language coverage metric
+- though with a real bank loan now in place, it's worth comparing against
+an actual DSCR calc too (see the CRE Investment Summary tab).
 
 Location advantages baked into assumptions:
   - Dollar General next door = easy groceries for park customers/staff
@@ -353,13 +351,18 @@ def operating_to_calendar_month(op_month, opening_month=None):
     start = opening_month if opening_month is not None else OPENING_MONTH
     return ((start - 1 + (op_month - 1)) % 12) + 1
 
-# --- Evening Bar (prepackaged beer + liquor shots ONLY) ---
-# Evening-only operation (6pm-10:30/11pm, ~4.5 hrs/day). No mixed drinks, no
-# pre-packaged cocktails - just canned/bottled beer and liquor poured/sealed
-# into single-serve plastic shot glasses. Simpler than a full container bar:
-# no bartender skill/speed requirement, no cocktail markup, minimal equipment
-# (coolers + a shot-pour/seal station).
-# The ALCOHOL side of the bar (beer + shots) stays evening-only for TABC/
+# --- Evening Bar (full container bar: draft + canned beer, shots, cocktails) ---
+# Evening-only operation (6pm-10:30/11pm, ~4.5 hrs/day). The park is building
+# out a FULL container bar ($50,000, "Container Bar (full buildout)" in
+# USE_OF_FUNDS): taps for draft beer, coolers for canned/bottled, a
+# shot-pour station, and a made-to-order cocktail well. This replaces the
+# earlier prepackaged-only plan (canned beer + sealed shots, no mixed
+# drinks) - see the "Unit pricing" block below for the four-item menu, mix,
+# and the resulting check/COGS. Cocktails carry a real bartender
+# skill/speed requirement the prepackaged plan avoided, but the staffing
+# model is unchanged (still one bartender comped via BARTENDER_SHARE_RATE -
+# a higher check raises her share proportionally, no new fixed labor line).
+# The ALCOHOL side of the bar stays evening-only for TABC/
 # demand reasons; the all-day extension is the non-alcoholic beverage
 # window (soda/juice/water/coffee - see DAYTIME_BEVERAGE_* below), so the
 # alcohol traffic assumptions (BAR_WEEKDAY/WEEKEND_CUSTOMERS) are unchanged.
@@ -380,21 +383,44 @@ BAR_WEEKEND_CUSTOMERS = 58        # Fri-Sun evening average
 # calendar lookup, consistent with how the rest of the model treats months.
 WEEKDAY_DAYS_PER_MONTH = 30.4 * 4 / 7   # ~17.37
 WEEKEND_DAYS_PER_MONTH = 30.4 * 3 / 7   # ~13.03
-# Unit pricing (owner-specified):
-BEER_PRICE = 7.00                 # per canned/bottled beer
+# Unit pricing (owner-specified). Four items now that the container bar
+# (coolers + taps + mixed-drink setup, $50,000 in USE_OF_FUNDS - see
+# "Container Bar (full buildout)") replaces the original beer/shots-only
+# stand: draft beer (via taps), canned/bottled beer (via coolers), single-
+# serve shots, and made-to-order cocktails.
+DRAFT_BEER_PRICE = 6.00           # per pour, via taps
+BEER_PRICE = 7.00                 # per canned/bottled beer, via coolers
 SHOT_PRICE = 3.00                 # per single-serve plastic shot glass
-BEER_MIX_PCT = 0.75                # 75% of items sold are beer, 25% shots
-SHOT_MIX_PCT = 0.25
-DRINKS_PER_VISIT = 1.5            # avg items (beer + shots combined) per customer visit
-AVG_ITEM_PRICE = BEER_MIX_PCT * BEER_PRICE + SHOT_MIX_PCT * SHOT_PRICE  # $6.00
-BAR_AVG_CHECK = DRINKS_PER_VISIT * AVG_ITEM_PRICE   # $9.00/visit
-# Pre-packaged/single-serve goods carry less margin than pouring well liquor
-# into mixed drinks (reselling a manufactured/portioned product).
-# COGS weighted by REVENUE share of each item (not item count), since beer
-# and shots carry different prices: beer ~37% COGS, shot ~25% COGS.
-_beer_rev_frac = (BEER_MIX_PCT * BEER_PRICE) / AVG_ITEM_PRICE   # 87.5% of $ revenue
-_shot_rev_frac = (SHOT_MIX_PCT * SHOT_PRICE) / AVG_ITEM_PRICE   # 12.5% of $ revenue
-COGS_RATE = _beer_rev_frac * 0.37 + _shot_rev_frac * 0.25        # 35.5%
+COCKTAIL_PRICE = 12.00            # made-to-order mixed drink
+# Item mix (owner-specified): beer is 45% of items sold, split 70% draft /
+# 30% canned now that taps are installed (draft pours faster and cheaper,
+# so it becomes the default once available); shots 20%; cocktails 35%.
+DRAFT_BEER_MIX_PCT = 0.45 * 0.70   # 31.5% of items
+BEER_MIX_PCT = 0.45 * 0.30         # 13.5% of items (canned/bottled)
+SHOT_MIX_PCT = 0.20
+COCKTAIL_MIX_PCT = 0.35
+DRINKS_PER_VISIT = 1.5            # avg items per customer visit (unchanged - a
+                                    # fuller bar changes WHAT people order, not
+                                    # how many rounds they have)
+AVG_ITEM_PRICE = (DRAFT_BEER_MIX_PCT * DRAFT_BEER_PRICE + BEER_MIX_PCT * BEER_PRICE
+                   + SHOT_MIX_PCT * SHOT_PRICE + COCKTAIL_MIX_PCT * COCKTAIL_PRICE)  # $7.635
+BAR_AVG_CHECK = DRINKS_PER_VISIT * AVG_ITEM_PRICE   # $11.45/visit
+# Pre-packaged/single-serve goods carry less margin than pouring liquor into
+# mixed drinks (reselling a manufactured/portioned product vs. marking up a
+# poured ingredient). COGS weighted by REVENUE share of each item (not item
+# count), since items carry different prices: draft/canned beer ~37% COGS
+# each (draft kept at the same conservative rate as canned - no assumed
+# margin improvement without a real keg-cost quote), shot ~25% COGS,
+# cocktail ~30% COGS (liquor + mixers + garnish + cup - an ESTIMATE pending
+# real recipe costing; typical bar cocktail COGS runs lower, ~20-25%, so
+# this is deliberately padded per the project's err-toward-higher-expenses
+# rule).
+_draft_rev_frac = (DRAFT_BEER_MIX_PCT * DRAFT_BEER_PRICE) / AVG_ITEM_PRICE
+_beer_rev_frac = (BEER_MIX_PCT * BEER_PRICE) / AVG_ITEM_PRICE
+_shot_rev_frac = (SHOT_MIX_PCT * SHOT_PRICE) / AVG_ITEM_PRICE
+_cocktail_rev_frac = (COCKTAIL_MIX_PCT * COCKTAIL_PRICE) / AVG_ITEM_PRICE
+COGS_RATE = (_draft_rev_frac * 0.37 + _beer_rev_frac * 0.37
+             + _shot_rev_frac * 0.25 + _cocktail_rev_frac * 0.30)   # ~32.2%
 # --- Alcohol taxes: TWO separate Texas taxes, both apply ---
 # Selling liquor "by the drink" (shots poured/sealed on premises) requires a
 # TABC Mixed Beverage Permit (MB). Under an MB permit, EVERY alcoholic
@@ -573,9 +599,11 @@ SPORTS_DENSITY = {
 
 # --- Seasonal one-off events (watch parties on the big TVs) ---
 # Bar opens EARLY / stays open full-day for these, so volume assumptions
-# hold from the original (larger) model - only the check size is rescaled
-# for the beer/shots-only offering: ratio = new BAR_AVG_CHECK ($9.00) /
-# old mixed-drink check ($18.00) = 0.50
+# hold - only the check size is rescaled to the current BAR_AVG_CHECK.
+# rev_base was $9.00-check figures (the beer/shots-only era); rescaled here
+# by BAR_AVG_CHECK ($11.45) / old BAR_AVG_CHECK ($9.00) = 1.2725 now that
+# the container bar (draft + canned beer, shots, cocktails) is back in the
+# mix - see the "Unit pricing" note above.
 #
 # YEAR 1 CALENDAR CHECK (operating year Sep 2026 - Aug 2027), comparing the
 # owner's sports-schedule research against what actually falls in the window:
@@ -594,9 +622,9 @@ SPORTS_DENSITY = {
 # additive. Revisit for Year 3 (LA28 Summer Olympics + 2027 Rugby/Cricket
 # World Cups would all land in a later operating year).
 SEASONAL_EVENTS = {
-    "super_bowl":    {"month": 2,  "rev_base": 985},
-    "march_madness": {"month": 3,  "rev_base": 1_235},
-    "nye":           {"month": 12, "rev_base": 1_235},
+    "super_bowl":    {"month": 2,  "rev_base": 1_253},   # was 985 at the $9.00 check
+    "march_madness": {"month": 3,  "rev_base": 1_572},   # was 1,235 at the $9.00 check
+    "nye":           {"month": 12, "rev_base": 1_572},   # was 1,235 at the $9.00 check
 }
 
 # --- Utility Pass-Through (sub-metered, billed AT COST) ---
@@ -616,13 +644,22 @@ UTILITY_BILL_PER_TRUCK = 350     # trucks pull heavy 50A loads
 # - not a big-venue staffing budget - scaled up ~1.8x from the original
 # 150-space sizing to cover the larger lot's staffing needs.
 # Bar uplift: on event days the bar extends hours / opens early to serve
-# event crowds AND runs premium event pricing ($12 beer / $5 shot instead of
-# the normal $7/$3), so uplift = normal-check uplift x (event check / normal
-# check) = x($15.375/$9.00) = x1.708.
+# event crowds AND runs premium event pricing across all four items instead
+# of the normal $6/$7/$3/$12, so uplift = customer-volume uplift x the event
+# check. The stored bar_uplift_per_weekend dollar figures below were sized at
+# the old $15.375 event check (beer/shots only) and are rescaled by
+# $17.055/$15.375 = 1.109 now that the container bar pours draft and
+# cocktails at event pricing too - the VOLUME assumptions behind them are
+# unchanged (see the note about not double-counting the hours restriction).
+COTA_EVENT_DRAFT_BEER_PRICE = 10.00
 COTA_EVENT_BEER_PRICE = 12.00
 COTA_EVENT_SHOT_PRICE = 5.00
-COTA_EVENT_AVG_CHECK = DRINKS_PER_VISIT * (BEER_MIX_PCT * COTA_EVENT_BEER_PRICE
-                                            + SHOT_MIX_PCT * COTA_EVENT_SHOT_PRICE)  # $15.375
+COTA_EVENT_COCKTAIL_PRICE = 16.00
+COTA_EVENT_AVG_CHECK = DRINKS_PER_VISIT * (
+    DRAFT_BEER_MIX_PCT * COTA_EVENT_DRAFT_BEER_PRICE
+    + BEER_MIX_PCT * COTA_EVENT_BEER_PRICE
+    + SHOT_MIX_PCT * COTA_EVENT_SHOT_PRICE
+    + COCKTAIL_MIX_PCT * COTA_EVENT_COCKTAIL_PRICE)  # $17.055
 # Multi-day weekends build up rather than selling out flat every day - e.g.
 # F1 Friday is a practice-only day with a fraction of Sunday race-day
 # traffic. "daily_occupancy" is one fraction per event day (Fri, Sat, Sun,
@@ -633,49 +670,49 @@ COTA_EVENT_TIERS = {
     "tier1_f1": {
         "name": "F1 US Grand Prix",
         "parking_price": 80, "daily_occupancy": [0.45, 0.75, 1.00],  # Fri practice / Sat quali / Sun race
-        "bar_uplift_per_weekend": 10_165,
+        "bar_uplift_per_weekend": 11_276,
         "incremental_cost": 10_800,
     },
     "tier2_motogp": {
         "name": "MotoGP Grand Prix of the Americas",
         "parking_price": 55, "daily_occupancy": [0.40, 0.70, 0.93],  # Fri practice / Sat quali / Sun race
-        "bar_uplift_per_weekend": 4_545,
+        "bar_uplift_per_weekend": 5_042,
         "incremental_cost": 6_300,
     },
     "tier2_nascar": {
         "name": "NASCAR Cup Series (EchoPark Grand Prix)",
         "parking_price": 50, "daily_occupancy": [0.55, 0.80],  # Sat support races / Sun race
-        "bar_uplift_per_weekend": 2_545,
+        "bar_uplift_per_weekend": 2_823,
         "incremental_cost": 4_500,
     },
     "tier3_wec": {
         "name": "WEC 6 Hours of COTA",
         "parking_price": 35, "daily_occupancy": [0.45, 0.70],
-        "bar_uplift_per_weekend": 1_520,
+        "bar_uplift_per_weekend": 1_686,
         "incremental_cost": 2_160,
     },
     "tier3_gt_transam": {
         "name": "GT World Challenge / TransAm / Other Races",
         "parking_price": 25, "daily_occupancy": [0.25, 0.35],
-        "bar_uplift_per_weekend": 775,
+        "bar_uplift_per_weekend": 860,
         "incremental_cost": 900,
     },
     "tier3_concert": {
         "name": "Major Concert (Germania Amphitheater)",
         "parking_price": 30, "daily_occupancy": [0.55],
-        "bar_uplift_per_weekend": 510,
+        "bar_uplift_per_weekend": 566,
         "incremental_cost": 720,
     },
     "tier3_festival": {
         "name": "Festival (FoodieLand, etc.)",
         "parking_price": 30, "daily_occupancy": [0.35, 0.45],
-        "bar_uplift_per_weekend": 425,
+        "bar_uplift_per_weekend": 471,
         "incremental_cost": 720,
     },
     "tier4_trackday": {
         "name": "Track Day / Car Club / Bike Night",
         "parking_price": 0, "daily_occupancy": [0.10],
-        "bar_uplift_per_weekend": 265,
+        "bar_uplift_per_weekend": 294,
         "incremental_cost": 180,
     },
 }
@@ -730,7 +767,8 @@ COTA_EVENTS_BY_MONTH = {
 # entity must still file a Public Information Report or face a $50 penalty
 # and loss of good standing. That filing is covered by accounting_tax_prep.
 FIXED_COSTS = {
-    "insurance": 900,                # GL + liquor liability (beer/shots only) + park liability (estimate)
+    "insurance": 900,                # GL + liquor liability + park liability (estimate - revisit now
+                                      # that the bar pours cocktails, not just prepackaged items)
     "water_bill": 150,               # estimate pending first bill
     "electric_bill": 350,            # estimate pending first bill (common-area: lights, TVs, misters, bar coolers)
     "septic": 100,                   # estimate - drainage beyond the rented porta-potty unit
@@ -910,7 +948,8 @@ def calc_truck_revenue(month, year_month=None, slots=None, pad_rent=None,
 
 def calc_bar_revenue(weekday_customers, weekend_customers, month,
                      year_month=None, avg_check=None, sports_density=True):
-    """Evening bar (beer + shots) monthly revenue with seasonality, sports
+    """Evening container bar (draft + canned beer, shots, cocktails) monthly
+    revenue with seasonality, sports
     density, and the Year 1 ramp. Weekday (Mon-Thu) and weekend (Fri-Sun)
     traffic are weighted by their average day-counts per month (see
     WEEKDAY_DAYS_PER_MONTH / WEEKEND_DAYS_PER_MONTH) rather than one flat
@@ -1407,7 +1446,13 @@ def run_monte_carlo(n_simulations=10_000, seed=42,
     for _ in range(n_simulations):
         wd_custs = max(5, min(50, random.gauss(_wd_custs, 5)))
         we_custs = max(15, min(100, random.gauss(_we_custs, 12)))
-        check = max(5.0, min(13.0, random.gauss(_check, 1.0)))
+        # Clamp matches the dashboard's Avg Check slider range (5-20), same
+        # convention as the traffic/truck-sales clamps above. The old ceiling
+        # was 13.0, sized for the $9.00 beer/shots-only check - left in place
+        # after the container-bar change it would have truncated the upper
+        # tail barely 1.5 sigma above the new $11.45 mean, biasing every
+        # simulation downward.
+        check = max(5.0, min(20.0, random.gauss(_check, 1.0)))
         truck_sales = max(10_000, min(35_000, random.gauss(_tsales, 5_000)))
         # Truck vacancy is the real fleet risk (6-mo contracts bound it):
         # randomize occupancy rather than the integer slot count.
@@ -1481,7 +1526,7 @@ def run_monte_carlo(n_simulations=10_000, seed=42,
 SCENARIOS = {
     "Worst Case": {
         "desc": "2 trucks (severe vendor attrition), 70% occ, weak bar, no COTA, weak attach rate",
-        "weekday_customers": 12, "weekend_customers": 34, "avg_check": 7.45,
+        "weekday_customers": 12, "weekend_customers": 34, "avg_check": 9.48,
         "truck_slots": 2, "truck_rent": TRUCK_PAD_RENT, "truck_share_rate": TRUCK_REV_SHARE_RATE,
         "truck_occupancy": 0.70,
         "daytime_beverage_attach_rate": 0.20,
@@ -1490,7 +1535,7 @@ SCENARIOS = {
     },
     "Stress Test": {
         "desc": "3 trucks (partial vendor attrition), 78% occ, soft bar, big-3 COTA events only",
-        "weekday_customers": 15, "weekend_customers": 43, "avg_check": 8.05,
+        "weekday_customers": 15, "weekend_customers": 43, "avg_check": 10.24,
         "truck_slots": 3, "truck_rent": TRUCK_PAD_RENT, "truck_share_rate": TRUCK_REV_SHARE_RATE,
         "truck_occupancy": 0.78,
         "daytime_beverage_attach_rate": 0.25,
@@ -1499,7 +1544,7 @@ SCENARIOS = {
     },
     "Conservative": {
         "desc": "3 trucks (partial vendor attrition), 83% occ, full COTA calendar",
-        "weekday_customers": 17, "weekend_customers": 48, "avg_check": 8.55,
+        "weekday_customers": 17, "weekend_customers": 48, "avg_check": 10.88,
         "truck_slots": 3, "truck_rent": TRUCK_PAD_RENT, "truck_share_rate": TRUCK_REV_SHARE_RATE,
         "truck_occupancy": 0.83,
         "daytime_beverage_attach_rate": 0.30,
@@ -1508,7 +1553,7 @@ SCENARIOS = {
     },
     "Base Case": {
         "desc": "4 trucks (all built hubs leased) at $500 + 10%, 85% occ, 20 weekday / 58 weekend bar customers",
-        "weekday_customers": BAR_WEEKDAY_CUSTOMERS, "weekend_customers": BAR_WEEKEND_CUSTOMERS, "avg_check": 9.00,
+        "weekday_customers": BAR_WEEKDAY_CUSTOMERS, "weekend_customers": BAR_WEEKEND_CUSTOMERS, "avg_check": BAR_AVG_CHECK,
         "truck_slots": TRUCK_SLOTS, "truck_rent": TRUCK_PAD_RENT, "truck_share_rate": TRUCK_REV_SHARE_RATE,
         "truck_occupancy": TRUCK_OCCUPANCY,
         "daytime_beverage_attach_rate": DAYTIME_BEVERAGE_ATTACH_RATE,
@@ -1517,7 +1562,7 @@ SCENARIOS = {
     },
     "Upside": {
         "desc": "6 trucks (hypothetical future expansion, not currently budgeted), full occ, strong evening bar",
-        "weekday_customers": 28, "weekend_customers": 82, "avg_check": 9.95,
+        "weekday_customers": 28, "weekend_customers": 82, "avg_check": 12.66,
         "truck_slots": 6, "truck_rent": TRUCK_PAD_RENT, "truck_share_rate": TRUCK_REV_SHARE_RATE,
         "truck_occupancy": 1.0,
         "daytime_beverage_attach_rate": 0.45,
@@ -1899,7 +1944,7 @@ def print_owner_summary():
 
     print(f"\n  REVENUE STREAMS (Base Case, Year 1)")
     print(f"  {'Food Trucks (rent + share)':<32} ${base['total_trucks']:>14,.0f}")
-    print(f"  {'Evening Bar (beer + shots)':<32} ${base['total_bar']:>14,.0f}")
+    print(f"  {'Evening Bar (container bar)':<32} ${base['total_bar']:>14,.0f}")
     print(f"  {'All-Day Beverages (soda/juice/water/coffee)':<32} ${base['total_daytime_beverage']:>14,.0f}")
     print(f"  {'COTA Events (all)':<32} "
           f"${base['total_cota_parking'] + base['total_cota_bar'] + base['total_cota_daytime_bev']:>14,.0f}")
@@ -1912,7 +1957,9 @@ def print_owner_summary():
           f"saving interest vs. the contractual {LOAN_TERM_YEARS}-year schedule")
     print(f"  - Land owned outright - no rent/mortgage in the nut, and "
           f"${ALREADY_SPENT:,.0f} of the total project cost is already spent")
-    print(f"  - Simple offering (beer + sealed shots only) = minimal labor skill/speed needs")
+    print(f"  - Full container bar (draft, canned, shots, cocktails) = higher "
+          f"check (${BAR_AVG_CHECK:.2f}) and better blended margin than a "
+          f"prepackaged-only stand")
     print(f"  - Utilities sub-metered and billed at cost (no margin leakage)")
     print(f"  - COTA event upside preserved: parking + bar uplift")
 
@@ -2461,8 +2508,10 @@ def run_bank_case_underwriting(loan_rate=None, hold_years=None, exit_cap_rate=No
       - No signed truck leases yet (six LOIs are not executed leases) -
         occupancy stressed to 0.75 (below TRUCK_OCCUPANCY's 0.85, above
         the Worst-Case scenario's 0.70).
-      - A softer evening bar - traffic/check at the "Stress Test" scenario
-        level rather than Base Case.
+      - A softer evening bar - traffic/check/daytime-attach read straight
+        out of SCENARIOS["Stress Test"] rather than duplicated here, so a
+        re-tuned scenario (or a bar-menu change that moves BAR_AVG_CHECK,
+        as the container-bar buildout did) can't leave this case stale.
       - No contractual relationship with COTA (parking/bar/beverage uplift
         depends on a third party's event calendar) - cota_impact_multiplier
         halved rather than zeroed, since COTA events are real and
@@ -2480,10 +2529,13 @@ def run_bank_case_underwriting(loan_rate=None, hold_years=None, exit_cap_rate=No
     exit_cap_rate = exit_cap_rate if exit_cap_rate is not None else MARKET_CAP_RATE
     loan_rate = loan_rate if loan_rate is not None else LOAN_INTEREST_RATE + BANK_CASE_RATE_STRESS
 
+    stress = SCENARIOS["Stress Test"]
     years = run_multi_year_projection(
-        base_weekday_customers=15, base_weekend_customers=43, base_check=8.05,
+        base_weekday_customers=stress["weekday_customers"],
+        base_weekend_customers=stress["weekend_customers"],
+        base_check=stress["avg_check"],
         truck_occupancy=0.75, seasonal_pct=0.85,
-        daytime_beverage_attach_rate=0.25,
+        daytime_beverage_attach_rate=stress["daytime_beverage_attach_rate"],
         cota_impact_multiplier=0.5,
         years=hold_years + 1,
     )

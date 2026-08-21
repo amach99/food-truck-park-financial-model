@@ -62,13 +62,20 @@ truck_occupancy = st.sidebar.slider(
          "contracts bound churn; a slot sits empty during re-leasing gaps. "
          "100% = always full.") / 100
 
-st.sidebar.subheader("Evening Bar (6pm-close, beer + shots only)")
+st.sidebar.subheader("Evening Bar (6pm-close, container bar)")
 weekday_customers = st.sidebar.slider("Weekday Customers/Evening (Mon-Thu)", 5, 50,
                                       model.BAR_WEEKDAY_CUSTOMERS, step=1)
 weekend_customers = st.sidebar.slider("Weekend Customers/Evening (Fri-Sun)", 15, 100,
                                       model.BAR_WEEKEND_CUSTOMERS, step=2)
-avg_check = st.sidebar.slider("Avg Check ($)", 5.0, 15.0, model.BAR_AVG_CHECK,
-                              step=0.25, format="$%.2f")
+avg_check = st.sidebar.slider("Avg Check ($)", 5.0, 20.0, model.BAR_AVG_CHECK,
+                              step=0.25, format="$%.2f",
+                              help=f"Default \\${model.BAR_AVG_CHECK:.2f} = "
+                                   f"{model.DRINKS_PER_VISIT} drinks/visit x the "
+                                   f"\\${model.AVG_ITEM_PRICE:.2f} blended item price "
+                                   f"(\\${model.DRAFT_BEER_PRICE:.0f} draft / "
+                                   f"\\${model.BEER_PRICE:.0f} canned / "
+                                   f"\\${model.SHOT_PRICE:.0f} shot / "
+                                   f"\\${model.COCKTAIL_PRICE:.0f} cocktail).")
 
 st.sidebar.subheader("All-Day Beverages (soda/juice/water/coffee)")
 daytime_bev_price = st.sidebar.slider(
@@ -210,8 +217,30 @@ df = months_to_df(months)
 st.title("Food Truck Park + Bar & Beverage Stand")
 st.caption(f"13901 FM 812, Del Valle, TX 78617  •  "
            f"Project Cost: \\${model.TOTAL_PROJECT_COST:,.0f} "
-           f"(loan @ {model.LOAN_INTEREST_RATE:.1%}/{model.LOAN_TERM_YEARS}yr)  •  "
-           f"Monthly Nut: \\${model.MONTHLY_NUT:,.0f}")
+           f"(loan @ {model.LOAN_INTEREST_RATE:.1%}/{model.LOAN_TERM_YEARS}yr)")
+
+h0, h1, h2, h3 = st.columns(4)
+h0.metric(f"Gross Monthly Revenue ({view_label})",
+          fmt_dollar(annual["total_gross"] / 12),
+          help="Average month across all revenue streams (food trucks, "
+               "evening bar, daytime beverages, COTA events, seasonal "
+               "watch parties, and the at-cost utility pass-through), at "
+               "the current sidebar inputs. This is an average — individual "
+               "months swing widely with Austin patio seasonality and the "
+               "COTA event calendar; see the Dashboard's monthly chart. "
+               "Switch Year 1 / Steady State with the sidebar's Projection "
+               "View toggle.")
+h1.metric("Monthly Loan Payment", fmt_dollar(model.LOAN_MONTHLY_PAYMENT),
+          help="Fixed principal + interest on the bank loan. See Owner "
+               "Summary for the year-by-year principal/interest split.")
+h2.metric("Other Monthly Fixed Costs", fmt_dollar(model.MONTHLY_OPEX_NUT),
+          help=f"{len(model.OPERATING_FIXED_COSTS)} other line items — "
+               "insurance, property tax, utilities, "
+               "licenses, marketing, and more. See Owner Summary for the "
+               "full itemized breakdown.")
+h3.metric("Total Monthly Nut", fmt_dollar(model.MONTHLY_NUT),
+          help="Loan payment + all other fixed costs — what the business "
+               "must cover every month regardless of revenue.")
 
 tabs = st.tabs([
     "Dashboard",
@@ -584,7 +613,7 @@ with tabs[4]:
     st.caption(
         "Randomized around whatever the sidebar sliders are set to: truck "
         "occupancy (vacancy/churn, ±8pts), truck sales (\\$10K-\\$35K/mo), bar "
-        "customers/evening, avg check (\\$5-\\$13), COTA event mix (big 4 fixed; "
+        "customers/evening, avg check (\\$5-\\$20), COTA event mix (big 4 fixed; "
         "concerts/festivals/GT vary), seasonal strength (40%-150%), and the "
         "daytime-beverage attach rate (±8pts), which gets the widest relative "
         "band because it's the least-validated number in the model. Truck "
@@ -956,7 +985,7 @@ with tabs[8]:
     _, conservative = model.run_scenario_projection(model.SCENARIOS["Conservative"])
     _, base = model.run_scenario_projection(model.SCENARIOS["Base Case"])
     var_cost_rows = [
-        {"Expense": "COGS — Evening Bar (beer/shots)",
+        {"Expense": "COGS — Evening Bar (container bar)",
          "Rate": f"{model.COGS_RATE:.1%} of alcohol revenue",
          "Annual (Base Case)": base["total_cogs"]},
         {"Expense": "TX Mixed Beverage GRT",
@@ -1062,8 +1091,9 @@ with tabs[8]:
         "loan is already committed (payoff of the owner's existing LOC), on "
         f"top of \\${model.PHASE_0_5_TOTAL:,.0f} of real buildout already "
         "financed and largely complete outside this loan",
-        "Simple beer + sealed-shot offering = minimal labor skill/speed "
-        "requirements, low equipment cost",
+        "Full container bar (draft, canned, shots, cocktails) — a higher "
+        "average check and better blended margin than a prepackaged-only "
+        "stand, on a $50,000 budgeted buildout",
         "Utilities sub-metered and billed at cost (PURA §39.107) — "
         "no utility margin risk",
         "COTA upside preserved: event parking + bar uplift on race weekends",
@@ -1248,15 +1278,14 @@ with tabs[9]:
 # =============================================================================
 with tabs[10]:
     st.header("📊 How The Model Works")
-    st.caption("Leanest concept on the Del Valle land: food truck park + a "
-               "bar & beverage stand, financed via a $500,000 bank term "
-               "loan — no RV park")
+    st.caption("Food truck park + a bar & beverage stand on the Del Valle "
+               "land, financed via a $500,000 bank term loan")
 
     st.markdown(
         f"""
-        This model strips the food-truck-+-RV-park concept down further:
-        contracted monthly rent from food truck tenants forms a stable base,
-        the evening bar adds beer and single-serve liquor shot sales, the
+        Four revenue streams stack here: contracted monthly rent from food
+        truck tenants forms a stable base, the evening container bar adds
+        draft and canned beer, liquor shots, and cocktails, the
         all-day stand adds soda/juice/water/coffee, and COTA event weekends
         layer parking and bar upside on top. The
         \\${model.TOTAL_PROJECT_COST:,.0f} total project cost (the owner's
@@ -1302,8 +1331,11 @@ with tabs[10]:
              f"rev share on ~${model.TRUCK_AVG_MONTHLY_SALES/1000:.0f}K/mo truck sales",
              _mo("total_trucks"), "100% (trucks carry their own OpEx)"),
             ("2. Evening Bar",
-             f"6pm-close only, ${model.BEER_PRICE:.0f} beer + ${model.SHOT_PRICE:.0f} "
-             f"shots in plastic shot glasses (no cocktails, no mixed drinks): "
+             f"6pm-close only, full container bar: ${model.DRAFT_BEER_PRICE:.0f} draft "
+             f"/ ${model.BEER_PRICE:.0f} canned beer / ${model.SHOT_PRICE:.0f} shots "
+             f"/ ${model.COCKTAIL_PRICE:.0f} cocktails "
+             f"({model.DRAFT_BEER_MIX_PCT:.0%}/{model.BEER_MIX_PCT:.0%}/"
+             f"{model.SHOT_MIX_PCT:.0%}/{model.COCKTAIL_MIX_PCT:.0%} item mix): "
              f"{model.BAR_WEEKDAY_CUSTOMERS} weekday / {model.BAR_WEEKEND_CUSTOMERS} "
              f"weekend customers/evening averaging {model.DRINKS_PER_VISIT} drinks "
              f"(~${model.BAR_AVG_CHECK:.2f} check)",
@@ -1323,8 +1355,10 @@ with tabs[10]:
              "lot), day-by-day occupancy building to the marquee day (F1: 45% Fri "
              "/ 75% Sat / 100% Sun) + uplift on the bar and daytime beverages, "
              f"with the bar at premium event pricing "
-             f"(${model.COTA_EVENT_BEER_PRICE:.0f} beer / "
-             f"${model.COTA_EVENT_SHOT_PRICE:.0f} shot)",
+             f"(${model.COTA_EVENT_DRAFT_BEER_PRICE:.0f} draft / "
+             f"${model.COTA_EVENT_BEER_PRICE:.0f} canned / "
+             f"${model.COTA_EVENT_SHOT_PRICE:.0f} shot / "
+             f"${model.COTA_EVENT_COCKTAIL_PRICE:.0f} cocktail)",
              "Event months only",
              f"Parking ~{_parking_margin:.0%} after upkeep + sales tax, "
              "less per-tier event staffing"),
@@ -1435,33 +1469,32 @@ with tabs[10]:
             "TABC-savvy CPA before filing."
         )
 
-    with st.expander("4. What Changed vs. the Food Truck + RV Park Model"):
+    with st.expander("4. Project Snapshot"):
         st.markdown(
             rf"""
-            | | Food Truck + RV Park | Food Truck Park (this model) |
-            |---|---|---|
-            | Capital | \$300,000 SBA 7(a) term loan | \${model.TOTAL_PROJECT_COST:,.0f} bank term loan |
-            | Rate / structure | 10.5%, 10-yr amortizing | {model.LOAN_INTEREST_RATE:.1%}, {model.LOAN_TERM_YEARS}-yr amortizing |
-            | Financing cost | ~\$4,050/mo fixed P&I | ~\${model.LOAN_MONTHLY_PAYMENT:,.0f}/mo fixed P&I |
-            | Monthly nut | ~\$15,200 | ~\${model.MONTHLY_NUT:,.0f} |
-            | RV pad rent | ~\$16-18K/mo | Removed entirely |
-            | Truck count | 6 slots, ramps up | 4 hubs, leasing up over Year 1 (no more budgeted) |
-            | Cost basis | Estimated buckets | Itemized from real Phase 0.5 cost tracker + actual loan request |
-            | Cleaning/maintenance labor | Part-time paid cleaner | Park manager lives on-site free, no labor cost |
-            | Event staffing | Extra bartender for big events | One bartender always, no extra hire |
-            | Bar offering | Beer, prepackaged cocktails, shots | $7 beer + $3 shots (no cocktails); $12/$5 during COTA events |
-            | Coverage metric | DSCR (vs. debt service) | Nut Coverage (plain-language) + real DSCR (CRE tab) |
-            | Primary output | Lender summary | Owner summary + FCF yield + loan amortization schedule |
+            | | This project |
+            |---|---|
+            | Capital | \${model.TOTAL_PROJECT_COST:,.0f} bank term loan |
+            | Rate / structure | {model.LOAN_INTEREST_RATE:.1%}, {model.LOAN_TERM_YEARS}-yr fully amortizing |
+            | Financing cost | \${model.LOAN_MONTHLY_PAYMENT:,.0f}/mo fixed P&I |
+            | Monthly nut | \${model.MONTHLY_NUT:,.0f} (\${model.MONTHLY_OPEX_NUT:,.0f} opex + the loan payment) |
+            | Land | 4.5 acres, owned outright (\${model.LAND_PURCHASE_PRICE:,.0f} basis) — no rent or mortgage in the nut |
+            | Truck count | {model.TRUCK_SLOTS} hubs, leasing up over Year 1 (no more budgeted) |
+            | Cost basis | Itemized from the owner's real Phase 0.5 cost tracker + the actual loan request |
+            | Cleaning/maintenance labor | Park manager lives on-site free — no labor cost line |
+            | Event staffing | One bartender at all times, including COTA events — no extra hire |
+            | Bar offering | Full container bar: \${model.DRAFT_BEER_PRICE:.0f} draft / \${model.BEER_PRICE:.0f} canned / \${model.SHOT_PRICE:.0f} shots / \${model.COCKTAIL_PRICE:.0f} cocktails; premium pricing during COTA events |
+            | Coverage metrics | Nut Coverage (plain-language) + real DSCR (CRE Investment Summary tab) |
+            | Primary output | Owner summary + FCF yield + loan amortization schedule + CRE underwriting view |
             """
         )
         st.caption(
-            "Both models now use a real, fixed-payment amortizing bank term "
-            "loan (this model no longer uses the smaller interest-only "
-            "personal LOC it started with) - the remaining contrast is "
-            "mainly loan size/term, property scope (no RV park here), and "
-            "staffing model. Both share the same land, the same COTA "
-            "calendar, and the same analysis toolkit (Monte Carlo, "
-            "scenarios, sensitivity, break-even, multi-year, waterfall)."
+            "The loan is a real, fixed-payment amortizing bank term loan — "
+            "this model no longer uses the smaller interest-only personal "
+            "line of credit it started with, which the loan pays off in "
+            "full. Analysis toolkit: Monte Carlo, scenarios, sensitivity, "
+            "break-even, multi-year, waterfall, and a full CRE underwriting "
+            "tab."
         )
 
     with st.expander("5. Function Reference"):
@@ -1788,14 +1821,17 @@ with tabs[11]:
                if bank_case["unlevered_irr"] is not None else "n/a")
     bc6.metric("Levered IRR", fmt_pct(bank_case["levered_irr"] * 100)
                if bank_case["levered_irr"] is not None else "n/a")
+    _stress = model.SCENARIOS["Stress Test"]
     st.caption(
-        "Assumptions: 15/43 weekday/weekend bar customers (Stress Test "
-        "level), \\$8.05 avg check, 75% truck occupancy, 85% seasonal "
-        "factor, 25% daytime-beverage attach rate, COTA impact halved "
-        "(cota_impact_multiplier=0.5). These stack independently of the "
-        "sidebar sliders above — this section always shows the same fixed "
-        "stress case regardless of sidebar inputs, so it stays a stable "
-        "reference point."
+        f"Assumptions: {_stress['weekday_customers']}/"
+        f"{_stress['weekend_customers']} weekday/weekend bar customers and a "
+        f"\\${_stress['avg_check']:.2f} avg check (both read from the Stress "
+        f"Test scenario), 75% truck occupancy, 85% seasonal factor, "
+        f"{_stress['daytime_beverage_attach_rate']:.0%} daytime-beverage "
+        "attach rate, COTA impact halved (cota_impact_multiplier=0.5). These "
+        "stack independently of the sidebar sliders above — this section "
+        "always shows the same fixed stress case regardless of sidebar "
+        "inputs, so it stays a stable reference point."
     )
 
     with st.expander("Glossary"):

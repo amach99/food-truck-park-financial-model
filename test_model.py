@@ -273,15 +273,48 @@ def test_alcohol_variable_rate_includes_both_mixed_beverage_taxes():
 
 def test_bar_avg_check_derives_from_item_mix():
     """BAR_AVG_CHECK is drinks/visit x item mix, NOT a single item price."""
-    expected_item = (m.BEER_MIX_PCT * m.BEER_PRICE
-                     + m.SHOT_MIX_PCT * m.SHOT_PRICE)
+    expected_item = (m.DRAFT_BEER_MIX_PCT * m.DRAFT_BEER_PRICE
+                     + m.BEER_MIX_PCT * m.BEER_PRICE
+                     + m.SHOT_MIX_PCT * m.SHOT_PRICE
+                     + m.COCKTAIL_MIX_PCT * m.COCKTAIL_PRICE)
     assert m.AVG_ITEM_PRICE == pytest.approx(expected_item)
     assert m.BAR_AVG_CHECK == pytest.approx(m.DRINKS_PER_VISIT * expected_item)
     assert m.BAR_AVG_CHECK > m.BEER_PRICE * 0.9  # sanity: not a per-item price
 
 
 def test_item_mix_percentages_sum_to_one():
-    assert m.BEER_MIX_PCT + m.SHOT_MIX_PCT == pytest.approx(1.0)
+    assert (m.DRAFT_BEER_MIX_PCT + m.BEER_MIX_PCT + m.SHOT_MIX_PCT
+            + m.COCKTAIL_MIX_PCT) == pytest.approx(1.0)
+
+
+def test_cota_event_check_exceeds_normal_check():
+    """Event days run premium pricing across all four items, so the event
+    check must beat the everyday check - the COTA bar_uplift_per_weekend
+    figures are sized off that ratio."""
+    assert m.COTA_EVENT_AVG_CHECK > m.BAR_AVG_CHECK
+    for item_price, event_price in [
+        (m.DRAFT_BEER_PRICE, m.COTA_EVENT_DRAFT_BEER_PRICE),
+        (m.BEER_PRICE, m.COTA_EVENT_BEER_PRICE),
+        (m.SHOT_PRICE, m.COTA_EVENT_SHOT_PRICE),
+        (m.COCKTAIL_PRICE, m.COTA_EVENT_COCKTAIL_PRICE),
+    ]:
+        assert event_price > item_price
+
+
+def test_cocktails_are_priced_above_prepackaged_items():
+    """A made-to-order cocktail is the premium item on the menu - if this
+    ever inverts, the item mix and COGS weighting below it are wrong."""
+    assert m.COCKTAIL_PRICE > m.BEER_PRICE > m.DRAFT_BEER_PRICE > m.SHOT_PRICE
+
+
+def test_blended_alcohol_cogs_is_revenue_weighted():
+    """COGS_RATE weights each item's COGS by its share of REVENUE, not of
+    item count - the two differ because item prices differ."""
+    expected = (m._draft_rev_frac * 0.37 + m._beer_rev_frac * 0.37
+                + m._shot_rev_frac * 0.25 + m._cocktail_rev_frac * 0.30)
+    assert m.COGS_RATE == pytest.approx(expected)
+    assert (m._draft_rev_frac + m._beer_rev_frac + m._shot_rev_frac
+            + m._cocktail_rev_frac) == pytest.approx(1.0)
 
 
 def test_parking_sales_tax_is_charged(event_month):
@@ -674,6 +707,31 @@ def test_run_returns_analysis_loan_rate_defaults_match_module_rate():
     explicit = m.run_returns_analysis(loan_rate=m.LOAN_INTEREST_RATE)
     assert default["levered_irr"] == pytest.approx(explicit["levered_irr"])
     assert default["levered_cash_flows"] == explicit["levered_cash_flows"]
+
+
+def test_bank_case_bar_assumptions_track_the_stress_test_scenario():
+    """The Bank Case reads its bar traffic/check out of SCENARIOS["Stress
+    Test"] rather than duplicating the numbers. Guards the drift that bit
+    when the container-bar buildout moved BAR_AVG_CHECK $9.00 -> $11.45 and
+    left a hardcoded $8.05 behind."""
+    stress = m.SCENARIOS["Stress Test"]
+    stress_years = m.run_multi_year_projection(
+        base_weekday_customers=stress["weekday_customers"],
+        base_weekend_customers=stress["weekend_customers"],
+        base_check=stress["avg_check"],
+        truck_occupancy=0.75, seasonal_pct=0.85,
+        daytime_beverage_attach_rate=stress["daytime_beverage_attach_rate"],
+        cota_impact_multiplier=0.5, years=m.HOLD_PERIOD_YEARS + 1)
+    assert m.run_bank_case_underwriting()["stabilized_noi"] == pytest.approx(
+        stress_years[1][2]["total_noi"])
+
+
+def test_monte_carlo_check_clamp_does_not_truncate_the_upper_tail():
+    """The avg-check clamp must leave real headroom above BAR_AVG_CHECK, or
+    the simulation silently biases low. The old ceiling (13.0) sat barely
+    1.5 sigma above the post-container-bar $11.45 mean."""
+    sigma = 1.0                      # matches run_monte_carlo's gauss spread
+    assert 20.0 >= m.BAR_AVG_CHECK + 3 * sigma
 
 
 def test_bank_case_underwriting_is_more_conservative_than_base_case():
