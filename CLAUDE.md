@@ -6,7 +6,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 A financial feasibility model for a food truck park + bar & beverage stand
 (evening container bar — draft + canned beer, liquor shots, and cocktails —
-plus an all-day soda/juice/water/coffee stand) on the 4.5-acre property at
+plus an all-day soda/juice/water/coffee stand) on the 4.432-acre property at
 13901 FM 812, Del Valle, TX — the same land as the earlier "The Cube"
 sports bar plan. This is the leanest concept modeled for the site:
 $500,000 total project cost, financed via a bank term loan (fixed-payment,
@@ -121,10 +121,12 @@ the old LOC and re-listing the assets it already bought don't
 double-count the same dollars. That list still feeds depreciation
 classification and the property's capitalized basis (see "Land basis"
 below) — it's real capital investment in the property no matter which loan
-financed it. The remaining $13,300 of the original $80,100 tracker
-(permits + contingency, never spent under the old LOC) lives in
-`USE_OF_FUNDS` instead, as a real forward-looking cost the new loan needs
-to cover.
+financed it. Of the original $80,100 tracker's remaining $13,300
+(permits + contingency), the $5,300 TABC Mixed Beverage permit has since
+been **obtained and paid under the old LOC**, so it sits inside the
+$120,000 payoff line rather than in `USE_OF_FUNDS`; only the still-unpaid
+$1,700 of health permit / business license plus the $6,300 contingency
+remain as forward-looking costs the new loan funds.
 
 Unlike the old revolving LOC, a fixed-payment amortizing loan already has
 a real, defined schedule — there's no "conservative flat balance"
@@ -223,10 +225,12 @@ PHASE_0_5_TOTAL + (every USE_OF_FUNDS line except the LOC payoff and
 Reserve & Safety Cash)` — land, plus the real historical buildout already
 drawn against the old LOC ($66,800), plus the real new construction/soft
 costs this loan directly funds (septic + paving + container bar + permits
-+ contingency, $213,300). At current figures that's $1,400,000 + $66,800 +
-$213,300 = $1,680,100 (down from a prior-version $1,900,000 that
++ contingency, $208,000). At current figures that's $1,400,000 + $66,800 +
+$208,000 = $1,674,800 (down from a prior-version $1,900,000 that
 double-counted the LOC-funded buildout and also, wrongly, treated the
-reserve as capitalized basis). Used **only** by
+reserve as capitalized basis; and down a further $5,300 once the
+already-paid TABC permit was removed from the permits line — see
+"TABC permit" below). Used **only** by
 the CRE Valuation & Returns functions (`calc_valuation_and_leverage()`,
 `run_returns_analysis()`, `run_cre_sensitivity_grid()`, Section 9) and
 surfaced in the CRE Investment Summary tab. `EQUITY_BASIS =
@@ -530,10 +534,31 @@ genuinely re-introduced it needs its **own** stream with its own attach
 rate and COGS; folding it into `DAYTIME_BEVERAGE_*` (22% COGS, 35% attach)
 would overstate it badly.
 
-The `USE_OF_FUNDS` permits line stays at **$7,000** even though the tobacco
-permits are gone (~$270/2yr). It's a rounded planning bucket dominated by
-the $5,300 two-year TABC MB permit, and unmodeled TABC surety bonds sit in
-the same bucket — so `TOTAL_PROJECT_COST` is unchanged at $81,600.
+### TABC permit: obtained and paid — do not re-add it to `USE_OF_FUNDS`
+
+The `USE_OF_FUNDS` permits line is **$1,700**, not the $7,000 earlier
+versions carried. The $5,300 two-year TABC Mixed Beverage permit that
+dominated that bucket **has been obtained and paid**, financed by the old
+personal LOC — so those dollars are already inside the $120,000
+LOC-payoff line, as part of the pre-loan soft costs making up the gap
+between that draw and the $66,800 of itemized Phase 0.5 capital
+improvements. Carrying $5,300 in the permits line as well double-counted
+the same dollars *and* inflated `TOTAL_CAPITALIZED_BASIS`, which
+capitalizes the permits line but deliberately excludes the payoff. What
+remains is the health permit and business license. The freed $5,300 moved
+into Reserve & Safety Cash ($166,700 → $172,000), so
+`TOTAL_PROJECT_COST` is unchanged at $500,000.
+
+The permit is deliberately **not** added to
+`PHASE_0_5_CAPITAL_IMPROVEMENTS`: that list is physical improvements
+feeding depreciation classification, and a liquor license is an intangible
+on a different tax footing. `test_tabc_permit_is_not_double_counted_in_use_of_funds`
+guards the whole arrangement. Note the knock-on: qualifying Sec. 195
+startup basis fell to $3,800, below the $5,000 immediate-deduction cap, so
+the entire amount is now deducted in Year 1 with nothing amortized —
+`test_startup_costs_follow_section_195_structure` was rewritten to hold in
+both regimes rather than assuming basis exceeds the cap. Unmodeled TABC
+surety bonds remain out of scope.
 
 ### Texas tax stack (researched; several were missing before)
 
@@ -580,8 +605,9 @@ exists.
 
 Permit costs are real money and were badly understated before: a TABC
 **Mixed Beverage Permit is $5,300 for the first two years** ($2,650 at
-renewal), which is most of why the `USE_OF_FUNDS` permits line is now
-$7,000 rather than $1,500.
+renewal). That permit has now been obtained and paid under the old LOC —
+see "TABC permit" above for why it lives in the payoff line rather than
+the `USE_OF_FUNDS` permits line, which is $1,700.
 
 Everything above should be confirmed with a TABC-savvy CPA before filing —
 the in-line comments flag which items are researched versus estimated.

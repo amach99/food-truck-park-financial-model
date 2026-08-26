@@ -375,13 +375,23 @@ def test_depreciation_item_labels_resolve():
 
 
 def test_startup_costs_follow_section_195_structure():
-    """Up to $5,000 immediately, remainder amortized over 15 years."""
-    assert m.STARTUP_COST_BASIS > m.STARTUP_IMMEDIATE_DEDUCTION_CAP
-    remainder = m.STARTUP_COST_BASIS - m.STARTUP_IMMEDIATE_DEDUCTION_CAP
+    """Up to $5,000 immediately, remainder amortized over 15 years.
+
+    Written to hold in BOTH Sec. 195 regimes rather than assuming the
+    basis exceeds the cap: once the TABC permit moved out of the permits
+    line (obtained and paid under the old LOC, so it lives in the payoff
+    line instead), qualifying startup basis fell below $5,000 and the
+    whole amount became immediately deductible with nothing to amortize.
+    """
+    immediate = min(m.STARTUP_COST_BASIS, m.STARTUP_IMMEDIATE_DEDUCTION_CAP)
+    remainder = max(0.0, m.STARTUP_COST_BASIS - immediate)
     assert m.YEAR1_STARTUP_DEDUCTION == pytest.approx(
-        m.STARTUP_IMMEDIATE_DEDUCTION_CAP
-        + remainder / m.STARTUP_AMORTIZATION_YEARS)
-    assert m.ONGOING_STARTUP_AMORTIZATION < m.YEAR1_STARTUP_DEDUCTION
+        immediate + remainder / m.STARTUP_AMORTIZATION_YEARS)
+    assert m.ONGOING_STARTUP_AMORTIZATION == pytest.approx(
+        remainder / m.STARTUP_AMORTIZATION_YEARS)
+    assert m.ONGOING_STARTUP_AMORTIZATION <= m.YEAR1_STARTUP_DEDUCTION
+    # Never deduct more than was actually spent.
+    assert m.YEAR1_STARTUP_DEDUCTION <= m.STARTUP_COST_BASIS
 
 
 def test_startup_and_depreciation_dont_double_count_basis():
@@ -562,6 +572,30 @@ def test_taxable_income_excludes_loan_principal():
 def test_use_of_funds_sums_to_total_project_cost():
     assert sum(a for _, a, _ in m.USE_OF_FUNDS) == m.TOTAL_PROJECT_COST
     assert m.ALREADY_SPENT + m.NEW_CASH_NEEDED == m.TOTAL_PROJECT_COST
+
+
+def test_tabc_permit_is_not_double_counted_in_use_of_funds():
+    """The $5,300 TABC Mixed Beverage permit has been obtained and paid,
+    financed by the old personal LOC - so it sits inside the $120,000
+    LOC-payoff line. Carrying it AGAIN as a forward-looking permits cost
+    would double-count the same dollars and inflate the capitalized basis
+    (which capitalizes the permits line but not the payoff)."""
+    permits = [(label, amt) for label, amt, _ in m.USE_OF_FUNDS
+               if label.startswith("Permits & soft costs")]
+    assert len(permits) == 1, "expected exactly one permits line"
+    label, amount = permits[0]
+    assert "TABC" not in label and "MB permit" not in label, (
+        f"permits line still advertises the already-paid TABC permit: {label!r}")
+    assert amount < 5_300, (
+        f"permits line (${amount:,.0f}) still large enough to be carrying the "
+        "$5,300 TABC permit that the LOC payoff already covers")
+    assert m.TOTAL_PROJECT_COST == 500_000, "loan request must stay at $500,000"
+
+
+def test_land_acreage_matches_the_deeded_tracts():
+    """Two General Warranty Deeds (02/20/2026) convey 1.500 + 2.932 acres.
+    A lender pulls the deed, so don't round back to 4.5."""
+    assert m.LAND_ACRES == pytest.approx(1.500 + 2.932)
 
 
 def test_phase_0_5_items_excluded_from_new_loan_use_of_funds():

@@ -932,12 +932,22 @@ with tabs[8]:
                "($120,000 actually drawn against it — not its full "
                "$170,000 facility limit), septic, paving, a full "
                "container-bar buildout (replacing the Phase 0.5 tracker's "
-               "$1,500 Walmart-shed placeholder), permits, contingency, "
-               "and Reserve & Safety Cash — whatever's left of the "
-               "$500,000 after every named item above it. The owner chose "
+               "$1,500 Walmart-shed placeholder), the remaining permits, "
+               "contingency, and Reserve & Safety Cash — whatever's left of "
+               "the $500,000 after every named item above it. The owner chose "
                "to keep the loan request at the full $500,000 rather than "
                "trim it to match itemized costs, so the leftover sits in "
                "reserve as safety cash.")
+    st.caption("**Permits are $1,700, not the $7,000 carried in earlier "
+               "versions.** The $5,300 TABC Mixed Beverage permit has been "
+               "obtained and paid, financed by the old personal line of "
+               "credit — so it is already inside the $120,000 payoff line "
+               "above. Leaving it in the permits line as well would "
+               "double-count the same dollars (and overstate the capitalized "
+               "basis, which capitalizes permits but not the payoff). What "
+               "remains here is the health permit and business license. The "
+               "freed $5,300 moved into Reserve & Safety Cash, so the total "
+               "is unchanged at $500,000.")
 
     with st.expander("Historical Phase 0.5 buildout (already funded, not part of this loan)"):
         phase_df = pd.DataFrame(model.PHASE_0_5_CAPITAL_IMPROVEMENTS,
@@ -1478,7 +1488,7 @@ with tabs[10]:
             | Rate / structure | {model.LOAN_INTEREST_RATE:.1%}, {model.LOAN_TERM_YEARS}-yr fully amortizing |
             | Financing cost | \${model.LOAN_MONTHLY_PAYMENT:,.0f}/mo fixed P&I |
             | Monthly nut | \${model.MONTHLY_NUT:,.0f} (\${model.MONTHLY_OPEX_NUT:,.0f} opex + the loan payment) |
-            | Land | 4.5 acres, owned outright (\${model.LAND_PURCHASE_PRICE:,.0f} basis) — no rent or mortgage in the nut |
+            | Land | {model.LAND_ACRES} deeded acres, owned outright (\${model.LAND_PURCHASE_PRICE:,.0f} basis) — no rent or mortgage in the nut |
             | Truck count | {model.TRUCK_SLOTS} hubs, leasing up over Year 1 (no more budgeted) |
             | Cost basis | Itemized from the owner's real Phase 0.5 cost tracker + the actual loan request |
             | Cleaning/maintenance labor | Park manager lives on-site free — no labor cost line |
@@ -1590,11 +1600,18 @@ with tabs[11]:
     su_df["Amount"] = su_df["Amount"].apply(fmt_dollar)
     su_df["% of Basis"] = su_df["% of Basis"].apply(lambda x: f"{x:.1%}")
     st.dataframe(su_df, use_container_width=True, hide_index=True)
+    # Read the reserve and payoff straight out of USE_OF_FUNDS so this
+    # caption can't drift from the engine (the TABC-permit correction moved
+    # $5,300 from the permits line into the reserve).
+    _reserve_amt = next(a for l, a, _ in model.USE_OF_FUNDS
+                        if l.startswith("Reserve & Safety Cash"))
+    _payoff_amt = next(a for l, a, _ in model.USE_OF_FUNDS
+                       if l.startswith("Payoff of existing"))
     st.caption(f"The \\${model.LOAN_AMOUNT:,.0f} bank loan covers more than "
-               f"just the capitalized buildout — \\$120,000 of it pays off "
+               f"just the capitalized buildout — \\${_payoff_amt:,.0f} of it pays off "
                "the owner's prior personal LOC (returning cash the owner "
                "already put into Phase 0.5, rather than financing a new "
-               "asset) and \\$166,700 sits in Reserve & Safety Cash "
+               f"asset) and \\${_reserve_amt:,.0f} sits in Reserve & Safety Cash "
                "(uncommitted). So owner cash equity in the deal "
                f"(\\${model.EQUITY_BASIS:,.0f}) comes out lower than the "
                f"land purchase price alone (\\${model.LAND_PURCHASE_PRICE:,.0f}) "

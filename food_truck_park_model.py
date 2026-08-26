@@ -18,7 +18,7 @@ amortizing - rate/term are placeholders pending an actual bank quote; see
 LOAN_INTEREST_RATE/LOAN_TERM_YEARS). USE_OF_FUNDS is the Sources & Uses of
 that $500,000: payoff of the owner's existing personal LOC ($120,000
 actually drawn against it), septic, paving, the container bar buildout,
-permits, contingency, and a Reserve & Safety Cash plug that absorbs
+remaining permits, contingency, and a Reserve & Safety Cash plug that absorbs
 whatever's left after those named items. The owner's real "Phase 0.5
 Master Plan" cost tracker (Notion) totaled $80,100 of itemized, real
 vendor-quoted buildout, mostly already done or in progress; the $66,800
@@ -26,9 +26,11 @@ of it actually drawn against that (now-being-paid-off) personal LOC lives
 separately in PHASE_0_5_CAPITAL_IMPROVEMENTS - it isn't part of the new
 loan's Use of Funds (that would double-count the LOC payoff), but it's
 real capital investment in the property and still feeds depreciation and
-the capitalized basis (Section 9). The remaining $13,300 (permits +
-contingency) was never spent under the old LOC, so it's a real cost in
-USE_OF_FUNDS instead. Of the $500,000 loan, $120,000 is already committed
+the capitalized basis (Section 9). Of the tracker's remaining $13,300
+(permits + contingency), the $5,300 TABC Mixed Beverage permit has since
+been obtained and paid under the old LOC - so it sits inside the $120,000
+payoff, not in USE_OF_FUNDS, which carries only the still-unpaid $1,700
+of health permit / business license plus contingency. Of the $500,000 loan, $120,000 is already committed
 (the LOC payoff) and $380,000 is new cash still to be drawn.
 Line items the owner flagged as planning-only and never implemented
 (generator, grease removal service, propane tank service) are excluded
@@ -127,19 +129,29 @@ PHASE_0_5_TOTAL = sum(a for _, a, _ in PHASE_0_5_CAPITAL_IMPROVEMENTS)  # $80,10
 # placeholder (see PHASE_0_5_CAPITAL_IMPROVEMENTS) with a real full
 # buildout; the LOC payoff retires the existing personal LOC in full
 # ($120,000 actually drawn against it - not its full $170,000 facility
-# limit); permits and contingency are the two Phase 0.5 items that hadn't
-# been spent yet (see above). The permits line was raised from the
-# tracker's $1,500 placeholder to $7,000 after checking real TABC pricing:
-# a Mixed Beverage Permit (MB) - required to sell liquor shots by the
-# drink - is $5,300 for the first two years alone (TABC two-year fee
-# schedule, in force since Sept 2021), on top of the health permit and
-# business license. It is held at $7,000 even after the tobacco stream was
-# dropped (which removed the TX Comptroller cigarette/tobacco +
-# e-cigarette retailer permits, ~$270/2yr) because this is a rounded
-# planning bucket, not an itemized total: a new MB permittee may also have
-# to post a conduct surety bond and a tax security bond, and only the
-# annual premium of those would be an operating cost. Bonding is NOT
-# modeled - confirm requirements with TABC.
+# limit); contingency is the one Phase 0.5 item that hadn't been spent yet
+# (see above).
+#
+# PERMITS LINE - $1,700, NOT $7,000. This line previously carried $7,000,
+# dominated by the $5,300 TABC Mixed Beverage Permit (two-year fee, TABC
+# schedule in force since Sept 2021). **The MB permit has since been
+# obtained and paid for**, funded by the old personal LOC - so its $5,300
+# is already inside the $120,000 LOC-payoff line above, as part of the
+# "pre-loan soft costs" that make up the difference between that $120,000
+# draw and the $66,800 of itemized Phase 0.5 capital improvements. Leaving
+# $5,300 here as a forward-looking cost double-counted the same dollars
+# against the payoff (and inflated TOTAL_CAPITALIZED_BASIS, which
+# capitalizes this line). What remains is the health permit and business
+# license, still to be paid. The freed $5,300 moved to Reserve & Safety
+# Cash so TOTAL_PROJECT_COST stays at exactly $500,000.
+#
+# Note the MB permit is deliberately NOT added to
+# PHASE_0_5_CAPITAL_IMPROVEMENTS: that list is physical capital
+# improvements feeding depreciation classification, and a liquor license is
+# an intangible on a different tax footing. It is captured (correctly, once)
+# via the LOC payoff. A new MB permittee may also have to post a conduct
+# surety bond and a tax security bond; bonding is NOT modeled - confirm
+# requirements with TABC.
 #
 # "Reserve & Safety Cash" is what's left of the $500,000 ask after every
 # named big-ticket item above it - held back rather than earmarked to a
@@ -152,9 +164,9 @@ USE_OF_FUNDS = [
     ("Septic system installation", 100_000, "not_started"),
     ("Paved asphalt roads / internal access improvements", 50_000, "not_started"),
     ("Container Bar (full buildout)", 50_000, "not_started"),
-    ("Permits & soft costs (TABC MB permit, health, business license)", 7_000, "not_started"),
+    ("Permits & soft costs (health permit, business license)", 1_700, "not_started"),
     ("Contingency", 6_300, "not_started"),
-    ("Reserve & Safety Cash", 166_700, "not_started"),
+    ("Reserve & Safety Cash", 172_000, "not_started"),
 ]
 TOTAL_PROJECT_COST = sum(a for _, a, _ in USE_OF_FUNDS)  # $500,000
 ALREADY_SPENT = sum(a for _, a, status in USE_OF_FUNDS if status == "done")  # $120,000
@@ -207,7 +219,16 @@ def _amortization_interest_for_year(principal, annual_rate, term_years, year_ind
 LOAN_MONTHLY_PAYMENT = round(_amortization_payment(LOAN_AMOUNT, LOAN_INTEREST_RATE, LOAN_TERM_YEARS))
 
 # --- Land / Site ---
-LAND_ACRES = 4.5
+# Deeded acreage, per the two General Warranty Deeds dated 02/20/2026
+# conveying the property to JVAM Capital LLC: a 1.500-acre tract and a
+# 2.932-acre tract, both out of the Peter C. Harrison Survey, Abstract
+# No. 2104 (portions of Lot 2, Block A, Final Plat of Del Valle Dollar
+# General, Travis County Doc. No. 201600109). Earlier versions of this
+# model rounded to 4.5; use the deeded figure, since a lender pulls the
+# deed. The ~2.932-acre tract is the dedicated event parking area
+# (EVENT_PARKING_SPACES below); the 1.500-acre tract carries the pads,
+# bar, and seating.
+LAND_ACRES = 4.432
 LAND_PURCHASE_PRICE = 1_400_000  # what the owner actually paid (owned outright, not financed here)
 LAND_ASSESSED_VALUE = 300_000    # county tax assessment - basis for the ~$4K/yr property tax bill
 LAND_VALUE = LAND_PURCHASE_PRICE  # kept for reference; use TOTAL_CAPITALIZED_BASIS for basis math
@@ -2054,13 +2075,16 @@ YEAR1_ACCELERATED_DEPRECIATION = TOTAL_DEPRECIABLE_BASIS  # 100% bonus (+ Sec 17
 # but they aren't lost either: startup and organizational expenditures get
 # up to $5,000 deducted immediately in the year the business opens, with
 # the remainder amortized straight-line over 15 years. This became worth
-# modeling once the permits line was corrected to $7,000 (a TABC Mixed
-# Beverage Permit alone is $5,300 for two years).
+# modeling when the permits line still carried the $5,300 TABC Mixed
+# Beverage Permit. That permit is now obtained and paid (financed by the
+# old LOC, hence inside the LOC-payoff line), so the forward-looking
+# permits line is down to $1,700 - but the Sec. 195 treatment still
+# applies to genuinely pre-opening spend.
 # Only the genuinely pre-opening portion qualifies - inventory is
 # inventory, and contingency is a budgeting buffer rather than a real
 # incurred cost, so neither is included here.
 STARTUP_COST_ITEMS = [
-    "Permits & soft costs (TABC MB permit, health, business license)",
+    "Permits & soft costs (health permit, business license)",
     "Cleaning",
 ]
 STARTUP_COST_BASIS = sum(_use_of_funds_cost[i] for i in STARTUP_COST_ITEMS)
