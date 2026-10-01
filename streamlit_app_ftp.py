@@ -215,9 +215,15 @@ df = months_to_df(months)
 # MAIN CONTENT — TABS
 # =============================================================================
 st.title("Food Truck Park + Bar & Beverage Stand")
-st.caption(f"13901 FM 812, Del Valle, TX 78617  •  "
+st.caption(f"{model.PROPERTY_ADDRESS}  •  "
            f"Project Cost: \\${model.TOTAL_PROJECT_COST:,.0f} "
            f"(loan @ {model.LOAN_INTEREST_RATE:.1%}/{model.LOAN_TERM_YEARS}yr)")
+st.caption(
+    f"Borrower: {model.BORROWER_ENTITY}. Operating: {model.OPERATING_ENTITY}. "
+    f"Parent: {model.PARENT_ENTITY}. Address on the deeded site is 13901 FM 812 "
+    "(not 13903). Formation state, good standing, and guarantor documents are "
+    "outside this model."
+)
 
 h0, h1, h2, h3 = st.columns(4)
 h0.metric(f"Gross Monthly Revenue ({view_label})",
@@ -360,7 +366,7 @@ with tabs[1]:
     c1.metric("Total Revenue", fmt_dollar(annual["total_gross"]))
     c2.metric("FCF Yield", fmt_pct(annual["fcf_yield"] * 100))
     c3.metric("Free Cash Flow", fmt_dollar(annual["total_net_cash"]))
-    c4.metric("Bartender Share (5%)", fmt_dollar(annual["total_bartender_share"]))
+    c4.metric("Scheduled Labor (wages)", fmt_dollar(annual["total_labor_wages"]))
 
     st.subheader("Revenue Streams")
     stream_data = {
@@ -527,13 +533,25 @@ with tabs[3]:
               delta_color="off")
 
     st.subheader("Minimum Bar Traffic by Nut-Coverage Target")
-    st.caption("Assumes a weak truck base (4 trucks @ \\$600 + 5%, no COTA) — "
-               "worst-case support from the truck-rent stream")
+    st.caption(
+        "Weak truck base (4 trucks @ $600 + 5%), no COTA, Year 1 ramp, and "
+        f"the Worst Case check (\\${model.SCENARIOS['Worst Case']['avg_check']:.2f}). "
+        "Scheduled wages still run. If a target is past the 4.0× traffic "
+        "ceiling, the row says unreachable — it does not print that ceiling "
+        "as a customer count."
+    )
     be_rows = []
-    for label, target, wd, we in be["bar_traffic_targets"]:
+    for row in be["bar_traffic_targets"]:
+        if row["reachable"]:
+            customers = f"~{row['weekday_customers']} / ~{row['weekend_customers']}"
+        else:
+            customers = (
+                f"Unreachable at {row['ceiling_multiple']:.1f}× traffic "
+                f"(coverage there is {row['coverage_at_ceiling']:.2f}×)"
+            )
         be_rows.append({
-            "Nut Coverage Target": f"{label} ({target:.2f}x)",
-            "Min Weekday/Weekend Customers": f"~{wd} / ~{we}",
+            "Nut Coverage Target": f"{row['label']} ({row['target']:.2f}x)",
+            "Min Weekday/Weekend Customers": customers,
         })
     st.dataframe(pd.DataFrame(be_rows), use_container_width=True, hide_index=True)
 
@@ -547,6 +565,30 @@ with tabs[3]:
 # =============================================================================
 with tabs[4]:
     st.header(f"Monte Carlo Simulation ({mc_sims:,} scenarios)")
+    st.caption(
+        f"Reproducible for seed {mc_seed} "
+        f"(module default {model.MONTE_CARLO_DEFAULT_SEED}). "
+        "Draws are independent — correlations are not modeled, so the joint "
+        "downside tail is fatter than this chart. An undisclosed run is not "
+        "a reproducible result."
+    )
+    with st.expander("Disclosed draws (distribution, spread, bounds)"):
+        spec_rows = []
+        for row in model.MONTE_CARLO_SPEC:
+            if row["distribution"] == "gaussian":
+                spread = str(row.get("sigma", ""))
+            elif "values" in row:
+                spread = ", ".join(str(v) for v in row["values"])
+            else:
+                spread = "held fixed at the sidebar value"
+            spec_rows.append({
+                "Parameter": row["name"],
+                "Distribution": row["distribution"],
+                "Spread / values": spread,
+                "Low": "" if "low" not in row else str(row["low"]),
+                "High": "" if "high" not in row else str(row["high"]),
+            })
+        st.dataframe(pd.DataFrame(spec_rows), use_container_width=True, hide_index=True)
 
     mc_results = get_monte_carlo(mc_sims, mc_seed, weekday_customers, weekend_customers,
                                  avg_check, truck_rent, truck_share, truck_occupancy,
@@ -752,7 +794,18 @@ with tabs[6]:
     tr_df = pd.DataFrame(tr_rows)
 
     k1, k2, k3, k4 = st.columns(4)
-    k1.metric("Opening Operating Reserve", fmt_dollar(model.OPENING_CASH_RESERVE))
+    k1.metric(
+        "Cash at open (after pre-open burn)",
+        fmt_dollar(model.OPENING_CASH_RESERVE),
+        help=(
+            f"Reserve & Safety Cash ${model.RESERVE_AND_SAFETY_CASH:,.0f} "
+            f"minus {model.PRE_OPEN_MONTHS} pre-open months of debt service, "
+            f"insurance, property tax, and accounting "
+            f"(${model.PRE_OPEN_BURN:,.0f}) against zero revenue. Opening "
+            f"month is {model.OPENING_MONTH}/{model.OPENING_YEAR}. The "
+            "reserve is the sources-and-uses plug, not a separate $15,000 tracker."
+        ),
+    )
     k2.metric("Lowest Balance", fmt_dollar(tracker["min_balance"]))
     k3.metric("Months Negative CF", str(tracker["months_negative"]))
     payback = tracker["payback_month"]
@@ -830,7 +883,7 @@ with tabs[7]:
     parking_cost = annual["total_cota_parking_upkeep"]
     parking_tax = annual["total_cota_parking_sales_tax"]
     cota_cost = annual["total_cota_cost"]
-    bartender_share = annual["total_bartender_share"]
+    labor_wages = annual["total_labor_wages"]
     payroll_burden = annual["total_payroll_burden"]
     management_fee = annual["total_management_fee"]
     replacement_reserve = annual["total_replacement_reserve"]
@@ -839,7 +892,7 @@ with tabs[7]:
     pre_tax_cf = (gross - cogs - grt - mb_sales_tax
                   - daytime_bev_cogs - daytime_bev_tax - cc
                   - shrinkage - utility_cost - parking_cost - parking_tax
-                  - cota_cost - bartender_share - payroll_burden
+                  - cota_cost - labor_wages - payroll_burden
                   - management_fee - replacement_reserve
                   - opex - loan_payment)
     # Taxable profit is NOI minus the loan's INTEREST portion only - loan
@@ -866,7 +919,7 @@ with tabs[7]:
               f"Daytime Bev Sales Tax ({model.DAYTIME_BEVERAGE_SALES_TAX_RATE:.2%})",
               "CC Processing", "Shrinkage", "Utility Pass-Thru", "Parking Upkeep",
               f"Parking Sales Tax ({model.PARKING_SALES_TAX_RATE:.2%})",
-              "COTA Costs", "Bartender Share", "Employer Payroll Burden",
+              "COTA Costs", "Scheduled Labor", "Employer Payroll Burden",
               f"Management Fee ({model.MANAGEMENT_FEE_RATE:.0%})",
               f"Replacement Reserve ({model.REPLACEMENT_RESERVE_RATE:.0%})",
               "Operating Fixed Costs", "Loan Payment (P&I)",
@@ -875,7 +928,7 @@ with tabs[7]:
     values = [gross, -cogs, -grt, -mb_sales_tax,
               -daytime_bev_cogs, -daytime_bev_tax, -cc, -shrinkage,
               -utility_cost, -parking_cost, -parking_tax,
-              -cota_cost, -bartender_share, -payroll_burden,
+              -cota_cost, -labor_wages, -payroll_burden,
               -management_fee, -replacement_reserve,
               -opex, -loan_payment, -income_tax, 0]
     measures = ["absolute"] + ["relative"] * (len(values) - 2) + ["total"]
@@ -894,6 +947,14 @@ with tabs[7]:
         margin=dict(t=40, b=40), showlegend=False,
     )
     st.plotly_chart(fig_wf, use_container_width=True)
+    st.caption(
+        "Mixed-beverage sales tax is backed out of the tax-inclusive alcohol "
+        "receipt before the 6.7% GRT is applied, so GRT is not 6.7% of the "
+        "cash the customer handed over. Event-parking sales tax is extracted "
+        "from the tax-inclusive parking price the same way. Dollar bars are "
+        "rounded for display; the loan payment underneath is the unrounded "
+        "annual debt service (monthly payment × 12)."
+    )
 
     st.subheader("Margin Analysis")
     c1, c2, c3 = st.columns(3)
@@ -938,16 +999,18 @@ with tabs[8]:
                "to keep the loan request at the full $500,000 rather than "
                "trim it to match itemized costs, so the leftover sits in "
                "reserve as safety cash.")
-    st.caption("**Permits are $1,700, not the $7,000 carried in earlier "
-               "versions.** The $5,300 TABC Mixed Beverage permit has been "
-               "obtained and paid, financed by the old personal line of "
-               "credit — so it is already inside the $120,000 payoff line "
-               "above. Leaving it in the permits line as well would "
-               "double-count the same dollars (and overstate the capitalized "
-               "basis, which capitalizes permits but not the payoff). What "
-               "remains here is the health permit and business license. The "
-               "freed $5,300 moved into Reserve & Safety Cash, so the total "
-               "is unchanged at $500,000.")
+    st.caption(
+        f"**Permits are ${model.PERMITS_AND_SOFT_COSTS:,.0f} and contingency "
+        f"is ${model.CONTINGENCY_BUDGET:,.0f}.** Both were raised after the "
+        "independent review and funded out of Reserve & Safety Cash, so the "
+        f"loan stays ${model.TOTAL_PROJECT_COST:,.0f} and the reserve is "
+        f"${model.RESERVE_AND_SAFETY_CASH:,.0f}. The $5,300 TABC Mixed Beverage "
+        "permit is already paid and sits inside the $120,000 payoff — it is "
+        "not in this permits line. Paving stays the $50,000 asphalt base "
+        f"(gravel alternate ${model.GRAVEL_ALT_BUDGET:,.0f} is not selected). "
+        "A later draft listed extra soft costs that are still TBD; those are "
+        "not in this sources-and-uses."
+    )
 
     with st.expander("Historical Phase 0.5 buildout (already funded, not part of this loan)"):
         phase_df = pd.DataFrame(model.PHASE_0_5_CAPITAL_IMPROVEMENTS,
@@ -999,10 +1062,12 @@ with tabs[8]:
          "Rate": f"{model.COGS_RATE:.1%} of alcohol revenue",
          "Annual (Base Case)": base["total_cogs"]},
         {"Expense": "TX Mixed Beverage GRT",
-         "Rate": f"{model.GRT_RATE:.1%} of alcohol revenue",
+         "Rate": (f"{model.GRT_RATE:.1%} of alcohol receipts after sales tax "
+                  "is backed out (no tax-on-tax)"),
          "Annual (Base Case)": base["total_grt"]},
         {"Expense": "TX Mixed Beverage Sales Tax",
-         "Rate": f"{model.MB_SALES_TAX_RATE:.2%} of alcohol revenue (tax-inclusive pricing)",
+         "Rate": (f"{model.MB_SALES_TAX_RATE:.2%} / "
+                  f"{1 + model.MB_SALES_TAX_RATE:.4f} of the tax-inclusive receipt"),
          "Annual (Base Case)": base["total_mb_sales_tax"]},
         {"Expense": "COGS — Daytime Beverages",
          "Rate": f"{model.DAYTIME_BEVERAGE_COGS_RATE:.0%} of daytime beverage revenue",
@@ -1016,17 +1081,22 @@ with tabs[8]:
         {"Expense": "Shrinkage",
          "Rate": f"{model.SHRINKAGE_RATE:.1%} of COGS value",
          "Annual (Base Case)": base["total_shrinkage"]},
-        {"Expense": "Bartender Share (variable comp, not a salary)",
-         "Rate": f"{model.BARTENDER_SHARE_RATE:.0%} of all beverage revenue",
-         "Annual (Base Case)": base["total_bartender_share"]},
+        {"Expense": "Scheduled labor (daytime, evening, event extra, OT, manager)",
+         "Rate": (f"${model.DAYTIME_ATTENDANT_WAGE:.0f}/hr daytime, "
+                  f"${model.EVENING_BARTENDER_WAGE:.0f}/hr evening, "
+                  f"${model.EVENT_EXTRA_WAGE:.0f}/hr event extra, "
+                  f"{model.OVERTIME_ALLOWANCE_RATE:.0%} OT, "
+                  f"${model.MANAGER_ANNUAL_SALARY:,.0f} manager. Lodging not expensed."),
+         "Annual (Base Case)": base["total_labor_wages"]},
         {"Expense": "Employer Payroll Burden (FICA/FUTA/SUTA)",
-         "Rate": f"{model.EMPLOYER_PAYROLL_BURDEN_RATE:.0%} on top of bartender comp",
+         "Rate": f"{model.EMPLOYER_PAYROLL_BURDEN_RATE:.0%} on all cash wages",
          "Annual (Base Case)": base["total_payroll_burden"]},
         {"Expense": "COTA Parking Lot Upkeep",
          "Rate": f"{model.PARKING_UPKEEP_RATE:.0%} of event parking revenue",
          "Annual (Base Case)": base["total_cota_parking_upkeep"]},
         {"Expense": "TX Sales Tax — Event Parking",
-         "Rate": f"{model.PARKING_SALES_TAX_RATE:.2%} of event parking revenue",
+         "Rate": (f"{model.PARKING_SALES_TAX_RATE:.2%} / "
+                  f"{1 + model.PARKING_SALES_TAX_RATE:.4f} of the tax-inclusive price"),
          "Annual (Base Case)": base["total_cota_parking_sales_tax"]},
         {"Expense": "COTA Incremental Costs (event staffing/porta-potty)",
          "Rate": "flat per event tier",
@@ -1049,7 +1119,7 @@ with tabs[8]:
     st.caption("Utility pass-through nets to $0 NOI impact (revenue and cost "
                "offset exactly — PURA §39.107) but is listed here for a "
                "complete expense picture. COTA incremental costs and "
-               "bartender share only apply in months with COTA events / "
+               "event extra labor only applies in months with COTA events / "
                "beverage sales respectively — this total is Year 1 actuals, "
                "not a flat monthly rate like the Nut.")
 
@@ -1108,9 +1178,10 @@ with tabs[8]:
         "no utility margin risk",
         "COTA upside preserved: event parking + bar uplift on race weekends",
         "100% of liquor/beer revenue retained (no rev-share on bar sales)",
-        "All-day beverage sales (soda/juice/water/coffee) diversify revenue "
-        "beyond evening-only alcohol hours at no new fixed labor cost — "
-        "same on-site bartender covers both windows",
+        "All-day beverages are staffed by a daytime attendant, separate from "
+        "the evening bartender, plus one extra body on COTA event days. "
+        "That crew is still light for an 11-hour day. Lodging is provided "
+        "and not expensed. Wage rates are estimates, not quotes",
     ]
     for m in mitigants:
         st.markdown(f"- {m}")
@@ -1215,11 +1286,14 @@ with tabs[9]:
         "Reasonable Owner Salary ($/yr)", 0, 100_000,
         model.REASONABLE_OWNER_SALARY, step=1_000, format="$%d",
     )
-    st.caption("Default reflects a part-time oversight role — the on-site "
-               "manager (free housing in exchange for day-to-day ops) and "
-               "bartender (see Owner Summary) handle the actual labor. A "
-               "CPA reasonable-compensation study should confirm this "
-               "number before electing S-corp status.")
+    st.caption(
+        "Default reflects a part-time oversight role on top of the on-site "
+        f"manager's \\${model.MANAGER_ANNUAL_SALARY:,.0f} cash salary. Lodging "
+        "is provided and is not expensed; IRC §119 and FLSA §3(m) are not "
+        "treated as established. Floor labor is scheduled wages, not a "
+        "beverage-revenue share. A CPA reasonable-compensation study should "
+        "confirm the owner-salary figure before an S-corp election."
+    )
 
     st.markdown("---")
     st.subheader("Combined Financial Impact")
@@ -1355,9 +1429,11 @@ with tabs[10]:
              f"All-day (~11am-close) soda/juice/water/coffee, sized off implied "
              f"food-truck customer traffic ({model.DAYTIME_BEVERAGE_ATTACH_RATE:.0%} "
              f"attach rate x ${model.DAYTIME_BEVERAGE_AVG_PRICE:.2f} avg price) - "
-             "same on-site bartender, no new fixed labor. Requires vendor leases "
-             "restricting trucks to food-only (specialty drinks OK) so demand "
-             "doesn't leak to truck-sold drinks",
+             "staffed by a daytime attendant on scheduled wages (the evening "
+             "bartender does not cover this window unpaid). The crew is still "
+             "light. Requires vendor leases restricting trucks to food-only "
+             "(specialty drinks OK); no leases are executed, so percentage "
+             "rent is non-contractual",
              _mo("total_daytime_beverage"),
              f"~{1 - model.DAYTIME_BEVERAGE_VARIABLE_COST_RATE:.0%} after COGS + sales tax"),
             ("4. COTA Events",
@@ -1388,7 +1464,7 @@ with tabs[10]:
             "ramps) at the current sidebar settings, so they won't match the "
             "Year 1 view. Margins are after that stream's own variable costs "
             "but before the fixed monthly nut, credit-card processing, "
-            "shrinkage, and the bartender's revenue share."
+            "shrinkage, and scheduled labor (wages are hours, not a share of sales)."
         )
 
     with st.expander("2. Key Assumptions"):
@@ -1436,20 +1512,22 @@ with tabs[10]:
         )
         tax_df = pd.DataFrame([
             ("Mixed Beverage Gross Receipts Tax",
-             f"{model.GRT_RATE:.1%} of alcohol sales",
-             "Permittee's own liability — cannot be added to the menu price"),
+             f"{model.GRT_RATE:.1%} after sales tax is backed out",
+             "Permittee's own liability. On tax-inclusive prices, sales tax "
+             "comes out of the cash receipt first so GRT is not charged on "
+             "the sales tax"),
             ("Mixed Beverage Sales Tax",
-             f"{model.MB_SALES_TAX_RATE:.2%} of alcohol sales",
+             f"{model.MB_SALES_TAX_RATE:.2%} embedded in the cash price",
              "A second, separate tax. Under an MB permit it hits every "
-             "alcoholic drink including canned beer. Model assumes "
-             "tax-inclusive menu pricing (the conservative read)"),
+             "alcoholic drink including canned beer. Extracted as "
+             "rate / (1 + rate) from the tax-inclusive receipt"),
             ("Sales tax — daytime beverages",
              f"{model.DAYTIME_BEVERAGE_SALES_TAX_RATE:.2%}",
              "Standard Del Valle/Travis County rate — not alcohol, so no GRT"),
             ("Sales tax — event parking",
-             f"{model.PARKING_SALES_TAX_RATE:.2%}",
+             f"{model.PARKING_SALES_TAX_RATE:.2%} embedded in the cash price",
              "Motor vehicle parking is an explicitly taxable service in TX "
-             "(34 TAC 3.315)"),
+             "(34 TAC 3.315). Extracted from the tax-inclusive price"),
             ("Property tax — land",
              fmt_dollar(model.FIXED_COSTS['property_tax'] * 12) + "/yr",
              "Actual bill; county assesses the land at "
@@ -1459,9 +1537,9 @@ with tabs[10]:
              f"({fmt_dollar(model.FIXED_COSTS['property_tax_improvements'] * 12)}/yr)",
              "The buildout joins the tax roll once complete"),
             ("Employer payroll (FICA/FUTA/SUTA)",
-             f"~{model.EMPLOYER_PAYROLL_BURDEN_RATE:.0%} of bartender comp",
-             "Revenue-share pay doesn't avoid employer payroll tax for a "
-             "W-2 employee"),
+             f"~{model.EMPLOYER_PAYROLL_BURDEN_RATE:.0%} of all cash wages",
+             "Applies to daytime, evening, event-extra, overtime allowance, "
+             "and the manager salary. Lodging is not in the wage base"),
             ("Federal income + self-employment tax",
              f"~{model.EFFECTIVE_INCOME_TAX_RATE:.0%} blended on profit",
              "See the Tax Strategies tab for depreciation and S-corp levers"),
@@ -1472,11 +1550,13 @@ with tabs[10]:
         ], columns=["Tax", "Rate", "Notes"])
         st.dataframe(tax_df, use_container_width=True, hide_index=True)
         st.caption(
-            "Permits are real money and were badly understated in earlier "
-            "versions: a TABC **Mixed Beverage Permit is \\$5,300 for the first "
-            "two years** (\\$2,650 at renewal), which is most of the permits "
-            "line in Use of Funds. Confirm all of the above with a "
-            "TABC-savvy CPA before filing."
+            "The \\$5,300 TABC Mixed Beverage permit (two years; \\$2,650 at "
+            "renewal) is already paid and sits inside the \\$120,000 LOC payoff. "
+            f"It is not in the Use of Funds permits line "
+            f"(\\${model.PERMITS_AND_SOFT_COSTS:,.0f} of remaining site, health, "
+            "and soft permits). This model records the permit as paid, not as "
+            "a permit number and not as transferable collateral. Confirm the "
+            "tax stack with a TABC-savvy CPA before filing."
         )
 
     with st.expander("4. Project Snapshot"):
@@ -1491,8 +1571,8 @@ with tabs[10]:
             | Land | {model.LAND_ACRES} deeded acres, owned outright (\${model.LAND_PURCHASE_PRICE:,.0f} basis) — no rent or mortgage in the nut |
             | Truck count | {model.TRUCK_SLOTS} hubs, leasing up over Year 1 (no more budgeted) |
             | Cost basis | Itemized from the owner's real Phase 0.5 cost tracker + the actual loan request |
-            | Cleaning/maintenance labor | Park manager lives on-site free — no labor cost line |
-            | Event staffing | One bartender at all times, including COTA events — no extra hire |
+            | Manager | \${model.MANAGER_ANNUAL_SALARY:,.0f} cash salary. Lodging is provided and not expensed |
+            | Floor labor | Daytime attendant \${model.DAYTIME_ATTENDANT_WAGE:.0f}/hr, evening bartender \${model.EVENING_BARTENDER_WAGE:.0f}/hr, one extra body on COTA event days, {model.OVERTIME_ALLOWANCE_RATE:.0%} overtime allowance. The crew is still light for an 11-hour day; wages are estimates |
             | Bar offering | Full container bar: \${model.DRAFT_BEER_PRICE:.0f} draft / \${model.BEER_PRICE:.0f} canned / \${model.SHOT_PRICE:.0f} shots / \${model.COCKTAIL_PRICE:.0f} cocktails; premium pricing during COTA events |
             | Coverage metrics | Nut Coverage (plain-language) + real DSCR (CRE Investment Summary tab) |
             | Primary output | Owner summary + FCF yield + loan amortization schedule + CRE underwriting view |
@@ -1589,9 +1669,9 @@ with tabs[11]:
                     "above (see caption below).")
 
     su_df = pd.DataFrame([
-        {"Source / Use": "Owner cash equity (land + net buildout contribution)",
-         "Amount": model.EQUITY_BASIS,
-         "% of Basis": model.EQUITY_BASIS / model.TOTAL_CAPITALIZED_BASIS},
+        {"Source / Use": "Property equity (capitalized basis − loan)",
+         "Amount": model.PROPERTY_EQUITY,
+         "% of Basis": model.PROPERTY_EQUITY / model.TOTAL_CAPITALIZED_BASIS},
         {"Source / Use": f"Bank term loan (debt) @ {model.LOAN_INTEREST_RATE:.1%}, {model.LOAN_TERM_YEARS}yr",
          "Amount": model.LOAN_AMOUNT,
          "% of Basis": model.LOAN_AMOUNT / model.TOTAL_CAPITALIZED_BASIS},
@@ -1600,6 +1680,11 @@ with tabs[11]:
     su_df["Amount"] = su_df["Amount"].apply(fmt_dollar)
     su_df["% of Basis"] = su_df["% of Basis"].apply(lambda x: f"{x:.1%}")
     st.dataframe(su_df, use_container_width=True, hide_index=True)
+    st.markdown("**Equity schedule — every row sums to the next subtotal**")
+    eq_df = pd.DataFrame(model.equity_schedule_rows())
+    eq_df["Amount"] = eq_df["amount"].apply(fmt_dollar)
+    eq_df = eq_df.rename(columns={"line": "Line", "role": "Role"})[["Line", "Amount", "Role"]]
+    st.dataframe(eq_df, use_container_width=True, hide_index=True)
     # Read the reserve and payoff straight out of USE_OF_FUNDS so this
     # caption can't drift from the engine (the TABC-permit correction moved
     # $5,300 from the permits line into the reserve).
@@ -1607,16 +1692,17 @@ with tabs[11]:
                         if l.startswith("Reserve & Safety Cash"))
     _payoff_amt = next(a for l, a, _ in model.USE_OF_FUNDS
                        if l.startswith("Payoff of existing"))
-    st.caption(f"The \\${model.LOAN_AMOUNT:,.0f} bank loan covers more than "
-               f"just the capitalized buildout — \\${_payoff_amt:,.0f} of it pays off "
-               "the owner's prior personal LOC (returning cash the owner "
-               "already put into Phase 0.5, rather than financing a new "
-               f"asset) and \\${_reserve_amt:,.0f} sits in Reserve & Safety Cash "
-               "(uncommitted). So owner cash equity in the deal "
-               f"(\\${model.EQUITY_BASIS:,.0f}) comes out lower than the "
-               f"land purchase price alone (\\${model.LAND_PURCHASE_PRICE:,.0f}) "
-               "— the loan effectively both finances new construction and "
-               "returns some of the owner's prior cash investment.")
+    st.caption(
+        f"Property equity is \\${model.PROPERTY_EQUITY:,.0f} "
+        "(capitalized basis minus the loan). Total economic equity is "
+        f"\\${model.TOTAL_ECONOMIC_EQUITY:,.0f} (property equity plus the "
+        f"\\${_reserve_amt:,.0f} reserve). Those are different numbers; the "
+        "schedule above is what adds up. Land at "
+        f"\\${model.LAND_PURCHASE_PRICE:,.0f} is a related-party transfer "
+        "basis, not an appraisal — loan divided by that figure is not LTV. "
+        f"\\${_payoff_amt:,.0f} of the loan pays off the prior personal LOC "
+        "(cash already spent, not a new asset)."
+    )
 
     # --- 2. Stabilized Operations ---
     st.markdown("---")
@@ -1646,10 +1732,10 @@ with tabs[11]:
     re_contrib = stab["total_real_estate_contribution"]
     biz_contrib = stab["total_business_contribution"]
     seg1.metric("Real Estate", fmt_dollar(re_contrib),
-                help="Truck pad rent + revenue share + COTA event parking "
-                     "(net of upkeep/tax) + utility pass-through. "
-                     "Contractual, land-based income — what a real-estate "
-                     "lender would underwrite.")
+                help="Pad rent (intended contractual terms; leases not "
+                     "executed) + percentage rent (non-contractual) + "
+                     "transactional event parking, net of upkeep and tax, "
+                     "plus the at-cost utility pass-through.")
     seg2.metric("Operating Business", fmt_dollar(biz_contrib),
                 help="Evening bar + daytime beverages + seasonal events + "
                      "COTA bar/beverage uplifts, net of their own COGS, "
@@ -1657,6 +1743,30 @@ with tabs[11]:
                      "real property income.")
     seg3.metric("Business Share of Contribution",
                 fmt_pct(biz_contrib / (re_contrib + biz_contrib) * 100) if (re_contrib + biz_contrib) else "n/a")
+    mix = model.calc_revenue_mix(stab)
+    mix_df = pd.DataFrame([
+        {"Component": "Contractual pad rent (leases not executed)",
+         "Amount": mix["contractual_pad_rent"],
+         "Share of gross": mix["contractual_pad_rent_share"]},
+        {"Component": mix["percentage_rent_label"],
+         "Amount": mix["noncontractual_percentage_rent"],
+         "Share of gross": mix["noncontractual_percentage_rent"] / mix["gross"] if mix["gross"] else 0},
+        {"Component": mix["event_parking_label"],
+         "Amount": mix["transactional_event_parking"],
+         "Share of gross": mix["transactional_event_parking"] / mix["gross"] if mix["gross"] else 0},
+        {"Component": "Property + parking",
+         "Amount": mix["property_and_parking"],
+         "Share of gross": mix["property_and_parking_share"]},
+    ])
+    mix_df["Amount"] = mix_df["Amount"].apply(fmt_dollar)
+    mix_df["Share of gross"] = mix_df["Share of gross"].apply(lambda x: f"{x:.1%}")
+    st.dataframe(mix_df, use_container_width=True, hide_index=True)
+    st.caption(
+        "Shares are of total gross revenue, including the utility pass-through. "
+        "Property + parking is pad rent, percentage rent, and event parking — "
+        "about half of gross at the base case, not a 58% headline. Percentage "
+        "rent stays non-contractual until leases are signed."
+    )
 
     # --- 3. Valuation & Leverage ---
     st.markdown("---")
@@ -1682,8 +1792,9 @@ with tabs[11]:
     l1, l2, l3, l4, l5 = st.columns(5)
     l1.metric("Loan-to-Cost (LTC)", fmt_pct(val["ltc"] * 100),
               help="Loan amount ÷ Total Capitalized Basis.")
-    l2.metric("Loan-to-Value (LTV)", fmt_pct(val["ltv"] * 100),
-              help="Loan amount ÷ implied value at the cap rate above.")
+    l2.metric("Cap-rate LTV (indication)", fmt_pct(val["ltv"] * 100),
+              help="Loan ÷ (NOI / the cap rate above). An indication, not an "
+                   "appraisal, and not loan ÷ the $1.4M related-party land basis.")
     l3.metric("Debt Yield", fmt_pct(val["debt_yield"] * 100),
               help="NOI ÷ loan amount. A value-independent leverage test "
                    "lenders use because it can't be moved by a cap-rate "
@@ -1702,6 +1813,31 @@ with tabs[11]:
                    "since the denominator also includes cash opex, shown "
                    "elsewhere in this dashboard as 'Nut Coverage.' DSCR "
                    "above is the ratio an actual lender covenant would use.")
+    if val["leverage_dilutive"]:
+        st.warning(
+            f"Leverage is dilutive on yield: yield on cost "
+            f"({val['yield_on_cost']:.1%}) is below the loan rate "
+            f"({val['loan_rate']:.1%}). Debt does not improve the unlevered yield."
+        )
+    collateral = model.calc_collateral_indications(stab)
+    st.markdown("**Collateral indications — not an appraisal**")
+    st.caption(
+        "None of these is a headline LTV. Loan ÷ the $1.4M land figure is a "
+        "related-party basis ratio. Segment value capitalizes real-estate "
+        f"contribution at {model.PROPERTY_INCOME_CAP_RATE:.1%} and the operating "
+        f"business at {model.GOING_CONCERN_EBITDA_MULTIPLE:.1f}×, with shared "
+        "overhead unallocated. An independent appraisal is still required."
+    )
+    col_df = pd.DataFrame([
+        {"Reading": "Loan / related-party land basis (not LTV)",
+         "Value": collateral["loan_over_related_party_land_basis"]},
+        {"Reading": "Loan / capitalized cost (LTC)",
+         "Value": collateral["ltc_on_capitalized_cost"]},
+        {"Reading": "Loan / segment indication (unallocated overhead)",
+         "Value": collateral["ltv_segment_indication"] or 0},
+    ])
+    col_df["Value"] = col_df["Value"].apply(lambda x: f"{x:.1%}")
+    st.dataframe(col_df, use_container_width=True, hide_index=True)
 
     st.markdown("**Interest Rate Sensitivity**")
     st.caption(
@@ -1771,6 +1907,12 @@ with tabs[11]:
         st.metric("Equity Multiple",
                   f"{returns['levered_equity_multiple']:.2f}x" if returns["levered_equity_multiple"] is not None else "n/a")
         st.metric("NPV", fmt_dollar(returns["levered_npv"]))
+    if returns["leverage_dilutive"] and returns["levered_irr"] is not None and returns["unlevered_irr"] is not None:
+        st.warning(
+            f"Levered IRR ({returns['levered_irr']:.1%}) is below unlevered IRR "
+            f"({returns['unlevered_irr']:.1%}). At these assumptions the loan "
+            "dilutes equity returns. Both figures stay on screen."
+        )
     st.metric("Cash-on-Cash (Year 1)",
               fmt_pct(returns["cash_on_cash_year1"] * 100) if returns["cash_on_cash_year1"] is not None else "n/a",
               help="Year 1 net cash flow after debt service ÷ equity basis "
@@ -1830,14 +1972,23 @@ with tabs[11]:
                     f"(+150bp over the {model.LOAN_INTEREST_RATE:.1%} point "
                     "estimate). Compare to the 1.35-1.50x typical F&B minimum.")
     bc3.metric("Yield on Cost", fmt_pct(bank_case["yield_on_cost"] * 100))
-    bc4.metric("LTV", fmt_pct(bank_case["ltv"] * 100),
-               help=f"At a {bank_case['cap_rate']:.1%} cap rate on the "
-                    "stressed NOI above.")
+    bc4.metric("Cap-rate LTV (indication)", fmt_pct(bank_case["ltv"] * 100),
+               help=f"Loan ÷ stressed NOI at a {bank_case['cap_rate']:.1%} cap "
+                    "rate. Not loan ÷ the related-party land basis, and not an appraisal.")
     bc5, bc6 = st.columns(2)
     bc5.metric("Unlevered IRR", fmt_pct(bank_case["unlevered_irr"] * 100)
                if bank_case["unlevered_irr"] is not None else "n/a")
     bc6.metric("Levered IRR", fmt_pct(bank_case["levered_irr"] * 100)
                if bank_case["levered_irr"] is not None else "n/a")
+    if bank_case["levered_irr"] is None or (
+        bank_case["unlevered_irr"] is not None
+        and bank_case["levered_irr"] < bank_case["unlevered_irr"]
+    ):
+        st.warning(
+            "Bank-case leverage is dilutive. Levered IRR is below unlevered "
+            "IRR, or the levered cash flows have no IRR in range. The "
+            "unlevered figure stays on screen."
+        )
     _stress = model.SCENARIOS["Stress Test"]
     st.caption(
         f"Assumptions: {_stress['weekday_customers']}/"
@@ -1859,7 +2010,10 @@ with tabs[11]:
             | **NOI** | Effective Gross Income − operating expenses, BEFORE debt service, capex, depreciation, income tax |
             | **Cap rate** | NOI ÷ value — the market's required unlevered yield. Value = NOI ÷ cap rate |
             | **Yield on cost** | Stabilized NOI ÷ total capitalized basis. The gap vs. market cap rate is the **development spread** |
-            | **LTC / LTV** | Loan ÷ total cost / Loan ÷ value |
+            | **LTC** | Loan ÷ total capitalized cost |
+            | **Cap-rate LTV** | Loan ÷ (NOI / cap rate). An indication, not an appraisal |
+            | **Related-party land ratio** | Loan ÷ the $1.4M transfer basis. Not LTV |
+            | **Dilutive leverage** | Yield on cost below the loan rate, or levered IRR below unlevered IRR |
             | **Debt yield** | NOI ÷ loan amount — a value-independent leverage test |
             | **DSCR** | Debt Service Coverage Ratio — NOI ÷ annual loan P&I. The actual lender covenant ratio. Typical minimums 1.20-1.30x general CRE, 1.35-1.50x hospitality/F&B |
             | **FCCR** | Fixed Charge Coverage Ratio — operating income before overhead ÷ (opex + debt service). Broader than DSCR |

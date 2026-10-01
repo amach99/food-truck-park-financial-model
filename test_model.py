@@ -53,7 +53,7 @@ def _total_variable_costs(annual):
         + annual["total_daytime_beverage_tax"]
         + annual["total_cc_processing"]
         + annual["total_shrinkage"]
-        + annual["total_bartender_share"]
+        + annual["total_labor_wages"]
         + annual["total_payroll_burden"]
         + annual["total_cota_parking_upkeep"]
         + annual["total_cota_parking_sales_tax"]
@@ -77,7 +77,7 @@ def test_annual_reconciles_to_noi(year1):
     _, annual = year1
     residual = (annual["total_gross"]
                 - _total_variable_costs(annual)
-                - m.ANNUAL_OPEX_NUT
+                - annual["total_opex"]
                 - annual["total_noi"])
     assert abs(residual) < 1.0
 
@@ -266,9 +266,13 @@ def test_tobacco_stream_is_fully_removed():
 # ---------------------------------------------------------------------------
 
 def test_alcohol_variable_rate_includes_both_mixed_beverage_taxes():
-    """Alcohol carries COGS + 6.7% GRT + 8.25% MB sales tax."""
-    assert m.VARIABLE_COST_RATE == pytest.approx(
-        m.COGS_RATE + m.GRT_RATE + m.MB_SALES_TAX_RATE)
+    """COGS on the cash receipt; sales tax backed out before GRT."""
+    receipts = 1_000.0
+    grt, sales_tax = m.alcohol_taxes_on_inclusive_receipts(receipts)
+    assert sales_tax == pytest.approx(receipts * m.MB_SALES_TAX_RATE / (1 + m.MB_SALES_TAX_RATE))
+    assert grt == pytest.approx((receipts - sales_tax) * m.GRT_RATE)
+    assert grt < receipts * m.GRT_RATE  # no tax-on-tax
+    assert m.VARIABLE_COST_RATE == pytest.approx((m.COGS_RATE * receipts + grt + sales_tax) / receipts)
 
 
 def test_bar_avg_check_derives_from_item_mix():
@@ -322,12 +326,15 @@ def test_parking_sales_tax_is_charged(event_month):
     r = event_month
     assert r["cota_parking"] > 0, "October should have F1 parking revenue"
     assert r["cota_parking_sales_tax"] == pytest.approx(
-        r["cota_parking"] * m.PARKING_SALES_TAX_RATE)
+        r["cota_parking"] * m.PARKING_SALES_TAX_RATE / (1 + m.PARKING_SALES_TAX_RATE))
 
 
-def test_payroll_burden_rides_on_bartender_share(event_month):
+def test_payroll_burden_rides_on_all_wages(event_month):
+    """Burden is 10% of scheduled wages, not of a retired beverage share."""
+    assert m.BARTENDER_SHARE_RATE == 0.0
     assert event_month["payroll_burden"] == pytest.approx(
-        event_month["bartender_share"] * m.EMPLOYER_PAYROLL_BURDEN_RATE)
+        event_month["labor_wages"] * m.EMPLOYER_PAYROLL_BURDEN_RATE)
+    assert event_month["labor_wages"] > event_month["manager_salary"]
 
 
 def test_se_tax_matches_schedule_se_formula():
@@ -534,8 +541,13 @@ def test_loan_amortization_sweep_beats_contractual_schedule():
 
 
 def test_loan_monthly_payment_derives_from_amortization_formula():
-    assert m.LOAN_MONTHLY_PAYMENT == round(m._amortization_payment(
-        m.LOAN_AMOUNT, m.LOAN_INTEREST_RATE, m.LOAN_TERM_YEARS))
+    """Carry the unrounded payment. Annual debt service is payment × 12."""
+    exact = m._amortization_payment(
+        m.LOAN_AMOUNT, m.LOAN_INTEREST_RATE, m.LOAN_TERM_YEARS)
+    assert m.LOAN_MONTHLY_PAYMENT == exact
+    assert m.ANNUAL_DEBT_SERVICE == pytest.approx(exact * 12)
+    assert m.ANNUAL_DEBT_SERVICE == pytest.approx(54_522, abs=1)
+    assert m.ANNUAL_DEBT_SERVICE != round(exact) * 12
 
 
 def test_amortization_balance_reaches_zero_at_term_end():
@@ -586,9 +598,11 @@ def test_tabc_permit_is_not_double_counted_in_use_of_funds():
     label, amount = permits[0]
     assert "TABC" not in label and "MB permit" not in label, (
         f"permits line still advertises the already-paid TABC permit: {label!r}")
-    assert amount < 5_300, (
-        f"permits line (${amount:,.0f}) still large enough to be carrying the "
-        "$5,300 TABC permit that the LOC payoff already covers")
+    # $12,000 is the post-review site/health/access budget. The $5,300 TABC
+    # permit stays inside the LOC payoff and is not added on top of this line.
+    assert amount == m.PERMITS_AND_SOFT_COSTS == 12_000
+    assert amount != 12_000 + 5_300
+    assert amount != 1_700 + 5_300
     assert m.TOTAL_PROJECT_COST == 500_000, "loan request must stay at $500,000"
 
 
@@ -659,21 +673,24 @@ def test_utility_passthrough_is_noi_neutral(year1):
 # ---------------------------------------------------------------------------
 
 def test_returns_analysis_irr_is_sane():
-    """Unlevered/levered IRR at default assumptions should land in a sane
-    band, not pinned to an exact value (assumptions will get tuned over
-    time). Levered IRR should exceed unlevered when yield on cost beats the
-    cost of debt, which holds at these defaults (positive leverage): the
-    $500K loan's 10% rate sits below the ~11.3% yield on cost (computed off
-    TOTAL_CAPITALIZED_BASIS, which now excludes the LOC payoff and Reserve
-    & Safety Cash from the basis - see CLAUDE.md's "Land basis" section).
-    That spread could still flip to negative leverage if
-    LOAN_INTEREST_RATE is tightened toward the top of its 9.5-10%
-    placeholder range, or once a real bank quote replaces it."""
+    """IRR stays in a sane band. Leverage direction follows the spread.
+
+    When stabilized yield on cost is below the loan rate, debt is dilutive
+    and levered IRR must sit below unlevered IRR. Hiding that inversion is
+    the bug this test exists to catch.
+    """
     result = m.run_returns_analysis()
+    _, stabilized = m.run_annual_projection(year=2)
+    yield_on_cost = stabilized["total_noi"] / m.TOTAL_CAPITALIZED_BASIS
     assert result["unlevered_irr"] is not None
     assert result["levered_irr"] is not None
     assert 0 < result["unlevered_irr"] < 1.0
-    assert result["levered_irr"] > result["unlevered_irr"]
+    if yield_on_cost < m.LOAN_INTEREST_RATE:
+        assert result["leverage_dilutive"] is True
+        assert result["levered_irr"] < result["unlevered_irr"]
+    else:
+        assert result["leverage_dilutive"] is False
+        assert result["levered_irr"] > result["unlevered_irr"]
 
 
 def test_equity_multiple_exceeds_one_at_default_assumptions():
@@ -778,10 +795,10 @@ def test_bank_case_underwriting_is_more_conservative_than_base_case():
         m.LOAN_INTEREST_RATE + m.BANK_CASE_RATE_STRESS)
     assert bank_case["stabilized_noi"] < base_annual["total_noi"]
     assert bank_case["dscr"] < base["dscr"]
-    # The stacked stresses should still clear a lender's F&B DSCR floor at
-    # today's assumptions - if this ever fails it's a real finding, not a
-    # test bug; don't loosen the assertion without understanding why.
-    assert bank_case["dscr"] > 1.35
+    # Scheduled labor dropped stacked coverage through a 1.35x F&B floor.
+    # That is the finding. If a later change lifts it back over the floor,
+    # this assertion should fail — update it and say why coverage improved.
+    assert bank_case["dscr"] < 1.35
 
 
 def test_construction_period_delays_returns_engine_cash_flows():
@@ -814,3 +831,124 @@ def test_irr_npv_period_offset_defaults_to_zero():
     cash_flows = [-100_000, 20_000, 30_000, 40_000, 130_000]
     assert m._irr(cash_flows) == pytest.approx(m._irr(cash_flows, period_offset=0.0))
     assert m._npv(0.10, cash_flows) == pytest.approx(m._npv(0.10, cash_flows, period_offset=0.0))
+
+
+def test_equity_schedule_rows_sum():
+    """Property equity and total economic equity are different, and both sum."""
+    rows = {r["line"]: r["amount"] for r in m.equity_schedule_rows()}
+    capitalized = (rows["Land (related-party transfer basis, not an appraisal)"]
+                   + rows["Phase 0.5 capital improvements"]
+                   + rows["New construction and soft costs (this loan)"])
+    assert capitalized == pytest.approx(rows["Capitalized basis"])
+    assert capitalized == pytest.approx(m.TOTAL_CAPITALIZED_BASIS)
+    assert rows["Capitalized basis"] + rows["Less: bank loan"] == pytest.approx(
+        rows["Property equity"])
+    assert rows["Property equity"] + rows["Reserve cash (sources & uses; not capitalized)"] == pytest.approx(
+        rows["Total economic equity"])
+    assert rows["Property equity"] == pytest.approx(1_202_800)
+    assert rows["Total economic equity"] == pytest.approx(1_346_800)
+    assert rows["Property equity"] != rows["Total economic equity"]
+
+
+def test_opening_cash_derives_from_sources_and_uses():
+    assert m.OPENING_MONTH == 3 and m.OPENING_YEAR == 2027
+    assert m.PRE_OPEN_MONTHS == 4
+    assert m.RESERVE_AND_SAFETY_CASH == 144_000
+    assert m.PRE_OPEN_BURN == pytest.approx(26_126, abs=1)
+    assert m.OPENING_CASH_RESERVE == pytest.approx(
+        m.RESERVE_AND_SAFETY_CASH - m.PRE_OPEN_BURN)
+    assert m.OPENING_CASH_RESERVE == pytest.approx(117_874, abs=1)
+    assert m.OPENING_CASH_RESERVE != 15_000
+
+
+def test_scheduled_labor_replaces_revenue_share():
+    _, y2 = m.run_annual_projection(year=2)
+    assert y2["total_manager_salary"] == pytest.approx(m.MANAGER_ANNUAL_SALARY)
+    assert y2["total_daytime_wages"] == pytest.approx(30_800, rel=0.02)
+    assert m.LODGING_PROVIDED and not m.LODGING_EXPENSED
+    # About $90k more cash labor than the retired 5% share (that share was
+    # ~$12k at these revenues). The review's "~$96k" is the same order.
+    assert y2["total_labor_wages"] + y2["total_payroll_burden"] > 90_000
+    assert y2["total_event_extra_wages"] > 0
+
+
+def test_inflation_is_line_by_line_and_spares_the_loan():
+    years = m.run_multi_year_projection(years=2)
+    y1 = years[0][2]
+    y2 = years[1][2]
+    assert y1["cost_inflation_adj"] == 0
+    assert y2["cost_inflation_adj"] > 0
+    assert y2["total_opex"] == pytest.approx(m.ANNUAL_OPEX_NUT * (1 + m.ANNUAL_COST_INFLATION))
+    assert y2["total_labor_wages"] > y1["total_labor_wages"]
+    # Debt service is the same unrounded annual payment in both years.
+    assert (y1["total_noi"] - y1["total_net_cash"]) == pytest.approx(m.ANNUAL_DEBT_SERVICE)
+    assert (y2["total_noi"] - y2["total_net_cash"]) == pytest.approx(m.ANNUAL_DEBT_SERVICE)
+
+
+def test_breakeven_says_when_a_target_is_unreachable():
+    result = m.run_breakeven_analysis(verbose=False)
+    for row in result["bar_traffic_targets"]:
+        assert "reachable" in row
+        if not row["reachable"]:
+            assert row["weekday_customers"] is None
+            assert row["weekend_customers"] is None
+            assert row["coverage_at_ceiling"] < row["target"]
+
+
+def test_revenue_mix_labels_contractual_and_transactional():
+    _, y2 = m.run_annual_projection(year=2)
+    mix = m.calc_revenue_mix(y2)
+    assert mix["property_and_parking_share"] == pytest.approx(0.504, abs=0.01)
+    assert mix["contractual_pad_rent_share"] == pytest.approx(0.043, abs=0.005)
+    assert "non-contractual" in mix["percentage_rent_label"]
+    assert "transactional" in mix["event_parking_label"]
+
+
+def test_delayed_opening_misses_f1():
+    params = m.SCENARIOS["Delayed Opening (misses F1)"]
+    assert "tier1_f1" not in params["cota_events"].get(10, [])
+    _, delayed = m.run_scenario_projection(params)
+    _, base = m.run_scenario_projection(m.SCENARIOS["Base Case"])
+    assert delayed["total_noi"] < base["total_noi"]
+    assert delayed["total_cota_parking"] < base["total_cota_parking"]
+
+
+def test_event_names_match_the_calendar_review():
+    assert "DuraMAX" in m.COTA_EVENT_TIERS["tier2_nascar"]["name"]
+    assert "EchoPark" not in m.COTA_EVENT_TIERS["tier2_nascar"]["name"]
+    assert m.F1_AGREEMENT_THROUGH_YEAR == 2034
+    assert m.COTALAND_STATUS == "scheduled_competitor_not_park_revenue"
+    for events in m.COTA_EVENTS_BY_MONTH.values():
+        assert "cotaland" not in " ".join(events).lower()
+
+
+def test_monte_carlo_spec_discloses_seed_and_bounds():
+    assert m.MONTE_CARLO_DEFAULT_SEED == 42
+    assert m.MONTE_CARLO_DRAWS_ARE_INDEPENDENT is True
+    names = [row["name"] for row in m.MONTE_CARLO_SPEC]
+    assert "weekday_customers" in names
+    assert "cota_impact_multiplier" in names
+    check = m._mc_spec("avg_check")
+    assert check["low"] < m.BAR_AVG_CHECK < check["high"]
+    held = [row for row in m.MONTE_CARLO_SPEC if row["distribution"] == "held_fixed"]
+    assert held
+
+
+def test_address_is_13901_not_13903():
+    assert m.PROPERTY_ADDRESS.startswith("13901 FM 812")
+    assert "13903" not in m.PROPERTY_ADDRESS
+
+
+def test_paving_default_stays_asphalt():
+    paving = next(a for label, a, _ in m.USE_OF_FUNDS if "Paved asphalt" in label)
+    assert paving == m.PAVING_BUDGET == 50_000
+    assert m.GRAVEL_ALT_BUDGET == 15_400
+    assert m.GRAVEL_ALT_BUDGET != paving
+
+
+def test_time_to_open_is_six_months_with_a_four_month_cash_burn():
+    """Sid's 6-month IRR clock and Anoop's 4-month pre-open burn coexist."""
+    assert m.POST_PERMIT_BUILD_MONTHS == 1
+    assert m.ENTITLEMENT_PERMIT_LAG_MONTHS == 5
+    assert m.CONSTRUCTION_PERIOD_MONTHS == 6
+    assert m.PRE_OPEN_MONTHS == 4

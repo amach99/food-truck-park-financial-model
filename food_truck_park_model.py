@@ -119,7 +119,7 @@ PHASE_0_5_CAPITAL_IMPROVEMENTS = [
     ("Refrigerators (bar coolers)", 3_000, "not_started"),
     ("Initial beverage inventory (beer + liquor stock)", 3_600, "not_started"),
 ]
-PHASE_0_5_TOTAL = sum(a for _, a, _ in PHASE_0_5_CAPITAL_IMPROVEMENTS)  # $80,100
+PHASE_0_5_TOTAL = sum(a for _, a, _ in PHASE_0_5_CAPITAL_IMPROVEMENTS)  # $66,800
 
 # --- $500,000 Bank Loan: Sources & Uses ---
 # The owner is financing a larger next phase via a $500,000 bank term loan
@@ -159,14 +159,36 @@ PHASE_0_5_TOTAL = sum(a for _, a, _ in PHASE_0_5_CAPITAL_IMPROVEMENTS)  # $80,10
 # $500,000. The owner deliberately chose to keep the loan request at the
 # full $500,000 (rather than trimming it to match itemized buildout costs)
 # so the leftover sits in reserve as safety cash instead.
-USE_OF_FUNDS = [
+#
+# Permits and contingency were raised after the Aug 31 independent review
+# ($1,700 → $12,000; $6,300 → $24,000) and funded OUT OF this reserve plug,
+# so the ask stays $500,000 and the reserve falls $172,000 → $144,000.
+# The already-paid TABC Mixed Beverage permit is still NOT in this line
+# (it sits inside the LOC payoff). Paving stays the $50,000 asphalt base
+# (Sep 30 lock). GRAVEL_ALT_BUDGET is the unselected alternate — do not
+# swap it in without rebuilding the plug. A later Sep 30 draft wanted
+# additional named softs (several still TBD) and a ~$25k/10% contingency;
+# those amounts are not locked, so they are not applied here.
+PAVING_BUDGET = 50_000            # asphalt base (selected). Not the gravel alternate.
+GRAVEL_ALT_BUDGET = 15_400        # unselected alternate; Phase 0.5 gravel line is separate
+PERMITS_AND_SOFT_COSTS = 12_000   # site development, OSSF, health, TxDOT, fire, CO
+PERMITS_AND_SOFT_COSTS_LABEL = (
+    "Permits & soft costs (site development, OSSF, health, TxDOT driveway, "
+    "fire/life safety, certificate of occupancy)"
+)
+CONTINGENCY_BUDGET = 24_000
+_NAMED_USES_BEFORE_RESERVE = [
     ("Payoff of existing high-interest line of credit (Phase 0.5 & pre-loan soft costs)", 120_000, "done"),
     ("Septic system installation", 100_000, "not_started"),
-    ("Paved asphalt roads / internal access improvements", 50_000, "not_started"),
+    ("Paved asphalt roads / internal access improvements", PAVING_BUDGET, "not_started"),
     ("Container Bar (full buildout)", 50_000, "not_started"),
-    ("Permits & soft costs (health permit, business license)", 1_700, "not_started"),
-    ("Contingency", 6_300, "not_started"),
-    ("Reserve & Safety Cash", 172_000, "not_started"),
+    (PERMITS_AND_SOFT_COSTS_LABEL, PERMITS_AND_SOFT_COSTS, "not_started"),
+    ("Contingency", CONTINGENCY_BUDGET, "not_started"),
+]
+LOAN_ASK = 500_000
+RESERVE_AND_SAFETY_CASH = LOAN_ASK - sum(a for _, a, _ in _NAMED_USES_BEFORE_RESERVE)
+USE_OF_FUNDS = _NAMED_USES_BEFORE_RESERVE + [
+    ("Reserve & Safety Cash", RESERVE_AND_SAFETY_CASH, "not_started"),
 ]
 TOTAL_PROJECT_COST = sum(a for _, a, _ in USE_OF_FUNDS)  # $500,000
 ALREADY_SPENT = sum(a for _, a, status in USE_OF_FUNDS if status == "done")  # $120,000
@@ -216,7 +238,10 @@ def _amortization_interest_for_year(principal, annual_rate, term_years, year_ind
     return total_paid - principal_paid
 
 
-LOAN_MONTHLY_PAYMENT = round(_amortization_payment(LOAN_AMOUNT, LOAN_INTEREST_RATE, LOAN_TERM_YEARS))
+# Unrounded. Annual debt service is this × 12 (~$54,522 at the placeholder
+# 10% / 25-year terms). Round only when displaying a dollar figure — rounding
+# the monthly payment first and then × 12 was the $54,528 figure.
+LOAN_MONTHLY_PAYMENT = _amortization_payment(LOAN_AMOUNT, LOAN_INTEREST_RATE, LOAN_TERM_YEARS)
 
 # --- Land / Site ---
 # Deeded acreage, per the two General Warranty Deeds dated 02/20/2026
@@ -356,14 +381,21 @@ TRUCK_Y1_FILL_RAMP = {
 }
 
 # --- Opening Date ---
-# Operations begin September 2026 (owner's target: mid-Aug/early-Sep - using
-# the later, more conservative date). "Operating month 1" in BAR_Y1_RAMP
-# means "1st month since opening," NOT January - it maps to this calendar
-# month, and each subsequent operating month advances the calendar by one,
-# wrapping year-end. Update OPENING_MONTH if the actual open date shifts;
-# everything else (seasonality, COTA calendar) derives from it.
-OPENING_MONTH = 9   # September
-OPENING_YEAR = 2026
+# Operations begin March 2027. The August 2026 plan's September 2026 open
+# was not credible (septic, paving, bar, and permits still unfinished, and
+# it booked September event revenue the site could not have hosted).
+# "Operating month 1" in BAR_Y1_RAMP means "1st month since opening," NOT
+# January — it maps to this calendar month. Sid's Sep 30 timing lock is the
+# same open (within ~6 months, ~Mar 2027): 5 months of entitlement/permit
+# lag plus 1 month of post-permit build. That 6-month clock is
+# CONSTRUCTION_PERIOD_MONTHS (IRR timing). The 4-month pre-open cash burn
+# below is a different clock — debt service and a few fixed bills against
+# zero revenue — and is not a substitute for the 6-month IRR lag.
+OPENING_MONTH = 3   # March
+OPENING_YEAR = 2027
+POST_PERMIT_BUILD_MONTHS = 1
+ENTITLEMENT_PERMIT_LAG_MONTHS = 5
+TIME_TO_OPEN_MONTHS = POST_PERMIT_BUILD_MONTHS + ENTITLEMENT_PERMIT_LAG_MONTHS  # 6
 
 
 def operating_to_calendar_month(op_month, opening_month=None):
@@ -380,10 +412,9 @@ def operating_to_calendar_month(op_month, opening_month=None):
 # earlier prepackaged-only plan (canned beer + sealed shots, no mixed
 # drinks) - see the "Unit pricing" block below for the four-item menu, mix,
 # and the resulting check/COGS. Cocktails carry a real bartender
-# skill/speed requirement the prepackaged plan avoided, but the staffing
-# model is unchanged (still one bartender comped via BARTENDER_SHARE_RATE -
-# a higher check raises her share proportionally, no new fixed labor line).
-# The ALCOHOL side of the bar stays evening-only for TABC/
+# skill/speed requirement the prepackaged plan avoided. Staffing is scheduled
+# wages (see DAYTIME_ATTENDANT_WAGE / EVENING_BARTENDER_WAGE), not a revenue
+# share. The ALCOHOL side of the bar stays evening-only for TABC/
 # demand reasons; the all-day extension is the non-alcoholic beverage
 # window (soda/juice/water/coffee - see DAYTIME_BEVERAGE_* below), so the
 # alcohol traffic assumptions (BAR_WEEKDAY/WEEKEND_CUSTOMERS) are unchanged.
@@ -391,8 +422,8 @@ BAR_HOURS_PER_DAY = 4.5           # alcohol service window: 6pm-10:30pm average
 DAYTIME_BEVERAGE_HOURS_PER_DAY = 11.0  # all-day non-alcoholic window (~11am-close)
 # Weekday (Mon-Thu) vs weekend (Fri-Sun) traffic, ESTIMATES needing field
 # validation. Split rather than a single flat daily average because a bar's
-# staffing doesn't change either way (one bartender, comped via revenue
-# share - see FIXED_COSTS comment), so the only value in more granularity is
+# staffing doesn't change with customer count (scheduled hours, not a
+# revenue share), so the only value in more granularity is
 # revenue accuracy: a flat average would understate true weekend volume
 # (dragged down by quiet weekdays) right where COTA event uplift needs an
 # accurate weekend baseline to build on. Not split further than this (e.g.
@@ -462,35 +493,68 @@ COGS_RATE = (_draft_rev_frac * 0.37 + _beer_rev_frac * 0.37
 # Both were previously missing #2, which understated alcohol variable cost
 # by 8.25 points. Confirm the permit type and pricing convention with a
 # TABC-savvy CPA.
+#
+# Tax-inclusive prices: back the 8.25% sales tax out of the cash receipt
+# BEFORE applying the 6.7% GRT. Applying GRT to a base that already includes
+# sales tax taxes a tax. VARIABLE_COST_RATE is the effective rate on the
+# cash receipt under that order (COGS stays on the full receipt).
 GRT_RATE = 0.067                 # TX Mixed Beverage Gross Receipts Tax (permittee's own liability)
 MB_SALES_TAX_RATE = 0.0825       # TX Mixed Beverage Sales Tax (assumed tax-inclusive pricing)
-VARIABLE_COST_RATE = COGS_RATE + GRT_RATE + MB_SALES_TAX_RATE  # ~50.5% on alcohol revenue
+
+
+def _inclusive_sales_tax(receipts, rate):
+    """Sales tax embedded in a tax-inclusive cash price (rate / (1 + rate))."""
+    if not receipts or rate <= 0:
+        return 0.0
+    return receipts * rate / (1.0 + rate)
+
+
+def alcohol_taxes_on_inclusive_receipts(receipts):
+    """(GRT, MB sales tax) with sales tax backed out before GRT."""
+    sales_tax = _inclusive_sales_tax(receipts, MB_SALES_TAX_RATE)
+    grt = (receipts - sales_tax) * GRT_RATE
+    return grt, sales_tax
+
+
+_MB_TAX_ON_RECEIPT = (MB_SALES_TAX_RATE / (1.0 + MB_SALES_TAX_RATE)
+                      if MB_SALES_TAX_RATE else 0.0)
+_GRT_ON_RECEIPT = GRT_RATE / (1.0 + MB_SALES_TAX_RATE) if MB_SALES_TAX_RATE else GRT_RATE
+VARIABLE_COST_RATE = COGS_RATE + _GRT_ON_RECEIPT + _MB_TAX_ON_RECEIPT
 CC_PROCESSING_RATE = 0.028
 CC_CARD_USAGE_RATE = 0.85
 SHRINKAGE_RATE = 0.025           # of beverage COGS value (grab-and-go single-serve
                                   # items may be easier to pilfer than pours - watch this)
-BARTENDER_SHARE_RATE = 0.05      # bartender's variable-cost comp: 5% of bar-like revenue
-# Employer-side payroll burden on the bartender's comp. She works set hours
-# on the owner's premises under the owner's direction, so she is very likely
-# a W-2 EMPLOYEE rather than a 1099 contractor - which means the business
-# owes employer FICA (7.65%) plus federal and Texas unemployment insurance
-# on top of whatever she's paid. Revenue-share comp does not avoid this.
-# ~10% is a deliberately conservative blended estimate (FICA 7.65% + TX SUTA
-# new-employer rate + FUTA, the latter two capped at low wage bases so the
-# true blended figure lands a bit under 10%). Confirm classification with a
-# CPA - misclassification penalties are steep.
-# NOTE: the free on-site housing given to the manager and bartender is NOT
-# modeled as taxable wages here. IRC Sec. 119 excludes lodging furnished for
-# the employer's convenience on the business premises as a condition of
-# employment, which plausibly fits live-on-site caretakers - but it is a
-# fact-specific test and a CPA should confirm before relying on it.
+# The old 5% beverage-revenue share is retired. It paid about $2–$3/hr
+# across the open hours — below minimum wage. Labor is now scheduled hours.
+# BARTENDER_SHARE_RATE remains 0 so a stale caller cannot silently re-add
+# the share on top of wages.
+BARTENDER_SHARE_RATE = 0.0
+# Scheduled labor (estimates — wage quotes are still evidence, not facts).
+# Daytime attendant covers the non-alcohol window only (11-hour beverage
+# day minus the 4.5-hour evening bar ≈ 6.5 hours). One attendant plus one
+# evening bartender is still a light crew for an 11-hour day; the event
+# extra body is the only relief, and only on COTA event days.
+DAYTIME_ATTENDANT_WAGE = 13.00    # $/hr, all-day non-alcohol window
+EVENING_BARTENDER_WAGE = 16.00    # $/hr, alcohol service window
+EVENT_EXTRA_WAGE = 15.00          # $/hr, one extra body on each COTA event day
+EVENT_EXTRA_HOURS_PER_DAY = DAYTIME_BEVERAGE_HOURS_PER_DAY  # full open day
+OVERTIME_ALLOWANCE_RATE = 0.10    # flat allowance on hourly wages, not a timecard
+MANAGER_ANNUAL_SALARY = 24_000    # cash salary; lodging is not part of this
+# Employer-side payroll burden on ALL cash wages (hourly + OT allowance +
+# manager salary). ~10% is a deliberately conservative blend (FICA 7.65% +
+# TX SUTA new-employer rate + FUTA). Confirm classification with a CPA.
+# Lodging is disclosed and NOT expensed. IRC Sec. 119 and FLSA Sec. 3(m)
+# can exclude lodging furnished for the employer's convenience on the
+# premises as a condition of employment, but both are fact-specific. Do not
+# treat the exclusion as established.
+LODGING_PROVIDED = True
+LODGING_EXPENSED = False
 EMPLOYER_PAYROLL_BURDEN_RATE = 0.10
 
 # --- All-Day Beverages (soda, juice, water, coffee) ---
 # Extends the bar's operating window from evening-only (BAR_HOURS_PER_DAY)
-# to all-day. Staffed by the same on-site bartender - no new fixed labor
-# line, since she lives on-site (like the park manager), so the "two
-# people, no fixed labor cost" staffing model holds even with longer hours.
+# to all-day. Staffed by a separate daytime attendant at DAYTIME_ATTENDANT_WAGE,
+# not by the evening bartender working the whole day unpaid.
 # Vendor leases restrict food trucks to food only from Day 1 (no truck
 # contracts had been signed as of this addition, so there's no phase-in
 # needed) - specialty drinks (a truck's own signature agua fresca,
@@ -626,11 +690,12 @@ SPORTS_DENSITY = {
 # the container bar (draft + canned beer, shots, cocktails) is back in the
 # mix - see the "Unit pricing" note above.
 #
-# YEAR 1 CALENDAR CHECK (operating year Sep 2026 - Aug 2027), comparing the
+# YEAR 1 CALENDAR CHECK (operating year Mar 2027 - Feb 2028), comparing the
 # owner's sports-schedule research against what actually falls in the window:
-#   - Super Bowl LXI: Sun Feb 14, 2027 (SoFi Stadium). IN WINDOW - modeled.
-#   - March Madness 2027: Mar-Apr 2027. IN WINDOW - modeled.
-#   - NYE: Dec 31, 2026. IN WINDOW - modeled.
+#   - Super Bowl LXI: Sun Feb 14, 2027 — BEFORE the March 2027 open. Not in
+#     Year 1. The February seasonal line is the following Super Bowl (2028).
+#   - March Madness 2027: Mar-Apr 2027. IN WINDOW - modeled (opening month).
+#   - NYE: Dec 31, 2027. IN WINDOW - modeled.
 #   - FIFA World Cup 2026: ran Jun 11 - Jul 19, 2026 and is already OVER
 #     before this park opens. The research deck annualizes ~250 World Cup
 #     matches per year, but Year 1 gets NONE of them. No watch-party line
@@ -655,9 +720,16 @@ SEASONAL_EVENTS = {
 UTILITY_BILL_PER_TRUCK = 350     # trucks pull heavy 50A loads
 
 # --- COTA Event Tiers ---
+# F1's COTA agreement runs through 2034 (the one contracted horizon). This
+# model does not invent a post-2034 F1 calendar. NASCAR at COTA is the
+# DuraMAX Texas Grand Prix, not the EchoPark Grand Prix. COTALAND is a
+# scheduled competitor (announced opening), NOT park revenue — it is not
+# in COTA_EVENTS_BY_MONTH.
+F1_AGREEMENT_THROUGH_YEAR = 2034
+COTALAND_STATUS = "scheduled_competitor_not_park_revenue"
 # Parking uses the dedicated 3-acre lot (EVENT_PARKING_SPACES = 270 spaces)
-# on event days. The F1 tier price of $80/spot is VALIDATED against what
-# neighboring lots actually charge on F1 weekends - and this lot offers more
+# on event days. The F1 tier price of $80/spot is an estimate checked against
+# neighboring lots on F1 weekends - and this lot offers more
 # value (on-site food trucks, bar, and a place to hang out while post-event
 # traffic clears), which supports both the price and repeat/word-of-mouth
 # demand vs. a bare gravel lot. "incremental_cost" is hired parking-operations
@@ -701,7 +773,7 @@ COTA_EVENT_TIERS = {
         "incremental_cost": 6_300,
     },
     "tier2_nascar": {
-        "name": "NASCAR Cup Series (EchoPark Grand Prix)",
+        "name": "NASCAR Cup Series (DuraMAX Texas Grand Prix)",
         "parking_price": 50, "daily_occupancy": [0.55, 0.80],  # Sat support races / Sun race
         "bar_uplift_per_weekend": 2_823,
         "incremental_cost": 4_500,
@@ -759,15 +831,13 @@ COTA_EVENTS_BY_MONTH = {
 # including the fixed monthly principal + interest payment on the $500,000
 # bank term loan (see run_loan_amortization_schedule for the year-by-year
 # principal/interest split, and for the optional extra-prepayment scenario).
-# No cleaning/maintenance labor line: the park manager lives on-site rent-free
-# in exchange for running the park (cleaning, upkeep, day-to-day ops), so
-# that labor cost is a housing trade, not a cash expense. The bartender also
-# lives on-site (same housing-trade logic) and is comped via a revenue share
-# (BARTENDER_SHARE_RATE, variable cost - see VARIABLE_COST_RATE), not a
-# salary - the only bartender at all times, including events, now covering
-# both the evening alcohol bar AND the all-day non-alcohol beverage window
-# (see DAYTIME_BEVERAGE_* below) since living on-site makes the longer day
-# feasible without a second hire.
+# Cash labor is NOT in this dict. The manager is paid MANAGER_ANNUAL_SALARY
+# and the floor is paid scheduled hourly wages (daytime attendant, evening
+# bartender, plus one extra body on COTA event days) inside
+# calc_scheduled_labor(). Lodging is still provided and still not expensed
+# (LODGING_EXPENSED is False). One attendant plus one bartender is a light
+# crew for the combined day — flagged, not padded with an invented second
+# shift.
 # waste_service, wifi_internet, and pos_tech_subscriptions are actual
 # recurring vendor costs from the owner's Phase 0.5 tracker (porta-potty +
 # dumpster, StarLink, Clover POS respectively) - not estimates. water_bill/
@@ -824,7 +894,22 @@ ANNUAL_RENT_GROWTH = 0.03        # truck rent escalation
 ANNUAL_COST_INFLATION = 0.03
 
 # --- Working Capital / Cash Reserve ---
-OPENING_CASH_RESERVE = 15_000    # operating buffer held back beyond the $500K buildout
+# The cash tracker used to start from an unexplained $15,000. The reserve
+# is the Sources & Uses plug (RESERVE_AND_SAFETY_CASH). Before opening, four
+# months of debt service, insurance, property tax (land + improvements), and
+# accounting accrue against zero revenue and are drawn from that reserve.
+# Cash at open is the residual — derived, not a second constant.
+PRE_OPEN_MONTHS = 4
+PRE_OPEN_COST_KEYS = (
+    "loan_payment",
+    "insurance",
+    "property_tax",
+    "property_tax_improvements",
+    "accounting_tax_prep",
+)
+PRE_OPEN_MONTHLY_BURN = sum(FIXED_COSTS[k] for k in PRE_OPEN_COST_KEYS)
+PRE_OPEN_BURN = PRE_OPEN_MONTHLY_BURN * PRE_OPEN_MONTHS
+OPENING_CASH_RESERVE = RESERVE_AND_SAFETY_CASH - PRE_OPEN_BURN
 
 # --- Income Tax ---
 # Texas has no state income tax, but the park's profit is still federal
@@ -866,28 +951,39 @@ DISCOUNT_RATE = 0.10                 # NPV discount rate default
 # lender practice is to stress the rate above the point estimate, not just
 # use it as given.
 BANK_CASE_RATE_STRESS = 0.015
-# Owner's actual land + cash equity in the deal. LOAN_AMOUNT (== the
-# $500,000 TOTAL_PROJECT_COST) funds more than just the capitalized
-# buildout in TOTAL_CAPITALIZED_BASIS - it also pays off the old LOC
-# (refinancing, not a new asset) and funds Reserve & Safety Cash
-# (uncommitted, not yet a capital improvement), both excluded from
-# TOTAL_CAPITALIZED_BASIS above. So EQUITY_BASIS is smaller than
-# LAND_PURCHASE_PRICE alone - the loan is effectively returning some of the
-# owner's prior cash investment (via the LOC payoff) and pre-funding a cash
-# cushion, on top of financing the new buildout - everything in
-# TOTAL_CAPITALIZED_BASIS not covered by the loan is equity.
+# Two equity figures, and they are not the same number.
+# Property equity = capitalized basis (land + real improvements) minus the
+# full loan. Total economic equity adds back the reserve cash the loan
+# left in the bank, which is an asset but not real property. Dropping the
+# reserve, or dropping the new improvements, is how a table stops adding up.
+# EQUITY_BASIS stays the property-equity figure the levered-returns engine
+# already used (capitalized basis − loan).
 EQUITY_BASIS = TOTAL_CAPITALIZED_BASIS - LOAN_AMOUNT
-# Months between capital deployment (t=0 in the returns engine below) and
-# the first month of operations (OPENING_MONTH) - site work + buildout for a
-# park this size, before any revenue exists to discount. This is a TIMING
-# correction only: it delays every cash flow in run_returns_analysis()'s IRR/
-# NPV by this many months, so capital doesn't appear to earn a return during
-# a period when it's actually sitting in a construction budget. It does NOT
-# model a draw schedule (USE_OF_FUNDS is still spent as a lump sum at t=0),
-# a capitalized interest reserve, land carry during construction, or a
-# developer fee - those remain open items on the CRE review's implementation
-# tracker (items 6b-6d) and would each add real cost, not just shift timing.
-CONSTRUCTION_PERIOD_MONTHS = 4
+PROPERTY_EQUITY = EQUITY_BASIS
+TOTAL_ECONOMIC_EQUITY = PROPERTY_EQUITY + RESERVE_AND_SAFETY_CASH
+# Land basis is what the owner paid in a related-party transfer. It is not
+# market value and it is not an appraisal. Do not headline loan / this
+# figure as LTV.
+LAND_BASIS_IS_RELATED_PARTY = True
+PROPERTY_ADDRESS = "13901 FM 812, Del Valle, TX 78617"
+BORROWER_ENTITY = "JVAM Capital LLC"
+OPERATING_ENTITY = "JVA Operations LLC"
+PARENT_ENTITY = "JVAM Ventures LLC"
+# Sep 30 guarantor preference. Disclosure only — not a lender term sheet.
+# Prefer land collateral and no personal guarantee. If a product requires
+# a guaranty, it is all JVAM Ventures stakeholders, not one person.
+SPONSOR_PG_PREFERENCE = "no_pg_land_only"
+SPONSOR_PG_FALLBACK = "all_jvam_ventures_stakeholders"
+# Months between capital deployment (t=0) and the first operating month.
+# Sid's Sep 30 lock: 6 months to a March 2027 open (5 months entitlement
+# lag + 1 month post-permit build), replacing the old 4-month construction
+# constant. This is still a TIMING correction for IRR/NPV only. It does not
+# model a draw schedule, capitalized interest, or a developer fee. The
+# 4-month pre-open cash burn (PRE_OPEN_BURN) is the operating-cost clock
+# and is not added again here. Sid's narrower land-carry estimate
+# (tax + insurance × 6 months) is a different, still-unapplied draft — it
+# is not stacked on top of PRE_OPEN_BURN.
+CONSTRUCTION_PERIOD_MONTHS = TIME_TO_OPEN_MONTHS
 
 
 # =============================================================================
@@ -1079,6 +1175,48 @@ def calc_cota_event_revenue(event_list, parking_spaces=None,
             "incremental_cost": total_cost, "net": gross - total_cost}
 
 
+def event_days(event_list):
+    """Sellable days on the given tier list (one entry per daily_occupancy slot)."""
+    days = 0
+    for tier_key in event_list or []:
+        tier = COTA_EVENT_TIERS.get(tier_key)
+        if tier:
+            days += len(tier["daily_occupancy"])
+    return days
+
+
+def calc_scheduled_labor(event_list, cost_inflation_mult=1.0):
+    """Cash wages for the month. Lodging is not included.
+
+    Daytime attendant hours are the beverage window minus the evening bar
+    (they do not both get paid for the same evening hour). Overtime is a
+    flat allowance on hourly wages. The manager salary is 1/12 of
+    MANAGER_ANNUAL_SALARY. Employer burden applies to the whole cash wage
+    bill. cost_inflation_mult scales every wage line and the burden; it
+    must not be applied to the loan payment.
+    """
+    days = WEEKDAY_DAYS_PER_MONTH + WEEKEND_DAYS_PER_MONTH
+    daytime_hours = max(0.0, DAYTIME_BEVERAGE_HOURS_PER_DAY - BAR_HOURS_PER_DAY)
+    mult = cost_inflation_mult
+    daytime_wages = days * daytime_hours * DAYTIME_ATTENDANT_WAGE * mult
+    evening_wages = days * BAR_HOURS_PER_DAY * EVENING_BARTENDER_WAGE * mult
+    extra_wages = (event_days(event_list) * EVENT_EXTRA_HOURS_PER_DAY
+                   * EVENT_EXTRA_WAGE * mult)
+    hourly = daytime_wages + evening_wages + extra_wages
+    overtime = hourly * OVERTIME_ALLOWANCE_RATE
+    manager = (MANAGER_ANNUAL_SALARY / 12) * mult
+    labor_wages = hourly + overtime + manager
+    return {
+        "daytime_wages": daytime_wages,
+        "evening_wages": evening_wages,
+        "event_extra_wages": extra_wages,
+        "overtime_allowance": overtime,
+        "manager_salary": manager,
+        "labor_wages": labor_wages,
+        "payroll_burden": labor_wages * EMPLOYER_PAYROLL_BURDEN_RATE,
+    }
+
+
 def calc_utility_passthrough(active_trucks):
     """
     Sub-metered utility billings. Billed at cost per Texas PUC resale rules,
@@ -1095,7 +1233,8 @@ def calc_monthly_total(weekday_customers, weekend_customers, month, year_month=N
                        truck_occupancy=None, seasonal_pct=1.0,
                        daytime_beverage_attach_rate=None,
                        daytime_beverage_avg_price=None,
-                       cota_impact_multiplier=1.0):
+                       cota_impact_multiplier=1.0,
+                       cost_inflation_mult=1.0):
     """
     Full monthly calculation across all streams:
       1. Food truck rent+share  4. Seasonal watch parties
@@ -1148,26 +1287,26 @@ def calc_monthly_total(weekday_customers, weekend_customers, month, year_month=N
     bar_like = bar_rev + cota["bar_uplift"] + seasonal_rev
     daytime_bev_like = daytime_bev_rev + cota["daytime_bev_uplift"]
     cogs = bar_like * COGS_RATE
-    grt = bar_like * GRT_RATE
-    mb_sales_tax = bar_like * MB_SALES_TAX_RATE
+    grt, mb_sales_tax = alcohol_taxes_on_inclusive_receipts(bar_like)
     daytime_bev_cogs = daytime_bev_like * DAYTIME_BEVERAGE_COGS_RATE
     daytime_bev_tax = daytime_bev_like * DAYTIME_BEVERAGE_SALES_TAX_RATE
     bar_variable_costs = cogs + grt + mb_sales_tax
     daytime_bev_variable_costs = daytime_bev_cogs + daytime_bev_tax
     all_bev_rev = bar_like + daytime_bev_like
 
-    bartender_share = all_bev_rev * BARTENDER_SHARE_RATE
-    payroll_burden = bartender_share * EMPLOYER_PAYROLL_BURDEN_RATE
+    labor = calc_scheduled_labor(event_list, cost_inflation_mult)
+    labor_wages = labor["labor_wages"]
+    payroll_burden = labor["payroll_burden"]
     cc_processing = all_bev_rev * CC_PROCESSING_RATE * CC_CARD_USAGE_RATE
     shrinkage = (bar_like * COGS_RATE * SHRINKAGE_RATE
                  + daytime_bev_like * DAYTIME_BEVERAGE_COGS_RATE * SHRINKAGE_RATE)
 
     gross_margin = (bar_like * (1 - VARIABLE_COST_RATE)
                      + daytime_bev_like * (1 - DAYTIME_BEVERAGE_VARIABLE_COST_RATE))
-    bev_net = (gross_margin - bartender_share - payroll_burden
+    bev_net = (gross_margin - labor_wages - payroll_burden
                - cc_processing - shrinkage)
     parking_upkeep = cota["parking"] * PARKING_UPKEEP_RATE
-    parking_sales_tax = cota["parking"] * PARKING_SALES_TAX_RATE
+    parking_sales_tax = _inclusive_sales_tax(cota["parking"], PARKING_SALES_TAX_RATE)
     parking_net = cota["parking"] - parking_upkeep - parking_sales_tax
 
     # Real estate vs. operating-business segment CONTRIBUTION (pre-shared-
@@ -1190,15 +1329,19 @@ def calc_monthly_total(weekday_customers, weekend_customers, month, year_month=N
     total_net_before_fixed = (real_estate_contribution + business_contribution
                               - cota["incremental_cost"]
                               - management_fee - replacement_reserve)
-    noi = total_net_before_fixed - MONTHLY_OPEX_NUT   # TRUE NOI - before debt service
-    net_cash_flow = noi - MONTHLY_DEBT_SERVICE         # NOI after debt service (pre-tax)
+    # Each operating fixed line inflates; the loan payment does not.
+    opex_charged = MONTHLY_OPEX_NUT * cost_inflation_mult
+    noi = total_net_before_fixed - opex_charged   # TRUE NOI - before debt service
+    net_cash_flow = noi - MONTHLY_DEBT_SERVICE    # NOI after debt service (pre-tax)
 
     # "Nut Coverage Ratio" plays the role DSCR played when there was a loan:
     # how many times over does operating income before fixed overhead cover
     # the fixed monthly nut (opex + debt service)? Formula is unchanged -
     # it just now reflects the management fee/reserve deduction automatically
     # via the lower total_net_before_fixed.
-    nut_coverage = total_net_before_fixed / MONTHLY_NUT if MONTHLY_NUT > 0 else 0
+    monthly_nut_charged = opex_charged + MONTHLY_DEBT_SERVICE
+    nut_coverage = (total_net_before_fixed / monthly_nut_charged
+                    if monthly_nut_charged > 0 else 0)
 
     return {
         "month": month,
@@ -1226,15 +1369,21 @@ def calc_monthly_total(weekday_customers, weekend_customers, month, year_month=N
         "cogs": cogs,
         "grt": grt,
         "mb_sales_tax": mb_sales_tax,
-        "bartender_share": bartender_share,
+        "labor_wages": labor_wages,
+        "daytime_wages": labor["daytime_wages"],
+        "evening_wages": labor["evening_wages"],
+        "event_extra_wages": labor["event_extra_wages"],
+        "overtime_allowance": labor["overtime_allowance"],
+        "manager_salary": labor["manager_salary"],
         "payroll_burden": payroll_burden,
+        "opex_charged": opex_charged,
         "cc_processing": cc_processing,
         "shrinkage": shrinkage,
         "management_fee": management_fee,
         "replacement_reserve": replacement_reserve,
         "real_estate_contribution": real_estate_contribution,
         "business_contribution": business_contribution,
-        "fixed_costs": MONTHLY_NUT,
+        "fixed_costs": monthly_nut_charged,
         "total_net_before_fixed": total_net_before_fixed,
         "noi": noi,
         "monthly_nut_coverage": nut_coverage,
@@ -1253,7 +1402,8 @@ def run_annual_projection(weekday_customers=None, weekend_customers=None, year=1
                           truck_occupancy=None, seasonal_pct=1.0,
                           daytime_beverage_attach_rate=None,
                           daytime_beverage_avg_price=None,
-                          cota_impact_multiplier=1.0):
+                          cota_impact_multiplier=1.0,
+                          cost_inflation_mult=1.0):
     """
     Full 12-month projection. Returns (months_list, annual_dict).
     Year 1 applies the truck and bar ramps; Year 2+ is steady state.
@@ -1279,7 +1429,7 @@ def run_annual_projection(weekday_customers=None, weekend_customers=None, year=1
             truck_slots, truck_rent, truck_share_rate, truck_avg_sales,
             truck_occupancy, seasonal_pct,
             daytime_beverage_attach_rate, daytime_beverage_avg_price,
-            cota_impact_multiplier,
+            cota_impact_multiplier, cost_inflation_mult,
         )
         months.append(result)
 
@@ -1328,8 +1478,14 @@ def summarize_annual(months, loan_year=1):
         "total_cota_cost": sum(m["cota_incremental_cost"] for m in months),
         "total_utility_billed": sum(m["utility_billed"] for m in months),
         "total_utility_cost": sum(m["utility_cost"] for m in months),
-        "total_bartender_share": sum(m["bartender_share"] for m in months),
+        "total_labor_wages": sum(m["labor_wages"] for m in months),
+        "total_daytime_wages": sum(m["daytime_wages"] for m in months),
+        "total_evening_wages": sum(m["evening_wages"] for m in months),
+        "total_event_extra_wages": sum(m["event_extra_wages"] for m in months),
+        "total_overtime_allowance": sum(m["overtime_allowance"] for m in months),
+        "total_manager_salary": sum(m["manager_salary"] for m in months),
         "total_payroll_burden": sum(m["payroll_burden"] for m in months),
+        "total_opex": sum(m["opex_charged"] for m in months),
         "total_cc_processing": sum(m["cc_processing"] for m in months),
         "total_shrinkage": sum(m["shrinkage"] for m in months),
         "total_cogs": sum(m["cogs"] for m in months),
@@ -1350,7 +1506,7 @@ def summarize_annual(months, loan_year=1):
         "avg_monthly_nut_coverage": sum(m["monthly_nut_coverage"] for m in months) / 12,
         "min_monthly_nut_coverage": min(m["monthly_nut_coverage"] for m in months),
         "max_monthly_nut_coverage": max(m["monthly_nut_coverage"] for m in months),
-        "annual_nut": ANNUAL_NUT,
+        "annual_nut": sum(m["fixed_costs"] for m in months),
         "fcf_yield": total_net_cash / TOTAL_PROJECT_COST,
     }
 
@@ -1390,27 +1546,20 @@ def run_multi_year_projection(base_weekday_customers=None, base_weekend_customer
             daytime_beverage_attach_rate=daytime_beverage_attach_rate,
             daytime_beverage_avg_price=daytime_beverage_avg_price,
             cota_impact_multiplier=cota_impact_multiplier,
+            cost_inflation_mult=cost_mult,
         )
 
-        if yr > 1:
-            # Only OPERATING costs inflate - debt service is fixed by the
-            # loan's amortization schedule, not subject to ANNUAL_COST_INFLATION.
-            inflation_penalty = ANNUAL_OPEX_NUT * (cost_mult - 1)
-            annual["total_noi"] -= inflation_penalty
-            annual["total_net_cash"] -= inflation_penalty
-            annual["cost_inflation_adj"] = inflation_penalty
-            # Recompute after-tax figures on the inflation-adjusted NOI,
-            # taxed on NOI minus THIS loan-year's interest only (principal
-            # isn't deductible - see summarize_annual). loan_interest_paid
-            # was already computed for the correct loan_year=yr inside
-            # summarize_annual above, so it doesn't need re-deriving here.
-            taxable_profit = max(0.0, annual["total_noi"] - annual["loan_interest_paid"])
-            annual["income_tax"] = taxable_profit * EFFECTIVE_INCOME_TAX_RATE
-            annual["after_tax_noi"] = annual["total_net_cash"] - annual["income_tax"]
-            annual["fcf_yield"] = annual["total_net_cash"] / TOTAL_PROJECT_COST
-            annual["after_tax_fcf_yield"] = annual["after_tax_noi"] / TOTAL_PROJECT_COST
+        # Inflation is already inside each opex line and each wage line.
+        # cost_inflation_adj reports that dollar increase. It is not a second
+        # haircut, and it never includes the loan payment.
+        wage_bill = annual["total_labor_wages"] + annual["total_payroll_burden"]
+        if cost_mult == 1:
+            annual["cost_inflation_adj"] = 0.0
         else:
-            annual["cost_inflation_adj"] = 0
+            annual["cost_inflation_adj"] = (
+                (annual["total_opex"] - ANNUAL_OPEX_NUT)
+                + wage_bill * (1 - 1 / cost_mult)
+            )
 
         annual["year"] = yr
         annual["growth_mult"] = growth
@@ -1423,7 +1572,40 @@ def run_multi_year_projection(base_weekday_customers=None, base_weekend_customer
 # SECTION 4: MONTE CARLO SIMULATION
 # =============================================================================
 
-def run_monte_carlo(n_simulations=10_000, seed=42,
+# What the simulator actually draws. Independent draws (no correlations),
+# so the joint downside tail is fatter than this distribution shows.
+# Reproducible only for a stated seed — an undisclosed run is not.
+MONTE_CARLO_DEFAULT_SEED = 42
+MONTE_CARLO_DRAWS_ARE_INDEPENDENT = True
+MONTE_CARLO_SPEC = (
+    {"name": "weekday_customers", "distribution": "gaussian", "sigma": 5, "low": 5, "high": 50},
+    {"name": "weekend_customers", "distribution": "gaussian", "sigma": 12, "low": 15, "high": 100},
+    {"name": "avg_check", "distribution": "gaussian", "sigma": 1.0, "low": 5.0, "high": 20.0},
+    {"name": "truck_avg_monthly_sales", "distribution": "gaussian", "sigma": 5_000, "low": 10_000, "high": 35_000},
+    {"name": "truck_occupancy", "distribution": "gaussian", "sigma": 0.08, "low": 0.60, "high": 1.0},
+    {"name": "seasonal_pct", "distribution": "gaussian", "sigma": 0.2, "low": 0.4, "high": 1.5},
+    {"name": "daytime_beverage_attach_rate", "distribution": "gaussian", "sigma": 0.08, "low": 0.10, "high": 0.60},
+    # Repeated entries are weights, not a uniform draw over the unique values.
+    {"name": "n_concerts", "distribution": "weighted_discrete", "values": (2, 3, 3, 4, 4, 4, 5, 6)},
+    {"name": "n_festivals", "distribution": "weighted_discrete", "values": (1, 2, 2, 2, 3)},
+    {"name": "n_gt", "distribution": "weighted_discrete", "values": (0, 1, 1, 2, 2)},
+    {"name": "truck_slots", "distribution": "held_fixed"},
+    {"name": "truck_pad_rent", "distribution": "held_fixed"},
+    {"name": "truck_rev_share", "distribution": "held_fixed"},
+    {"name": "cota_impact_multiplier", "distribution": "held_fixed"},
+)
+
+
+def _mc_spec(name):
+    return next(row for row in MONTE_CARLO_SPEC if row["name"] == name)
+
+
+def _mc_gauss(name, mean):
+    spec = _mc_spec(name)
+    return max(spec["low"], min(spec["high"], random.gauss(mean, spec["sigma"])))
+
+
+def run_monte_carlo(n_simulations=10_000, seed=MONTE_CARLO_DEFAULT_SEED,
                     base_weekday_customers=None, base_weekend_customers=None,
                     base_check=None, base_truck_rent=None, base_truck_share=None,
                     base_truck_occupancy=None, base_seasonal_pct=1.0,
@@ -1465,29 +1647,25 @@ def run_monte_carlo(n_simulations=10_000, seed=42,
     results = []
 
     for _ in range(n_simulations):
-        wd_custs = max(5, min(50, random.gauss(_wd_custs, 5)))
-        we_custs = max(15, min(100, random.gauss(_we_custs, 12)))
-        # Clamp matches the dashboard's Avg Check slider range (5-20), same
-        # convention as the traffic/truck-sales clamps above. The old ceiling
-        # was 13.0, sized for the $9.00 beer/shots-only check - left in place
-        # after the container-bar change it would have truncated the upper
-        # tail barely 1.5 sigma above the new $11.45 mean, biasing every
-        # simulation downward.
-        check = max(5.0, min(20.0, random.gauss(_check, 1.0)))
-        truck_sales = max(10_000, min(35_000, random.gauss(_tsales, 5_000)))
+        wd_custs = _mc_gauss("weekday_customers", _wd_custs)
+        we_custs = _mc_gauss("weekend_customers", _we_custs)
+        # Clamp matches the dashboard's Avg Check slider range (5-20).
+        check = _mc_gauss("avg_check", _check)
+        truck_sales = _mc_gauss("truck_avg_monthly_sales", _tsales)
         # Truck vacancy is the real fleet risk (6-mo contracts bound it):
         # randomize occupancy rather than the integer slot count.
-        truck_occ = max(0.60, min(1.0, random.gauss(_tocc, 0.08)))
-        seasonal_pct = max(0.4, min(1.5, random.gauss(base_seasonal_pct, 0.2)))
+        truck_occ = _mc_gauss("truck_occupancy", _tocc)
+        seasonal_pct = _mc_gauss("seasonal_pct", base_seasonal_pct)
         # The beverage attach rate is the least-validated number in the
         # whole model (no operating history at all), so it gets a wide band
         # rather than being pinned.
-        dbev_attach = max(0.10, min(0.60, random.gauss(_dbev_attach, 0.08)))
+        dbev_attach = _mc_gauss("daytime_beverage_attach_rate", _dbev_attach)
 
-        # COTA mix: big 4 fixed, concerts/festivals/GT variable
-        n_concerts = random.choice([2, 3, 3, 4, 4, 4, 5, 6])
-        n_festivals = random.choice([1, 2, 2, 2, 3])
-        n_gt = random.choice([0, 1, 1, 2, 2])
+        # COTA mix: big 4 fixed, concerts/festivals/GT variable.
+        # Draws are independent of each other and of the gaussians above.
+        n_concerts = random.choice(_mc_spec("n_concerts")["values"])
+        n_festivals = random.choice(_mc_spec("n_festivals")["values"])
+        n_gt = random.choice(_mc_spec("n_gt")["values"])
         override = {m: [] for m in range(1, 13)}
         override[10].append("tier1_f1")
         override[4].append("tier2_motogp")
@@ -1590,6 +1768,26 @@ SCENARIOS = {
         "cota_events": None,
         "seasonal_pct": 1.25,
     },
+    # Timing case, not a demand case. It is intentionally NOT part of the
+    # worst-to-best ordering test.
+    "Delayed Opening (misses F1)": {
+        "desc": ("Base-case demand, but the open slips past the October F1 "
+                 "weekend, so Year 1 has no F1 parking or F1 bar uplift. "
+                 "Percentage rent is still non-contractual; no leases are executed."),
+        "weekday_customers": BAR_WEEKDAY_CUSTOMERS,
+        "weekend_customers": BAR_WEEKEND_CUSTOMERS,
+        "avg_check": BAR_AVG_CHECK,
+        "truck_slots": TRUCK_SLOTS,
+        "truck_rent": TRUCK_PAD_RENT,
+        "truck_share_rate": TRUCK_REV_SHARE_RATE,
+        "truck_occupancy": TRUCK_OCCUPANCY,
+        "daytime_beverage_attach_rate": DAYTIME_BEVERAGE_ATTACH_RATE,
+        "cota_events": {
+            m: [t for t in COTA_EVENTS_BY_MONTH.get(m, []) if t != "tier1_f1"]
+            for m in range(1, 13)
+        },
+        "seasonal_pct": 1.0,
+    },
 }
 _stress_cota = {3: ["tier2_nascar"], 4: ["tier2_motogp"], 10: ["tier1_f1"]}
 SCENARIOS["Stress Test"]["cota_events"].update(_stress_cota)
@@ -1677,17 +1875,41 @@ def run_breakeven_analysis(verbose=True):
     # traffic rather than the bar traffic this test is sizing). Searches a
     # single multiplier applied to both weekday and weekend traffic
     # together, holding their ratio fixed at the "weak" Worst Case split
-    # (12 weekday / 34 weekend).
+    # (12 weekday / 34 weekend). The check is the Worst Case check, which
+    # was rescaled with the four-item menu. The old $7.45 figure is a
+    # retired pre-cocktail price and must not drive this search.
     weak_weekday, weak_weekend = 12, 34
+    weak_check = SCENARIOS["Worst Case"]["avg_check"]
     targets = [("Break-even", 1.0), ("Comfortable", 1.25),
                ("Strong", 1.50), ("Excellent", 2.0)]
+    # Hard ceiling. A target the search cannot reach used to come back as
+    # this ceiling and print a customer count that was not a break-even.
+    search_ceiling = 4.0
     custs_results = []
     for label, target in targets:
-        lo, hi = 0.0, 4.0
+        _, at_ceiling = run_annual_projection(
+            weak_weekday * search_ceiling, weak_weekend * search_ceiling,
+            avg_check=weak_check,
+            truck_slots=4, truck_rent=600, truck_share_rate=0.05,
+            cota_events_override={m: [] for m in range(1, 13)},
+            seasonal_pct=0.0, daytime_beverage_attach_rate=0.0,
+        )
+        if at_ceiling["avg_monthly_nut_coverage"] < target:
+            custs_results.append({
+                "label": label,
+                "target": target,
+                "reachable": False,
+                "weekday_customers": None,
+                "weekend_customers": None,
+                "coverage_at_ceiling": at_ceiling["avg_monthly_nut_coverage"],
+                "ceiling_multiple": search_ceiling,
+            })
+            continue
+        lo, hi = 0.0, search_ceiling
         for _ in range(25):
             mid = (lo + hi) / 2
             _, ann = run_annual_projection(
-                weak_weekday * mid, weak_weekend * mid, avg_check=7.45,
+                weak_weekday * mid, weak_weekend * mid, avg_check=weak_check,
                 truck_slots=4, truck_rent=600, truck_share_rate=0.05,
                 cota_events_override={m: [] for m in range(1, 13)},
                 seasonal_pct=0.0, daytime_beverage_attach_rate=0.0,
@@ -1696,7 +1918,15 @@ def run_breakeven_analysis(verbose=True):
                 hi = mid
             else:
                 lo = mid
-        custs_results.append((label, target, round(weak_weekday * hi), round(weak_weekend * hi)))
+        custs_results.append({
+            "label": label,
+            "target": target,
+            "reachable": True,
+            "weekday_customers": round(weak_weekday * hi),
+            "weekend_customers": round(weak_weekend * hi),
+            "coverage_at_ceiling": at_ceiling["avg_monthly_nut_coverage"],
+            "ceiling_multiple": search_ceiling,
+        })
 
     if verbose:
         print(f"\n{'=' * 70}")
@@ -1710,9 +1940,17 @@ def run_breakeven_analysis(verbose=True):
         verdict = "COVERS THE NUT" if no_bar["avg_monthly_nut_coverage"] >= 1.0 else "DOES NOT COVER"
         print(f"     -> Truck rent alone {verdict}")
         print(f"\n  2. MIN BAR TRAFFIC BY NUT-COVERAGE TARGET")
-        print(f"     (weak base: 4 trucks @ $600 + 5%, $7.45 check, no COTA)")
-        for label, target, wd, we in custs_results:
-            print(f"     {label:<14} ({target:.2f}x): {wd:>4} weekday / {we:>4} weekend bar customers")
+        print(f"     (weak base: 4 trucks @ $600 + 5%, ${weak_check:.2f} check, "
+              "Year 1 ramp, no COTA, scheduled labor still paid)")
+        for row in custs_results:
+            if row["reachable"]:
+                print(f"     {row['label']:<14} ({row['target']:.2f}x): "
+                      f"{row['weekday_customers']:>4} weekday / "
+                      f"{row['weekend_customers']:>4} weekend bar customers")
+            else:
+                print(f"     {row['label']:<14} ({row['target']:.2f}x): "
+                      f"UNREACHABLE at {row['ceiling_multiple']:.1f}x traffic "
+                      f"(coverage there is {row['coverage_at_ceiling']:.2f}x)")
 
     return {"no_bar_annual": no_bar, "bar_traffic_targets": custs_results}
 
@@ -1796,10 +2034,9 @@ def run_cash_reserve_tracker(all_years=None, verbose=True):
 
     for yr, months, annual in all_years:
         for m in months:
+            # net_cash_flow already reflects line-by-line opex and wage
+            # inflation from run_multi_year_projection. Do not haircut again.
             cf = m["net_cash_flow"]
-            if yr > 1:
-                cost_mult = (1 + ANNUAL_COST_INFLATION) ** (yr - 1)
-                cf -= MONTHLY_OPEX_NUT * (cost_mult - 1)   # only opex inflates, not the fixed loan payment
             cumulative_cf += cf
             cumulative_noi += cf
             balance += cf
@@ -1863,12 +2100,10 @@ def run_loan_amortization_schedule(all_years=None, sweep_pct=1.0, verbose=True):
     series = []
 
     for yr, months, annual in all_years:
-        cost_mult = (1 + ANNUAL_COST_INFLATION) ** (yr - 1) if yr > 1 else 1.0
         for m in months:
-            # m["noi"] is already pre-debt-service (true NOI) - no add-back needed here.
+            # m["noi"] is already pre-debt-service and, for year 2+, already
+            # net of inflated opex and wages. Do not haircut it again.
             noi_before_financing = m["noi"]
-            if yr > 1:
-                noi_before_financing -= MONTHLY_OPEX_NUT * (cost_mult - 1)
 
             if required_balance > 0.01:
                 req_interest = required_balance * monthly_rate
@@ -2077,14 +2312,15 @@ YEAR1_ACCELERATED_DEPRECIATION = TOTAL_DEPRECIABLE_BASIS  # 100% bonus (+ Sec 17
 # the remainder amortized straight-line over 15 years. This became worth
 # modeling when the permits line still carried the $5,300 TABC Mixed
 # Beverage Permit. That permit is now obtained and paid (financed by the
-# old LOC, hence inside the LOC-payoff line), so the forward-looking
-# permits line is down to $1,700 - but the Sec. 195 treatment still
+# old LOC, hence inside the LOC-payoff line). The forward-looking permits
+# line is the still-unpaid site, health, and access permits
+# (PERMITS_AND_SOFT_COSTS), and the Sec. 195 treatment still
 # applies to genuinely pre-opening spend.
 # Only the genuinely pre-opening portion qualifies - inventory is
 # inventory, and contingency is a budgeting buffer rather than a real
 # incurred cost, so neither is included here.
 STARTUP_COST_ITEMS = [
-    "Permits & soft costs (health permit, business license)",
+    PERMITS_AND_SOFT_COSTS_LABEL,
     "Cleaning",
 ]
 STARTUP_COST_BASIS = sum(_use_of_funds_cost[i] for i in STARTUP_COST_ITEMS)
@@ -2284,6 +2520,101 @@ def print_tax_strategy_analysis(annual_noi=None):
 # basis for a CRE yield-on-cost or valuation figure. Surfaced in the
 # dashboard's dedicated "CRE Investment Summary" tab.
 
+def equity_schedule_rows():
+    """Capital bridge. Subtotal rows equal the sum of the rows that feed them.
+
+    Property equity is capitalized basis minus the loan. Total economic
+    equity adds the reserve cash, which is not a real-property asset.
+    Land is a related-party transfer basis, not an appraised value.
+    """
+    new_capex = sum(
+        a for label, a, _ in USE_OF_FUNDS if label not in _LOC_PAYOFF_AND_RESERVE_LABELS)
+    rows = [
+        {"line": "Land (related-party transfer basis, not an appraisal)",
+         "amount": LAND_PURCHASE_PRICE, "role": "component"},
+        {"line": "Phase 0.5 capital improvements",
+         "amount": PHASE_0_5_TOTAL, "role": "component"},
+        {"line": "New construction and soft costs (this loan)",
+         "amount": new_capex, "role": "component"},
+        {"line": "Capitalized basis",
+         "amount": TOTAL_CAPITALIZED_BASIS, "role": "subtotal"},
+        {"line": "Less: bank loan",
+         "amount": -LOAN_AMOUNT, "role": "component"},
+        {"line": "Property equity",
+         "amount": PROPERTY_EQUITY, "role": "subtotal"},
+        {"line": "Reserve cash (sources & uses; not capitalized)",
+         "amount": RESERVE_AND_SAFETY_CASH, "role": "component"},
+        {"line": "Total economic equity",
+         "amount": TOTAL_ECONOMIC_EQUITY, "role": "total"},
+    ]
+    return rows
+
+
+def calc_revenue_mix(annual):
+    """Stabilized (or any year) revenue mix, computed once so labels can't drift.
+
+    Property + parking includes contractual pad rent, non-contractual
+    percentage rent, and transactional event parking. Shares are of total
+    gross revenue, which is the denominator behind the ~50.4% / ~4.3% figures.
+    """
+    gross = annual["total_gross"]
+    pad = annual["total_truck_rent"]
+    share = annual["total_truck_share"]
+    parking = annual["total_cota_parking"]
+    property_and_parking = pad + share + parking
+
+    def _share(part):
+        return part / gross if gross else 0.0
+
+    return {
+        "gross": gross,
+        "contractual_pad_rent": pad,
+        "noncontractual_percentage_rent": share,
+        "transactional_event_parking": parking,
+        "property_and_parking": property_and_parking,
+        "property_and_parking_share": _share(property_and_parking),
+        "contractual_pad_rent_share": _share(pad),
+        "percentage_rent_label": "non-contractual — no executed vendor leases",
+        "event_parking_label": "transactional event parking, not contractual rent",
+        "pad_rent_label": "contractual pad rent (intended terms; leases not executed)",
+    }
+
+
+# Real-property income and the bar are not the same collateral. These are
+# indications pending an independent appraisal, not a headline LTV.
+PROPERTY_INCOME_CAP_RATE = 0.085
+GOING_CONCERN_EBITDA_MULTIPLE = 2.5
+
+
+def calc_collateral_indications(annual):
+    """Several leverage readings. None of them is an appraisal.
+
+    Segment value capitalizes real-estate contribution at
+    PROPERTY_INCOME_CAP_RATE and the operating-business contribution at
+    GOING_CONCERN_EBITDA_MULTIPLE. Shared overhead (management fee, reserve,
+    fixed opex) is not allocated between them — disclosed as such.
+    Loan / the $1.4M land figure is a related-party basis ratio, not LTV.
+    """
+    re_contrib = annual["total_real_estate_contribution"]
+    biz_contrib = annual["total_business_contribution"]
+    re_value = re_contrib / PROPERTY_INCOME_CAP_RATE if PROPERTY_INCOME_CAP_RATE else 0.0
+    biz_value = max(biz_contrib, 0.0) * GOING_CONCERN_EBITDA_MULTIPLE
+    segment_value = re_value + biz_value
+    return {
+        "related_party_land_basis": LAND_PURCHASE_PRICE,
+        "loan_over_related_party_land_basis": LOAN_AMOUNT / LAND_PURCHASE_PRICE,
+        "ltc_on_capitalized_cost": LOAN_AMOUNT / TOTAL_CAPITALIZED_BASIS,
+        "real_estate_contribution": re_contrib,
+        "business_contribution": biz_contrib,
+        "segment_real_estate_value": re_value,
+        "segment_business_value": biz_value,
+        "segment_value": segment_value,
+        "ltv_segment_indication": (LOAN_AMOUNT / segment_value if segment_value else None),
+        "shared_overhead_unallocated": True,
+        "appraisal_status": "indication_only_pending_independent_appraisal",
+    }
+
+
 def calc_valuation_and_leverage(annual, cap_rate=None, loan_rate=None):
     """
     Cap-rate valuation, yield on cost, LTC/LTV, debt yield, and DSCR off a
@@ -2302,7 +2633,7 @@ def calc_valuation_and_leverage(annual, cap_rate=None, loan_rate=None):
     noi = annual["total_noi"]
     implied_value = noi / cap_rate if cap_rate > 0 else 0
     yield_on_cost = noi / TOTAL_CAPITALIZED_BASIS
-    annual_debt_service = round(_amortization_payment(LOAN_AMOUNT, loan_rate, LOAN_TERM_YEARS)) * 12
+    annual_debt_service = _amortization_payment(LOAN_AMOUNT, loan_rate, LOAN_TERM_YEARS) * 12
     return {
         "cap_rate": cap_rate,
         "loan_rate": loan_rate,
@@ -2316,6 +2647,12 @@ def calc_valuation_and_leverage(annual, cap_rate=None, loan_rate=None):
         "annual_debt_service": annual_debt_service,
         "dscr": noi / annual_debt_service if annual_debt_service > 0 else None,
         "equity_basis": EQUITY_BASIS,
+        "property_equity": PROPERTY_EQUITY,
+        "total_economic_equity": TOTAL_ECONOMIC_EQUITY,
+        # Positive leverage only when yield on cost clears the loan rate.
+        # Below that, debt dilutes equity returns — report it, don't hide it.
+        "leverage_dilutive": yield_on_cost < loan_rate,
+        "land_basis_label": "related-party transfer basis, not an appraisal",
     }
 
 
@@ -2403,7 +2740,7 @@ def run_returns_analysis(hold_years=None, exit_cap_rate=None, sale_cost_pct=None
     if loan_rate == LOAN_INTEREST_RATE:
         ncf_by_year = [ann["total_net_cash"] for _, _, ann in years]
     else:
-        rate_debt_service = round(_amortization_payment(LOAN_AMOUNT, loan_rate, LOAN_TERM_YEARS)) * 12
+        rate_debt_service = _amortization_payment(LOAN_AMOUNT, loan_rate, LOAN_TERM_YEARS) * 12
         ncf_by_year = [noi - rate_debt_service for noi in noi_by_year]
 
     reversion_noi = noi_by_year[hold_years]        # year hold+1's NOI (forward cap convention)
@@ -2418,6 +2755,8 @@ def run_returns_analysis(hold_years=None, exit_cap_rate=None, sale_cost_pct=None
     levered_cash_flows = ([-EQUITY_BASIS] + ncf_by_year[:hold_years - 1]
                           + [ncf_by_year[hold_years - 1] + reversion_net - exit_loan_balance])
     construction_years = CONSTRUCTION_PERIOD_MONTHS / 12
+    unlevered_irr = _irr(unlevered_cash_flows, period_offset=construction_years)
+    levered_irr = _irr(levered_cash_flows, period_offset=construction_years)
 
     return {
         "hold_years": hold_years, "exit_cap_rate": exit_cap_rate,
@@ -2427,14 +2766,18 @@ def run_returns_analysis(hold_years=None, exit_cap_rate=None, sale_cost_pct=None
         "exit_loan_balance": exit_loan_balance,
         "unlevered_cash_flows": unlevered_cash_flows,
         "levered_cash_flows": levered_cash_flows,
-        "unlevered_irr": _irr(unlevered_cash_flows, period_offset=construction_years),
-        "levered_irr": _irr(levered_cash_flows, period_offset=construction_years),
+        "unlevered_irr": unlevered_irr,
+        "levered_irr": levered_irr,
         "unlevered_npv": _npv(discount_rate, unlevered_cash_flows, period_offset=construction_years),
         "levered_npv": _npv(discount_rate, levered_cash_flows, period_offset=construction_years),
         "unlevered_equity_multiple": sum(unlevered_cash_flows[1:]) / TOTAL_CAPITALIZED_BASIS,
         "levered_equity_multiple": (sum(levered_cash_flows[1:]) / EQUITY_BASIS
                                     if EQUITY_BASIS > 0 else None),
         "cash_on_cash_year1": ncf_by_year[0] / EQUITY_BASIS if EQUITY_BASIS > 0 else None,
+        "leverage_dilutive": (
+            levered_irr is not None and unlevered_irr is not None
+            and levered_irr < unlevered_irr
+        ),
     }
 
 
@@ -2506,7 +2849,7 @@ def run_rate_sensitivity_analysis(rates=None, annual=None, hold_years=None,
 
     rows = []
     for rate in rates:
-        monthly_payment = round(_amortization_payment(LOAN_AMOUNT, rate, LOAN_TERM_YEARS))
+        monthly_payment = _amortization_payment(LOAN_AMOUNT, rate, LOAN_TERM_YEARS)
         annual_debt_service = monthly_payment * 12
         returns = run_returns_analysis(hold_years=hold_years, exit_cap_rate=exit_cap_rate,
                                        base_years=base_years, loan_rate=rate)

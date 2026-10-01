@@ -124,9 +124,15 @@ below) — it's real capital investment in the property no matter which loan
 financed it. Of the original $80,100 tracker's remaining $13,300
 (permits + contingency), the $5,300 TABC Mixed Beverage permit has since
 been **obtained and paid under the old LOC**, so it sits inside the
-$120,000 payoff line rather than in `USE_OF_FUNDS`; only the still-unpaid
-$1,700 of health permit / business license plus the $6,300 contingency
-remain as forward-looking costs the new loan funds.
+$120,000 payoff line rather than in `USE_OF_FUNDS`. Forward permits and
+soft costs on this loan are `PERMITS_AND_SOFT_COSTS` ($12,000) and
+`CONTINGENCY_BUDGET` ($24,000). Both were raised after the Sep 9 review
+and funded out of the reserve plug, so the loan stays $500,000 and
+`RESERVE_AND_SAFETY_CASH` is the residual ($144,000 at these lines). A
+later Sep 30 draft listed extra soft costs that are still TBD and a
+smaller residual reserve; those amounts are not in `USE_OF_FUNDS`.
+Paving stays the $50,000 asphalt line (`PAVING_BUDGET`); the $15,400
+gravel alternate is documented and not selected.
 
 Unlike the old revolving LOC, a fixed-payment amortizing loan already has
 a real, defined schedule — there's no "conservative flat balance"
@@ -225,22 +231,18 @@ PHASE_0_5_TOTAL + (every USE_OF_FUNDS line except the LOC payoff and
 Reserve & Safety Cash)` — land, plus the real historical buildout already
 drawn against the old LOC ($66,800), plus the real new construction/soft
 costs this loan directly funds (septic + paving + container bar + permits
-+ contingency, $208,000). At current figures that's $1,400,000 + $66,800 +
-$208,000 = $1,674,800 (down from a prior-version $1,900,000 that
-double-counted the LOC-funded buildout and also, wrongly, treated the
-reserve as capitalized basis; and down a further $5,300 once the
-already-paid TABC permit was removed from the permits line — see
-"TABC permit" below). Used **only** by
++ contingency). At the current permits ($12,000) and contingency ($24,000)
+that new-capex stack is $236,000, so capitalized basis is $1,400,000 +
+$66,800 + $236,000 = $1,702,800. Used **only** by
 the CRE Valuation & Returns functions (`calc_valuation_and_leverage()`,
 `run_returns_analysis()`, `run_cre_sensitivity_grid()`, Section 9) and
-surfaced in the CRE Investment Summary tab. `EQUITY_BASIS =
-TOTAL_CAPITALIZED_BASIS - LOAN_AMOUNT` is the owner's actual equity in the
-deal — it **no longer** numerically equals `LAND_PURCHASE_PRICE`, because
-the $500,000 loan finances more than the capitalized buildout (it also
-returns cash via the LOC payoff and pre-funds the reserve), so
-`EQUITY_BASIS` ($1,180,100) comes out *below* `LAND_PURCHASE_PRICE`
-($1,400,000) — a real, expected consequence of a loan sized for reserve
-cash rather than trimmed to match itemized costs, not a bug. Don't exclude
+surfaced in the CRE Investment Summary tab. `EQUITY_BASIS` /
+`PROPERTY_EQUITY` = `TOTAL_CAPITALIZED_BASIS - LOAN_AMOUNT` ($1,202,800).
+`TOTAL_ECONOMIC_EQUITY` adds the reserve cash ($1,202,800 + $144,000 =
+$1,346,800). Those two equity figures are different on purpose;
+`equity_schedule_rows()` is the table that sums. Land at $1,400,000 is a
+related-party transfer basis, not an appraisal — do not headline
+loan / $1,400,000 as LTV. Don't exclude
 land from a yield-on-cost calculation just because it was owned outright
 rather than purchased with this project's capital — no CRE metric does
 that. Also don't "fix" `PROPERTY_TAX_IMPROVEMENTS_MONTHLY` back onto
@@ -254,11 +256,17 @@ a physical improvement) don't inflate a simulated county tax assessment.
 (`-TOTAL_CAPITALIZED_BASIS`/`-EQUITY_BASIS`) and Year 1's cash flow as if
 they were exactly one year apart — i.e. as if the park opened the instant
 capital was deployed, with zero construction time. `CONSTRUCTION_PERIOD_MONTHS`
-(4 months) fixes that: `_irr`/`_npv` now take a `period_offset` (in years),
+(6 months: `ENTITLEMENT_PERMIT_LAG_MONTHS` 5 + `POST_PERMIT_BUILD_MONTHS` 1,
+Sid's Sep 30 time-to-open lock, with `OPENING_MONTH` = March 2027) fixes
+that: `_irr`/`_npv` now take a `period_offset` (in years),
 and `run_returns_analysis()` passes `CONSTRUCTION_PERIOD_MONTHS / 12` so
 every post-Year-0 cash flow is discounted that much later — capital sitting
-in a buildout for four months shouldn't appear to earn a return during that
-gap. This is a **timing correction only** (a few points of unlevered IRR at
+through that six-month clock shouldn't appear to earn a return during the
+gap. The separate cash-burn clock is `PRE_OPEN_MONTHS` (4): debt service,
+insurance, property tax, and accounting against zero revenue, drawn from
+`RESERVE_AND_SAFETY_CASH`. `OPENING_CASH_RESERVE` is that reserve minus
+`PRE_OPEN_BURN`. Sid's narrower land-carry draft (tax + insurance × 6) is
+not stacked on the 4-month burn. This IRR lag is a **timing correction only** (a few points of unlevered IRR at
 current defaults - the exact figure moves with `TOTAL_CAPITALIZED_BASIS`
 and the loan terms, see below): it does not add a
 construction draw schedule (`USE_OF_FUNDS` is still spent as a lump sum at
@@ -273,26 +281,23 @@ directional, not exact. Nothing outside
 other tab's "month 1" still mean the first month of operations, unaffected
 by this change.
 
-### Staffing: two people, no fixed labor line in the nut
+### Staffing: scheduled wages, still a light crew
 
-The park runs on exactly two people, both living on-site rent-free: a park
-manager who runs day-to-day operations (cleaning, maintenance, general
-oversight), and one bartender. Neither shows up as a line item in
-`FIXED_COSTS`:
-- The manager's compensation is in-kind (free housing), not a cash expense,
-  so there's no "maintenance/cleaning labor" cost in the nut — only
-  `maintenance_reserve` for supplies/materials.
-- The bartender is paid via `BARTENDER_SHARE_RATE` (5%) of combined bar-like
-  + daytime-beverage revenue (see `calc_monthly_total`), a variable cost,
-  not a salary — and is the only bartender at all times, covering both the
-  evening alcohol bar AND the all-day non-alcohol beverage window (see
-  "Daytime beverage stream" below), including COTA/major-event days. Living
-  on-site is what makes the longer combined day feasible without a second
-  hire. There is no second-bartender or event-labor cost anywhere in the
-  model. If staffing assumptions change (e.g. hiring a second bartender for
-  big events, or either on-site arrangement changes), that needs a new
-  fixed or variable cost line, not a revival of the old
-  `EXTRA_BARTENDER_COST`/`BIG_EVENT_MONTHS` mechanism (removed).
+Cash labor is `calc_scheduled_labor()`, not a line in `FIXED_COSTS` and
+not a percent of beverage sales. `BARTENDER_SHARE_RATE` is 0 so the old
+5% share cannot stack on top of wages.
+- Daytime attendant: `DAYTIME_ATTENDANT_WAGE` ($13/hr) for the non-alcohol
+  window (`DAYTIME_BEVERAGE_HOURS_PER_DAY` − `BAR_HOURS_PER_DAY`).
+- Evening bartender: `EVENING_BARTENDER_WAGE` ($16/hr) for the alcohol window.
+- One extra body on each COTA event day: `EVENT_EXTRA_WAGE` ($15/hr).
+- `OVERTIME_ALLOWANCE_RATE` (10%) on hourly wages only.
+- Manager: `MANAGER_ANNUAL_SALARY` ($24,000). Lodging is provided
+  (`LODGING_PROVIDED`) and not expensed (`LODGING_EXPENSED` is False).
+  IRC §119 / FLSA §3(m) are flagged, not assumed.
+- Employer burden: `EMPLOYER_PAYROLL_BURDEN_RATE` (10%) on all cash wages.
+`maintenance_reserve` is still supplies only. One attendant plus one
+bartender is a light crew for an 11-hour day; wage rates are estimates
+pending quotes. Do not revive `EXTRA_BARTENDER_COST` / `BIG_EVENT_MONTHS`.
 
 ### Revenue model shape
 
@@ -308,7 +313,11 @@ tobacco/nicotine stream was removed — see "Tobacco & nicotine" below.
 `run_annual_projection` sums 12 months. Year 1 applies TWO separate ramps
 (see "Cold start" below); Year 2+ runs at steady state.
 `run_multi_year_projection` layers annual growth/rent escalation/cost
-inflation on top of that. The dashboard's **Projection View** radio in the
+inflation on top of that. Cost inflation is applied line by line inside
+`calc_monthly_total` (`cost_inflation_mult` on each opex line and each
+wage line). The loan payment is never inflated. There is no lump NOI
+haircut, and the cash tracker does not subtract opex inflation a second
+time. `cost_inflation_adj` is the dollar increase only. The dashboard's **Projection View** radio in the
 sidebar switches every tab between the ramped Year 1 view and the
 steady-state run-rate view by passing `year=1` or `year=2` to `get_annual` —
 useful because a slow first quarter otherwise confounds ramp effects with
@@ -444,10 +453,10 @@ The `SCENARIOS` `avg_check` values were rescaled by the same ×1.2725 normal
 $9.48/$10.24/$10.88/`BAR_AVG_CHECK`/$12.66); Base Case now references
 `BAR_AVG_CHECK` directly rather than duplicating the number.
 
-Staffing is unchanged: still one bartender comped via `BARTENDER_SHARE_RATE`
-(5% of bar-like revenue), so a higher check raises her share
-proportionally with no new fixed labor line — even though cocktails carry a
-real skill/speed requirement the prepackaged plan avoided. The
+Labor does not scale with the check. The evening bartender is an hourly
+wage (`EVENING_BARTENDER_WAGE`), so a higher cocktail check does not raise
+her pay. Cocktails still carry a skill/speed requirement the prepackaged
+plan avoided, and the crew is still light. The
 `FIXED_COSTS["insurance"]` estimate ($900/mo) is flagged in-line for
 revisiting now that the bar pours cocktails rather than only prepackaged
 items.
@@ -472,11 +481,12 @@ miss when touching truck or bar params:
 - It carries its **own** COGS/tax treatment
   (`DAYTIME_BEVERAGE_COGS_RATE` + `DAYTIME_BEVERAGE_SALES_TAX_RATE`,
   ~30% combined), separate from the alcohol bar's `VARIABLE_COST_RATE`
-  (`COGS_RATE` + the Mixed Beverage `GRT_RATE`, ~42%) — these aren't
+  (`COGS_RATE` + GRT on the receipt after sales tax is backed out + the
+  embedded mixed-beverage sales tax) — these aren't
   alcoholic beverages, so standard TX sales tax applies instead of the
-  Mixed Beverage GRT. `calc_monthly_total` computes each separately, then
-  combines them only for `bartender_share`/`cc_processing` (both variable
-  costs that apply to *all* beverage revenue, not just alcohol).
+  Mixed Beverage GRT. `calc_monthly_total` computes each separately.
+  Credit-card processing applies to alcohol and daytime beverage revenue.
+  Labor is scheduled hours, not a share of that revenue.
 
 This revenue depends on vendor leases restricting food trucks to **food
 only** (specialty drinks like a truck's own agua fresca/lemonade are still
@@ -536,29 +546,24 @@ would overstate it badly.
 
 ### TABC permit: obtained and paid — do not re-add it to `USE_OF_FUNDS`
 
-The `USE_OF_FUNDS` permits line is **$1,700**, not the $7,000 earlier
-versions carried. The $5,300 two-year TABC Mixed Beverage permit that
-dominated that bucket **has been obtained and paid**, financed by the old
+The `USE_OF_FUNDS` permits line is **$12,000** (`PERMITS_AND_SOFT_COSTS`),
+and it must not contain the TABC permit. The $5,300 two-year TABC Mixed
+Beverage permit **has been obtained and paid**, financed by the old
 personal LOC — so those dollars are already inside the $120,000
-LOC-payoff line, as part of the pre-loan soft costs making up the gap
-between that draw and the $66,800 of itemized Phase 0.5 capital
-improvements. Carrying $5,300 in the permits line as well double-counted
-the same dollars *and* inflated `TOTAL_CAPITALIZED_BASIS`, which
-capitalizes the permits line but deliberately excludes the payoff. What
-remains is the health permit and business license. The freed $5,300 moved
-into Reserve & Safety Cash ($166,700 → $172,000), so
-`TOTAL_PROJECT_COST` is unchanged at $500,000.
+LOC-payoff line. Carrying $5,300 in the permits line as well would
+double-count the same dollars *and* inflate `TOTAL_CAPITALIZED_BASIS`,
+which capitalizes the permits line but deliberately excludes the payoff.
+The model records the permit as paid. It does not store a permit number,
+and it does not treat the license as transferable collateral.
 
 The permit is deliberately **not** added to
 `PHASE_0_5_CAPITAL_IMPROVEMENTS`: that list is physical improvements
 feeding depreciation classification, and a liquor license is an intangible
 on a different tax footing. `test_tabc_permit_is_not_double_counted_in_use_of_funds`
-guards the whole arrangement. Note the knock-on: qualifying Sec. 195
-startup basis fell to $3,800, below the $5,000 immediate-deduction cap, so
-the entire amount is now deducted in Year 1 with nothing amortized —
-`test_startup_costs_follow_section_195_structure` was rewritten to hold in
-both regimes rather than assuming basis exceeds the cap. Unmodeled TABC
-surety bonds remain out of scope.
+guards the whole arrangement. Sec. 195 startup basis now includes the
+$12,000 permits line, so it can exceed the $5,000 immediate-deduction cap;
+`test_startup_costs_follow_section_195_structure` holds in both regimes.
+Unmodeled TABC surety bonds remain out of scope.
 
 ### Texas tax stack (researched; several were missing before)
 
@@ -567,13 +572,13 @@ What applies, and where it lives:
 
 | Tax | Rate | Where modeled |
 |---|---|---|
-| Mixed Beverage **Gross Receipts** Tax | 6.7% of alcohol sales | `GRT_RATE` |
-| Mixed Beverage **Sales** Tax | 8.25% of alcohol sales | `MB_SALES_TAX_RATE` |
+| Mixed Beverage **Gross Receipts** Tax | 6.7% of alcohol receipts after sales tax is backed out | `alcohol_taxes_on_inclusive_receipts` |
+| Mixed Beverage **Sales** Tax | 8.25% embedded in the tax-inclusive price (`rate / (1 + rate)`) | `MB_SALES_TAX_RATE` |
 | Sales tax — daytime beverages | 8.25% | `DAYTIME_BEVERAGE_SALES_TAX_RATE` |
 | Sales tax — **event parking** | 8.25% | `PARKING_SALES_TAX_RATE` |
 | Property tax — land | ~$4,000/yr actual | `FIXED_COSTS["property_tax"]` |
 | Property tax — **improvements** | 2.0% of buildout | `FIXED_COSTS["property_tax_improvements"]` |
-| Employer payroll (FICA/FUTA/SUTA) | ~10% of bartender comp | `EMPLOYER_PAYROLL_BURDEN_RATE` |
+| Employer payroll (FICA/FUTA/SUTA) | ~10% of all cash wages | `EMPLOYER_PAYROLL_BURDEN_RATE` |
 | Federal income + SE tax (pass-through) | ~28% blended | `EFFECTIVE_INCOME_TAX_RATE`, Section 8 |
 | TX franchise tax | **$0 owed** | not modeled — see below |
 
@@ -584,17 +589,18 @@ back out:
 1. **Mixed Beverage Sales Tax (8.25%)** is a *second, separate* tax from the
    6.7% GRT, and under an MB permit it hits **every** alcoholic beverage
    including canned beer — not just spirits. The model assumes **tax-inclusive
-   menu pricing** (a "$7 beer" means the customer hands over $7), which is
-   how bars actually post prices and is the conservative read. If the bar
-   instead adds tax at the register, set `MB_SALES_TAX_RATE = 0.0`.
+   menu pricing** (a "$7 beer" means the customer hands over $7). Sales tax
+   is backed out of that receipt **before** GRT, so GRT is not charged on
+   the sales tax. If the bar instead adds tax at the register, set
+   `MB_SALES_TAX_RATE = 0.0`.
 2. **Parking sales tax (8.25%)** — motor vehicle parking is an explicitly
-   taxable service in Texas (34 TAC 3.315). With a full COTA calendar this
-   is a five-figure annual line.
+   taxable service in Texas (34 TAC 3.315). It is extracted from the
+   tax-inclusive parking price the same way (`_inclusive_sales_tax`). With a
+   full COTA calendar this is a five-figure annual line.
 3. **Property tax on improvements** — the existing $4,000/yr bill taxes raw
    land only. Once built, the improvements join the tax roll.
-4. **Employer payroll burden** — paying the bartender via revenue share does
-   not avoid employer FICA/FUTA/SUTA if she's a W-2 employee, which her
-   working arrangement strongly suggests.
+4. **Employer payroll burden** — 10% of all cash wages (hourly, the overtime
+   allowance, and the manager salary). Lodging is not in that base.
 
 **Franchise tax is $0** (2026 no-tax-due threshold is $2.65M of annualized
 revenue; this business projects well under $1M) but a Public Information
@@ -607,7 +613,7 @@ Permit costs are real money and were badly understated before: a TABC
 **Mixed Beverage Permit is $5,300 for the first two years** ($2,650 at
 renewal). That permit has now been obtained and paid under the old LOC —
 see "TABC permit" above for why it lives in the payoff line rather than
-the `USE_OF_FUNDS` permits line, which is $1,700.
+the `USE_OF_FUNDS` permits line, which is $12,000 and does not include it.
 
 Everything above should be confirmed with a TABC-savvy CPA before filing —
 the in-line comments flag which items are researched versus estimated.
@@ -618,7 +624,7 @@ the in-line comments flag which items are researched versus estimated.
 (`total_cogs`, `total_grt`, `total_mb_sales_tax`,
 `total_daytime_beverage_cogs`, `total_daytime_beverage_tax`,
 `total_cc_processing`,
-`total_shrinkage`, `total_bartender_share`, `total_payroll_burden`,
+`total_shrinkage`, `total_labor_wages`, `total_payroll_burden`,
 `total_cota_parking_upkeep`, `total_cota_parking_sales_tax`,
 `total_cota_cost`, `total_utility_cost`, `total_management_fee`,
 `total_replacement_reserve`) plus the real-estate/business segment split
@@ -642,7 +648,25 @@ mismatched addition there fails loudly instead of silently drifting.
   (Gaussian/uniform draws per parameter, per simulation) to produce a nut-
   coverage/cash-flow distribution — this is the only function that doesn't
   take fixed inputs and instead returns a sorted list of per-simulation
-  results.
+  results. The draws, bounds, and default seed live in `MONTE_CARLO_SPEC`
+  / `MONTE_CARLO_DEFAULT_SEED` and are shown on the Monte Carlo tab.
+  Reproducibility is for a stated seed. Draws are independent, so the
+  joint downside tail is fatter than the chart. A sixth named case,
+  "Delayed Opening (misses F1)", strips the October F1 weekend and is
+  excluded from the worst-to-best order test.
+- `run_breakeven_analysis` returns a dict per coverage target. If the
+  search hits the 4.0× traffic ceiling without reaching the target,
+  `reachable` is false and the customer counts are None — the UI says
+  unreachable instead of printing the ceiling as if it were the answer.
+- When yield on cost is below the loan rate, `leverage_dilutive` is true.
+  Levered IRR below unlevered IRR is reported the same way. Do not hide
+  the levered figure.
+- NASCAR on the calendar is the DuraMAX Texas Grand Prix.
+  `F1_AGREEMENT_THROUGH_YEAR` is 2034. `COTALAND_STATUS` is a scheduled
+  competitor, not park revenue.
+- Opening operations are March 2027 (`OPENING_MONTH` / `OPENING_YEAR`).
+  Debt service in the engine is the unrounded payment × 12; round only
+  at display.
 
 All three read from the same underlying constants/functions, so changing a
 constant (e.g. `TRUCK_AVG_MONTHLY_SALES`) shifts every analysis
