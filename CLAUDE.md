@@ -89,7 +89,29 @@ Two files, strict separation of concerns:
   into the model's `run_*` functions — the dashboard has no calculation
   logic of its own.
 
-### Financing: $500,000 bank term loan, fixed-payment amortizing
+### Financing: sized bank term loan, fixed-payment amortizing (v3)
+
+Lender-ready v3 sizes the ask instead of holding a $500,000 round number.
+Base asphalt at 10% contingency is about **$563,626**. Bank asphalt at 15%
+is about **$581,726**. Both leave a **$40,000** reserve floor. Contingency
+is 10%/15% of hard cost including the $50,000 GC allowance, and it is not
+cut to force the old ask. Septic is **$212,000** and gated. OSSF design is
+$0 until a vendor is chosen. Health permit is $1,700. The $3,000 ACE
+retainer is already paid and is not a use. Land carry is PID 984219
+($2,289.23) + PID 300451 ($4,459.57) + $700 vacant-land insurance, rounded
+to $621/month and prepaid for 6 months ($3,726). Entitlement is 5 months,
+`CONSTRUCTION_PERIOD_MONTHS` is 1, and `MONTHS_TO_OPEN` is 6 (open March
+2027, the March/April window). IRR delays cash flows by `MONTHS_TO_OPEN`,
+not by the 1-month build alone. A $500,000 loan and a $750,000 loan are
+debt-service sensitivities: $500,000 does not fund the uses, and $750,000
+has no named use for the extra proceeds. DSCR is shown for SBA 7(a) at 10%
+variable / 25 years, an SBA 504 blend (50% bank at about 7.5% and 40% CDC
+at 6.97%, both 25 years), and a conventional placeholder at 9.5%.
+
+The paragraphs below describe the earlier $500,000 plug. Where they disagree
+with this block, this block is the one the engine implements.
+
+### Financing history: the $500,000 round ask
 
 The buildout was originally financed by a smaller personal line of credit
 (LOC) at 12.5%, interest-only/revolving. The owner's real "Phase 0.5

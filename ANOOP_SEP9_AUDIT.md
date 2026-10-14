@@ -1,5 +1,13 @@
 # Anoop Sep 9 review — financial model audit
 
+**v3 update.** The Sep 30 locks this file left unapplied (septic $212k,
+6-month land carry, sized ask, 1-month build, product DSCR, PropCo/OpCo
+lease) are now in the engine. Dollar figures in the tables below are the
+Sep 9 draft, not the v3 ask. Use `build_use_of_funds()` and
+`run_loan_size_dscr()` for current numbers.
+
+
+
 Draft only. This file maps each review item to the public model in this
 repo (`food_truck_park_model.py`, `streamlit_app_ftp.py`, `test_model.py`).
 Business-plan and loan-package documents live outside the repo. This audit

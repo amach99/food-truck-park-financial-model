@@ -798,12 +798,13 @@ with tabs[6]:
         "Cash at open (after pre-open burn)",
         fmt_dollar(model.OPENING_CASH_RESERVE),
         help=(
-            f"Reserve & Safety Cash ${model.RESERVE_AND_SAFETY_CASH:,.0f} "
-            f"minus {model.PRE_OPEN_MONTHS} pre-open months of debt service, "
-            f"insurance, property tax, and accounting "
-            f"(${model.PRE_OPEN_BURN:,.0f}) against zero revenue. Opening "
-            f"month is {model.OPENING_MONTH}/{model.OPENING_YEAR}. The "
-            "reserve is the sources-and-uses plug, not a separate $15,000 tracker."
+            f"Reserve at close is ${model.RESERVE_AND_SAFETY_CASH:,.0f} "
+            f"(the floor). {model.PRE_OPEN_MONTHS} pre-open months of "
+            f"contractual principal-and-interest plus accounting "
+            f"(${model.PRE_OPEN_BURN:,.0f}) come out of it before revenue starts. "
+            "Vacant-land tax and insurance are already in the land-carry use "
+            "and are not charged again. Opening is "
+            f"{model.OPENING_MONTH}/{model.OPENING_YEAR}."
         ),
     )
     k2.metric("Lowest Balance", fmt_dollar(tracker["min_balance"]))
@@ -974,7 +975,7 @@ with tabs[8]:
     st.subheader("Food Truck Park + Bar & Beverage Stand | Del Valle, TX")
 
     st.markdown("---")
-    st.subheader("Total Project Cost — Financed via $500,000 Bank Term Loan")
+    st.subheader(f"Total Project Cost — Financed via a ${model.LOAN_ASK:,.0f} Bank Term Loan")
     lt1, lt2, lt3, lt4 = st.columns(4)
     lt1.metric("Total Project Cost", fmt_dollar(model.TOTAL_PROJECT_COST))
     lt2.metric("Loan Rate / Term", f"{model.LOAN_INTEREST_RATE:.1%} / {model.LOAN_TERM_YEARS}yr")
@@ -982,34 +983,32 @@ with tabs[8]:
     lt4.metric("Remaining to Spend", fmt_dollar(model.NEW_CASH_NEEDED))
 
     st.markdown("---")
-    st.subheader("Use of Funds — $500,000 Bank Loan")
-    status_labels = {"done": "✅ Done", "in_progress": "🔧 In Progress", "not_started": "⬜ Not Started"}
+    st.subheader(f"Use of Funds — ${model.LOAN_ASK:,.0f} sized ask")
+    status_labels = {
+        "done": "✅ Done",
+        "in_progress": "🔧 In Progress",
+        "not_started": "⬜ Not Started",
+        "gated": "🚧 Gated",
+        "tbd": "❓ TBD",
+    }
     use_df = pd.DataFrame(model.USE_OF_FUNDS, columns=["Item", "Amount", "Status"])
     use_df["Status"] = use_df["Status"].map(status_labels)
     use_df["Amount"] = use_df["Amount"].apply(fmt_dollar)
     st.dataframe(use_df, use_container_width=True, hide_index=True)
     st.markdown(f"**Total: {fmt_dollar(model.TOTAL_PROJECT_COST)}**")
-    st.caption("Payoff of the owner's existing personal line of credit "
-               "($120,000 actually drawn against it — not its full "
-               "$170,000 facility limit), septic, paving, a full "
-               "container-bar buildout (replacing the Phase 0.5 tracker's "
-               "$1,500 Walmart-shed placeholder), the remaining permits, "
-               "contingency, and Reserve & Safety Cash — whatever's left of "
-               "the $500,000 after every named item above it. The owner chose "
-               "to keep the loan request at the full $500,000 rather than "
-               "trim it to match itemized costs, so the leftover sits in "
-               "reserve as safety cash.")
     st.caption(
-        f"**Permits are ${model.PERMITS_AND_SOFT_COSTS:,.0f} and contingency "
-        f"is ${model.CONTINGENCY_BUDGET:,.0f}.** Both were raised after the "
-        "independent review and funded out of Reserve & Safety Cash, so the "
-        f"loan stays ${model.TOTAL_PROJECT_COST:,.0f} and the reserve is "
-        f"${model.RESERVE_AND_SAFETY_CASH:,.0f}. The $5,300 TABC Mixed Beverage "
-        "permit is already paid and sits inside the $120,000 payoff — it is "
-        "not in this permits line. Paving stays the $50,000 asphalt base "
-        f"(gravel alternate ${model.GRAVEL_ALT_BUDGET:,.0f} is not selected). "
-        "A later draft listed extra soft costs that are still TBD; those are "
-        "not in this sources-and-uses."
+        "The ask is sized so Reserve & Safety Cash equals the "
+        f"${model.RESERVE_FLOOR:,.0f} floor. Contingency is "
+        f"{model.CONTINGENCY_RATE_BASE:.0%} of hard cost including GC "
+        f"(${model.CONTINGENCY_BUDGET:,.0f}) and is not cut to hit a round number. "
+        f"Septic is ${model.SEPTIC:,.0f} and gated. Health permit is "
+        f"${model.HEALTH_LICENSE:,.0f}. The $5,300 TABC permit is already paid "
+        "and sits inside the $120,000 LOC payoff. The $3,000 ACE retainer is "
+        "already paid and is not a forward use. Paving default is the "
+        f"${model.PAVING_BUDGET:,.0f} asphalt line "
+        f"(gravel alternate ${model.GRAVEL_ALT_BUDGET:,.0f}). "
+        f"Land carry of ${model.LAND_CARRY:,.0f} is six months of vacant-land "
+        "tax and insurance, prepaid."
     )
 
     with st.expander("Historical Phase 0.5 buildout (already funded, not part of this loan)"):
@@ -1023,7 +1022,7 @@ with tabs[8]:
                    "actual Phase 0.5 cost tracker (Notion), at actual "
                    "vendor-quoted prices — not estimated buckets. This was "
                    "already financed via a smaller, separate personal line "
-                   "of credit, which the $500,000 loan above pays off in "
+                   "of credit, which this loan pays off in "
                    "full — so these items aren't counted again in the loan's "
                    "Use of Funds (that would double-count the same dollars), "
                    "but they're real capital investment in the property and "
@@ -1553,8 +1552,8 @@ with tabs[10]:
             "The \\$5,300 TABC Mixed Beverage permit (two years; \\$2,650 at "
             "renewal) is already paid and sits inside the \\$120,000 LOC payoff. "
             f"It is not in the Use of Funds permits line "
-            f"(\\${model.PERMITS_AND_SOFT_COSTS:,.0f} of remaining site, health, "
-            "and soft permits). This model records the permit as paid, not as "
+            f"(\\${model.HEALTH_LICENSE:,.0f} health permit and business license). "
+            "This model records the permit as paid, not as "
             "a permit number and not as transferable collateral. Confirm the "
             "tax stack with a TABC-savvy CPA before filing."
         )
@@ -1572,7 +1571,7 @@ with tabs[10]:
             | Truck count | {model.TRUCK_SLOTS} hubs, leasing up over Year 1 (no more budgeted) |
             | Cost basis | Itemized from the owner's real Phase 0.5 cost tracker + the actual loan request |
             | Manager | \${model.MANAGER_ANNUAL_SALARY:,.0f} cash salary. Lodging is provided and not expensed |
-            | Floor labor | Daytime attendant \${model.DAYTIME_ATTENDANT_WAGE:.0f}/hr, evening bartender \${model.EVENING_BARTENDER_WAGE:.0f}/hr, one extra body on COTA event days, {model.OVERTIME_ALLOWANCE_RATE:.0%} overtime allowance. The crew is still light for an 11-hour day; wages are estimates |
+            | Floor labor | Daytime \${model.DAYTIME_ATTENDANT_WAGE:.0f}/hr, evening \${model.EVENING_BARTENDER_WAGE:.0f}/hr. Weekday hours {model.LABOR_WEEKDAY_DAYTIME_HOURS:.1f}/{model.LABOR_WEEKDAY_EVENING_HOURS:.1f}, weekend {model.LABOR_WEEKEND_DAYTIME_HOURS:.1f}/{model.LABOR_WEEKEND_EVENING_HOURS:.1f}, race-day evening {model.LABOR_RACE_EVENING_HOURS:.1f} plus one extra body. {model.OVERTIME_ALLOWANCE_RATE:.0%} overtime allowance, {model.EMPLOYER_PAYROLL_BURDEN_RATE:.0%} burden. The 5% share is removed. Wages are estimates |
             | Bar offering | Full container bar: \${model.DRAFT_BEER_PRICE:.0f} draft / \${model.BEER_PRICE:.0f} canned / \${model.SHOT_PRICE:.0f} shots / \${model.COCKTAIL_PRICE:.0f} cocktails; premium pricing during COTA events |
             | Coverage metrics | Nut Coverage (plain-language) + real DSCR (CRE Investment Summary tab) |
             | Primary output | Owner summary + FCF yield + loan amortization schedule + CRE underwriting view |
@@ -1619,6 +1618,7 @@ model.run_bank_case_underwriting()  # packaged conservative case for a lender
 # =============================================================================
 with tabs[11]:
     st.header("CRE Investment Summary")
+    st.warning(model.get_cre_review_supersession_banner())
     st.caption(
         "Formal commercial real estate underwriting view of this project — "
         "sources & uses, stabilized NOI, cap-rate valuation, leverage, and "
@@ -1662,11 +1662,9 @@ with tabs[11]:
                     "measures return on cash actually spent, not on the "
                     "full capital committed to the project.")
     su4.metric("Bank Loan (Debt)", fmt_dollar(model.LOAN_AMOUNT),
-               help="$500,000 total. Funds new construction/soft costs "
-                    "directly, pays off the owner's prior personal LOC in "
-                    "full, and funds a Reserve & Safety Cash cushion — so "
-                    "it finances more than just the capitalized buildout "
-                    "above (see caption below).")
+               help="Sized ask. Funds new construction, pays off the prior "
+                    "LOC, prepays six months of land carry, and leaves the "
+                    "reserve floor. A $500,000 check does not cover these uses.")
 
     su_df = pd.DataFrame([
         {"Source / Use": "Property equity (capitalized basis − loan)",
@@ -1703,6 +1701,91 @@ with tabs[11]:
         f"\\${_payoff_amt:,.0f} of the loan pays off the prior personal LOC "
         "(cash already spent, not a new asset)."
     )
+
+    uses_df = pd.DataFrame(model.USE_OF_FUNDS, columns=["Use", "Amount", "Status"])
+    uses_df["Amount"] = uses_df["Amount"].apply(fmt_dollar)
+    st.markdown("**Uses of the sized loan**")
+    st.dataframe(uses_df, use_container_width=True, hide_index=True)
+    st.caption(
+        f"Bank-case contingency at {model.CONTINGENCY_RATE_BANK:.0%} sizes a "
+        f"separate ask of \\${model.build_use_of_funds(contingency_rate=model.CONTINGENCY_RATE_BANK)['ask']:,.0f}. "
+        "That case does not change the Base uses above."
+    )
+
+    st.markdown("**PropCo / OpCo**")
+    split = model.run_propco_opco_split(stab)
+    pc1, pc2, pc3, pc4 = st.columns(4)
+    pc1.metric("Lease payment (OpCo → PropCo)", fmt_dollar(split["lease_payment"]),
+               help=split["lease_note"])
+    pc2.metric("PropCo NOI", fmt_dollar(split["propco_noi"]),
+               help="Truck rent, percentage rent, event parking, and the lease, "
+                    "less property opex and the replacement reserve.")
+    pc3.metric("OpCo NOI", fmt_dollar(split["opco_noi"]),
+               help="Bar and beverage contribution after labor, less operating "
+                    "costs and the lease. Negative means the bar does not cover "
+                    "its own wages and rent.")
+    pc4.metric("Consolidated NOI", fmt_dollar(split["consolidated_noi"]),
+               help="Lease eliminates. This matches stabilized NOI.")
+    if not split["consolidated_ties"]:
+        st.error("PropCo + OpCo does not tie to consolidated NOI.")
+
+    st.markdown("**DSCR by loan product** — Base, Bank Case, and no-COTA. "
+                "Proposal math uses Base. Bank Case and no-COTA are stress, not upside.")
+    dscr_pkg = model.run_loan_size_dscr()
+    dscr_df = pd.DataFrame(dscr_pkg["rows"])
+    show = dscr_df[dscr_df["product"].isin(["sba_7a", "sba_504"])].copy()
+    show["NOI"] = show["noi"].apply(fmt_dollar)
+    show["DSCR"] = show["dscr"].apply(lambda x: f"{x:.2f}x")
+    show["Loan"] = show["loan_amount"].apply(lambda x: f"${x:,.0f}")
+    show["ADS"] = show["annual_debt_service"].apply(fmt_dollar)
+    show = show.rename(columns={
+        "case": "Case", "year": "Year", "product_label": "Product",
+    })[["Case", "Year", "Loan", "Product", "NOI", "ADS", "DSCR"]]
+    st.dataframe(show, use_container_width=True, hide_index=True)
+    st.caption(dscr_pkg["note_500k"] + " " + dscr_pkg["note_750k"]
+               + " 7(a) is 10% variable / 25 years. 504 is a 50/40 blend "
+               "(bank ~7.5%, CDC 6.97%), both 25 years, fees not included. "
+               "Both SBA products typically require a personal guarantee.")
+
+    with st.expander("Rate grid — Lender Base vs Bank Case (not mixed)"):
+        matrix = model.run_dscr_matrix()
+        rate_rows = []
+        for case_name, block in (("Lender Base", matrix["lender_base"]),
+                                 ("Bank Case", matrix["bank_case"])):
+            for year, payload in block.items():
+                row = {"Case": case_name, "Year": year,
+                       "NOI": payload["noi_gc"]}
+                for rate, dscr in payload["going_concern"].items():
+                    row[f"{rate:.1%}"] = dscr
+                rate_rows.append(row)
+        rate_grid = pd.DataFrame(rate_rows)
+        rate_grid["NOI"] = rate_grid["NOI"].apply(fmt_dollar)
+        for col in rate_grid.columns:
+            if col not in ("Case", "Year", "NOI"):
+                rate_grid[col] = rate_grid[col].apply(lambda x: f"{x:.2f}x")
+        st.dataframe(rate_grid, use_container_width=True, hide_index=True)
+        st.caption("Going-concern NOI. Bank Case uses stressed operations and "
+                   "the 15% contingency ask. It is not the proposal case.")
+
+    with st.expander("Construction draws and assumptions appendix"):
+        schedule = model.build_construction_draw_schedule()
+        st.write(schedule["note"])
+        draw_df = pd.DataFrame(schedule["months"])
+        st.dataframe(draw_df, use_container_width=True, hide_index=True)
+        assumptions_df = pd.DataFrame(model.export_assumptions_rows())
+        assumptions_df["value"] = assumptions_df["value"].astype(str)
+        st.dataframe(assumptions_df, use_container_width=True, hide_index=True)
+        st.download_button("Download sources & uses CSV", model.export_su_csv(),
+                           file_name="sources_and_uses.csv", mime="text/csv")
+        st.download_button("Download DSCR matrix CSV",
+                           model.export_dscr_matrix_csv(matrix),
+                           file_name="dscr_matrix.csv", mime="text/csv")
+        st.download_button("Download draw schedule CSV",
+                           model.export_draw_schedule_csv(schedule),
+                           file_name="draw_schedule.csv", mime="text/csv")
+        st.download_button("Download assumptions CSV", model.export_assumptions_csv(),
+                           file_name="assumptions.csv", mime="text/csv")
+    st.caption(model.get_entity_guarantor_notes())
 
     # --- 2. Stabilized Operations ---
     st.markdown("---")
@@ -1871,12 +1954,11 @@ with tabs[11]:
     st.markdown("---")
     st.subheader("4. Returns — Unlevered & Levered")
     st.caption(
-        f"IRR/NPV assume a {model.CONSTRUCTION_PERIOD_MONTHS}-month construction "
-        "period between capital deployment (Year 0) and Year 1 operations — "
-        "cash flows are discounted from when they actually start, not from "
-        "day one. Draw schedule, capitalized interest, and land carry during "
-        "that period aren't modeled yet, so this is a timing correction only, "
-        "not a full development-cost build-out."
+        f"IRR/NPV delay operating cash flows by {model.RETURNS_DELAY_MONTHS} months "
+        f"({model.ENTITLEMENT_PERMIT_LAG_MONTHS} months of entitlement + "
+        f"{model.CONSTRUCTION_PERIOD_MONTHS} month of construction). "
+        "Land carry is in sources and uses. Pre-open debt service is in the "
+        "cash tracker. The draw schedule is in the expander above."
     )
     r1, r2, r3, r4 = st.columns(4)
     hold_years = r1.slider("Hold Period (yrs)", 3, 10, model.HOLD_PERIOD_YEARS, step=1)

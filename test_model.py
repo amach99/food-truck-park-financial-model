@@ -546,7 +546,8 @@ def test_loan_monthly_payment_derives_from_amortization_formula():
         m.LOAN_AMOUNT, m.LOAN_INTEREST_RATE, m.LOAN_TERM_YEARS)
     assert m.LOAN_MONTHLY_PAYMENT == exact
     assert m.ANNUAL_DEBT_SERVICE == pytest.approx(exact * 12)
-    assert m.ANNUAL_DEBT_SERVICE == pytest.approx(54_522, abs=1)
+    # Unrounded. The old $54,522 figure was the $500k loan, not this sized ask.
+    assert m.ANNUAL_DEBT_SERVICE != pytest.approx(54_522, abs=1)
     assert m.ANNUAL_DEBT_SERVICE != round(exact) * 12
 
 
@@ -598,12 +599,10 @@ def test_tabc_permit_is_not_double_counted_in_use_of_funds():
     label, amount = permits[0]
     assert "TABC" not in label and "MB permit" not in label, (
         f"permits line still advertises the already-paid TABC permit: {label!r}")
-    # $12,000 is the post-review site/health/access budget. The $5,300 TABC
-    # permit stays inside the LOC payoff and is not added on top of this line.
-    assert amount == m.PERMITS_AND_SOFT_COSTS == 12_000
-    assert amount != 12_000 + 5_300
+    # Health permit only. The $5,300 TABC permit stays inside the LOC payoff.
+    assert amount == m.HEALTH_LICENSE == 1_700
     assert amount != 1_700 + 5_300
-    assert m.TOTAL_PROJECT_COST == 500_000, "loan request must stay at $500,000"
+    assert m.ACE_CIVIL_RETAINER not in {a for _, a, _ in m.USE_OF_FUNDS}
 
 
 def test_land_acreage_matches_the_deeded_tracts():
@@ -684,7 +683,9 @@ def test_returns_analysis_irr_is_sane():
     yield_on_cost = stabilized["total_noi"] / m.TOTAL_CAPITALIZED_BASIS
     assert result["unlevered_irr"] is not None
     assert result["levered_irr"] is not None
-    assert 0 < result["unlevered_irr"] < 1.0
+    # Sane band. A 9% exit on a ~6% yield-on-cost can print a small negative
+    # IRR. That is the underwriting result, not a solver failure.
+    assert -0.5 < result["unlevered_irr"] < 0.5
     if yield_on_cost < m.LOAN_INTEREST_RATE:
         assert result["leverage_dilutive"] is True
         assert result["levered_irr"] < result["unlevered_irr"]
@@ -693,10 +694,17 @@ def test_returns_analysis_irr_is_sane():
         assert result["levered_irr"] > result["unlevered_irr"]
 
 
-def test_equity_multiple_exceeds_one_at_default_assumptions():
+def test_equity_multiple_is_defined_and_follows_the_exit_cap():
+    """At a 9% exit cap and a yield on cost under that cap, the 5-year
+    unlevered multiple does not clear 1.0x. Lock the direction, not a
+    headline multiple."""
     result = m.run_returns_analysis()
-    assert result["unlevered_equity_multiple"] > 1.0
-    assert result["levered_equity_multiple"] > 1.0
+    _, stabilized = m.run_annual_projection(year=2)
+    yield_on_cost = stabilized["total_noi"] / m.TOTAL_CAPITALIZED_BASIS
+    assert result["unlevered_equity_multiple"] > 0
+    assert result["levered_equity_multiple"] > 0
+    if yield_on_cost < m.MARKET_CAP_RATE:
+        assert result["unlevered_equity_multiple"] < 1.0
 
 
 def test_returns_analysis_respects_hold_period_and_cap_rate():
@@ -809,14 +817,18 @@ def test_construction_period_delays_returns_engine_cash_flows():
     correction only: same dollar cash flows, later discount points, and a
     strictly lower IRR/NPV as a result (assuming a positive construction
     period and a return-positive deal, both true at defaults)."""
-    assert m.CONSTRUCTION_PERIOD_MONTHS > 0
+    assert m.CONSTRUCTION_PERIOD_MONTHS == 1
+    assert m.RETURNS_DELAY_MONTHS == m.MONTHS_TO_OPEN == 6
     result = m.run_returns_analysis()
-    construction_years = m.CONSTRUCTION_PERIOD_MONTHS / 12
+    construction_years = m.RETURNS_DELAY_MONTHS / 12
 
     no_offset_irr = m._irr(result["unlevered_cash_flows"], period_offset=0.0)
     with_offset_irr = m._irr(result["unlevered_cash_flows"], period_offset=construction_years)
     assert with_offset_irr == pytest.approx(result["unlevered_irr"])
-    assert with_offset_irr < no_offset_irr
+    assert with_offset_irr != pytest.approx(no_offset_irr)
+    # When the exit is below cost, annualizing the loss over a longer gap
+    # can make the IRR less negative. NPV is the check that the gap does
+    # not create a return.
 
     no_offset_npv = m._npv(m.DISCOUNT_RATE, result["unlevered_cash_flows"], period_offset=0.0)
     with_offset_npv = m._npv(m.DISCOUNT_RATE, result["unlevered_cash_flows"], period_offset=construction_years)
@@ -845,31 +857,42 @@ def test_equity_schedule_rows_sum():
         rows["Property equity"])
     assert rows["Property equity"] + rows["Reserve cash (sources & uses; not capitalized)"] == pytest.approx(
         rows["Total economic equity"])
-    assert rows["Property equity"] == pytest.approx(1_202_800)
-    assert rows["Total economic equity"] == pytest.approx(1_346_800)
+    assert rows["Property equity"] == pytest.approx(m.PROPERTY_EQUITY)
+    assert rows["Total economic equity"] == pytest.approx(m.TOTAL_ECONOMIC_EQUITY)
+    # Land + Phase 0.5 − the LOC payoff. True while every non-LOC, non-reserve
+    # use is capitalized.
+    assert rows["Total economic equity"] == pytest.approx(
+        m.LAND_PURCHASE_PRICE + m.PHASE_0_5_TOTAL - m.LOC_PAYOFF_DRAWN)
+    assert rows["Property equity"] == pytest.approx(
+        rows["Total economic equity"] - m.RESERVE_AND_SAFETY_CASH)
     assert rows["Property equity"] != rows["Total economic equity"]
 
 
 def test_opening_cash_derives_from_sources_and_uses():
     assert m.OPENING_MONTH == 3 and m.OPENING_YEAR == 2027
-    assert m.PRE_OPEN_MONTHS == 4
-    assert m.RESERVE_AND_SAFETY_CASH == 144_000
-    assert m.PRE_OPEN_BURN == pytest.approx(26_126, abs=1)
+    assert m.PRE_OPEN_MONTHS == m.MONTHS_TO_OPEN == 6
+    assert m.RESERVE_AND_SAFETY_CASH == m.RESERVE_FLOOR == 40_000
+    # Land tax and vacant insurance are in LAND_CARRY, not in this burn.
+    assert "property_tax" not in m.PRE_OPEN_COST_KEYS
+    assert "insurance" not in m.PRE_OPEN_COST_KEYS
     assert m.OPENING_CASH_RESERVE == pytest.approx(
         m.RESERVE_AND_SAFETY_CASH - m.PRE_OPEN_BURN)
-    assert m.OPENING_CASH_RESERVE == pytest.approx(117_874, abs=1)
     assert m.OPENING_CASH_RESERVE != 15_000
+    assert m.OPENING_CASH_RESERVE < m.RESERVE_AND_SAFETY_CASH
 
 
 def test_scheduled_labor_replaces_revenue_share():
     _, y2 = m.run_annual_projection(year=2)
     assert y2["total_manager_salary"] == pytest.approx(m.MANAGER_ANNUAL_SALARY)
-    assert y2["total_daytime_wages"] == pytest.approx(30_800, rel=0.02)
+    assert m.BARTENDER_SHARE_RATE == 0.0
     assert m.LODGING_PROVIDED and not m.LODGING_EXPENSED
-    # About $90k more cash labor than the retired 5% share (that share was
-    # ~$12k at these revenues). The review's "~$96k" is the same order.
-    assert y2["total_labor_wages"] + y2["total_payroll_burden"] > 90_000
+    # Wages plus burden replace the ~$12k share. The review's "~$96k" is the
+    # order of magnitude of the cost the share did not carry.
+    cash_labor = y2["total_labor_wages"] + y2["total_payroll_burden"]
+    assert cash_labor > 90_000
     assert y2["total_event_extra_wages"] > 0
+    assert y2["total_race_evening_premium"] > 0
+    assert sum(m.LABOR_HOURS_SEASON.values()) == pytest.approx(12.0)
 
 
 def test_inflation_is_line_by_line_and_spares_the_loan():
@@ -946,9 +969,149 @@ def test_paving_default_stays_asphalt():
     assert m.GRAVEL_ALT_BUDGET != paving
 
 
-def test_time_to_open_is_six_months_with_a_four_month_cash_burn():
-    """Sid's 6-month IRR clock and Anoop's 4-month pre-open burn coexist."""
+def test_time_to_open_is_six_months_and_the_build_is_one_month():
+    """Entitlement 5 + construction 1. The IRR delay is the full 6 months."""
     assert m.POST_PERMIT_BUILD_MONTHS == 1
     assert m.ENTITLEMENT_PERMIT_LAG_MONTHS == 5
-    assert m.CONSTRUCTION_PERIOD_MONTHS == 6
-    assert m.PRE_OPEN_MONTHS == 4
+    assert m.CONSTRUCTION_PERIOD_MONTHS == 1
+    assert m.MONTHS_TO_OPEN == 6
+    assert m.PRE_OPEN_MONTHS == 6
+    assert m.RETURNS_DELAY_MONTHS == 6
+
+
+def test_sized_ask_holds_forty_thousand_reserve_floor():
+    """Base asphalt @ 10% ≈ $563.6k. Bank asphalt @ 15% ≈ $581.7k.
+    The floor is held by raising the ask, not by cutting contingency."""
+    base = m.build_use_of_funds()
+    assert base["labeled_excluding_reserve"] == 523_626
+    assert base["ask"] == 563_626
+    assert base["residual_reserve"] == m.RESERVE_FLOOR == 40_000
+    assert base["ask_bumped"] is True
+    assert base["contingency"] == pytest.approx(36_200)
+    bank = m.build_use_of_funds(contingency_rate=m.CONTINGENCY_RATE_BANK)
+    assert bank["ask"] == 581_726
+    assert bank["contingency"] == pytest.approx(54_300)
+    assert bank["residual_reserve"] == 40_000
+    assert sum(a for _, a, _ in base["use_of_funds"]) == base["ask"]
+
+
+def test_contingency_includes_gc_and_septic_stays_gated():
+    hard = m.SEPTIC + m.PAVING_BUDGET + m.BAR + m.GC_GENERAL_CONDITIONS_ALLOWANCE
+    assert m.hard_cost_total() == hard == 362_000
+    assert m.SEPTIC == 212_000
+    assert m.SEPTIC_UNLOCKED is False
+    assert m.contingency_amount() == pytest.approx(0.10 * hard)
+    assert m.OSSF_DESIGN == 0
+
+
+def test_ace_retainer_and_tabc_are_not_forward_uses():
+    labels = [label for label, _, _ in m.USE_OF_FUNDS]
+    assert not any("retainer" in label.lower() for label in labels)
+    assert m.ACE_CIVIL_RETAINER == 3_000
+    assert not any("TABC" in label for label in labels)
+
+
+def test_gravel_alternative_rebuilds_the_ask():
+    gravel = m.build_use_of_funds(mode="gravel")
+    assert gravel["hard_cost_total"] == 212_000 + 15_400 + 50_000 + 50_000
+    assert gravel["residual_reserve"] == 40_000
+    assert gravel["ask"] == gravel["labeled_excluding_reserve"] + 40_000
+    assert gravel["ask"] < m.LOAN_ASK
+
+
+def test_reserve_floor_bumps_a_too_small_ask():
+    forced = m.build_use_of_funds(ask=100_000)
+    assert forced["residual_reserve"] == m.RESERVE_FLOOR
+    assert forced["ask"] == forced["labeled_excluding_reserve"] + m.RESERVE_FLOOR
+    assert forced["ask_bumped"] is True
+
+
+def test_land_carry_is_six_months_of_vacant_bills():
+    annual = m.LAND_TAX_PID_984219 + m.LAND_TAX_PID_300451 + m.VACANT_LAND_INSURANCE_ANNUAL
+    assert annual == pytest.approx(7_448.80)
+    assert m.LAND_CARRY_MONTHLY == 621
+    assert m.LAND_CARRY == 3_726
+    assert m.LAND_CARRY_MONTHS_PREPAID == 6
+
+
+def test_labor_is_heavier_on_race_weekends_and_in_october():
+    january = m.calc_scheduled_labor([], month=1)
+    october_quiet = m.calc_scheduled_labor([], month=10)
+    october_race = m.calc_scheduled_labor(m.COTA_EVENTS_BY_MONTH[10], month=10)
+    assert october_quiet["labor_wages"] > january["labor_wages"]
+    assert october_race["race_days"] > 0
+    assert october_race["labor_wages"] > october_quiet["labor_wages"]
+    assert october_race["event_extra_wages"] > 0
+    assert m.LABOR_WEEKEND_EVENING_HOURS > m.LABOR_WEEKDAY_EVENING_HOURS
+    assert m.LABOR_RACE_EVENING_HOURS > m.LABOR_WEEKEND_EVENING_HOURS
+
+
+def test_no_cota_noi_is_below_base_and_is_a_named_scenario():
+    _, base = m.run_annual_projection(year=2)
+    _, quiet = m.run_annual_projection(year=2, cota_impact_multiplier=0.0)
+    assert quiet["total_noi"] < base["total_noi"]
+    assert quiet["total_cota_parking"] == 0
+    _, scenario = m.run_scenario_projection(m.SCENARIOS["No COTA"])
+    assert scenario["total_noi"] < base["total_noi"]
+
+
+def test_product_dscr_504_payment_is_below_7a_and_750k_is_worse():
+    pkg = m.run_loan_size_dscr()
+    sized = round(m.LOAN_ASK)
+
+    def cell(case, year, amount, product):
+        return next(row for row in pkg["rows"]
+                    if row["case"] == case and row["year"] == year
+                    and row["loan_amount"] == amount and row["product"] == product)
+
+    base_7a = cell("base", 2, sized, "sba_7a")
+    base_504 = cell("base", 2, sized, "sba_504")
+    base_750 = cell("base", 2, 750_000, "sba_7a")
+    nocota = cell("no_cota", 2, sized, "sba_7a")
+    assert base_504["annual_debt_service"] < base_7a["annual_debt_service"]
+    assert base_504["dscr"] > base_7a["dscr"]
+    assert base_750["dscr"] < base_7a["dscr"]
+    assert nocota["noi"] < base_7a["noi"]
+    assert cell("base", 2, 500_000, "sba_7a")["fits_uses"] is False
+    assert base_750["unassigned_proceeds"] > 0
+    assert base_7a["dscr"] == pytest.approx(base_7a["noi"] / base_7a["annual_debt_service"])
+
+
+def test_dscr_matrix_keeps_base_and_bank_apart():
+    matrix = m.run_dscr_matrix(years=(2,))
+    base = matrix["lender_base"][2]["going_concern"][0.10]
+    bank = matrix["bank_case"][2]["going_concern"][0.10]
+    assert bank < base
+    assert matrix["loan_amount_base"] == 563_626
+    assert matrix["loan_amount_bank"] == 581_726
+    assert matrix["meta"]["contingency_base"] == 0.10
+    assert m.build_use_of_funds()["contingency_rate"] == 0.10
+
+
+def test_propco_opco_lease_eliminates():
+    _, annual = m.run_annual_projection(year=2)
+    split = m.run_propco_opco_split(annual)
+    assert split["consolidated_ties"] is True
+    assert split["consolidated_noi"] == pytest.approx(annual["total_noi"])
+    assert split["lease_payment"] == pytest.approx(
+        m.INTERCOMPANY_BASE_RENT_ANNUAL + split["nnn_recovery"])
+    assert split["propco_entity"] == "JVAM Capital LLC"
+    assert split["opco_entity"] == "JVA Operations LLC"
+
+
+def test_equity_bridge_ties():
+    bridge = m.equity_bridge()
+    assert bridge["ties"] is True
+    assert bridge["uses_total"] == pytest.approx(bridge["loan_sources"])
+    assert bridge["total_economic_equity"] == pytest.approx(
+        bridge["economic_equity_identity"])
+
+
+def test_assumption_export_names_its_sources():
+    rows = m.export_assumptions_rows()
+    sources = {row["source"] for row in rows}
+    assert {"wage fix", "patch", "review", "sensitivity"} <= sources
+    csv_text = m.export_assumptions_csv()
+    assert "Bartender revenue share" in csv_text
+    assert m.export_su_csv().startswith("line,amount,status")
+    assert "m,phase,draw" in m.export_draw_schedule_csv()

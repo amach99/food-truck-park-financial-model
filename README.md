@@ -3,7 +3,7 @@
 Financial feasibility model for a food truck park with a bar & beverage
 stand — an evening container bar (draft beer on tap, canned/bottled beer,
 liquor shots, and made-to-order cocktails) plus an all-day
-soda/juice/water/coffee stand — at 13901 FM 812, Del Valle, TX. $500,000 total project cost, financed via a
+soda/juice/water/coffee stand — at 13901 FM 812, Del Valle, TX. The loan ask is sized to uses (about $563,626 Base asphalt at 10% contingency, holding a $40,000 reserve), financed via a
 bank term loan (fixed-payment, fully amortizing — rate/term are placeholders
 pending an actual bank quote).
 

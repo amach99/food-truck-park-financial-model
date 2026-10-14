@@ -13,13 +13,13 @@ Concept:
     (Texas PUC utility-resale rules: PURA Sec. 39.107 - resale at cost, no
     markup)
 
-Loan request: $500,000, financed by a bank term loan (fixed-payment, fully
-amortizing - rate/term are placeholders pending an actual bank quote; see
-LOAN_INTEREST_RATE/LOAN_TERM_YEARS). USE_OF_FUNDS is the Sources & Uses of
-that $500,000: payoff of the owner's existing personal LOC ($120,000
-actually drawn against it), septic, paving, the container bar buildout,
-remaining permits, contingency, and a Reserve & Safety Cash plug that absorbs
-whatever's left after those named items. The owner's real "Phase 0.5
+Loan request: the sized bank term loan (fixed-payment, fully amortizing —
+rate/term are placeholders pending a quote; see LOAN_PRODUCTS). Base asphalt
+at 10% contingency is about $563,626, which holds a $40,000 reserve floor.
+USE_OF_FUNDS is that sources and uses: the $120,000 LOC payoff, gated septic,
+paving, the container bar, GC, the health permit, six months of land carry,
+contingency, and the reserve. A $500,000 check does not cover it. $750,000
+is a sensitivity with unassigned proceeds. The owner's real "Phase 0.5
 Master Plan" cost tracker (Notion) totaled $80,100 of itemized, real
 vendor-quoted buildout, mostly already done or in progress; the $66,800
 of it actually drawn against that (now-being-paid-off) personal LOC lives
@@ -121,89 +121,193 @@ PHASE_0_5_CAPITAL_IMPROVEMENTS = [
 ]
 PHASE_0_5_TOTAL = sum(a for _, a, _ in PHASE_0_5_CAPITAL_IMPROVEMENTS)  # $66,800
 
-# --- $500,000 Bank Loan: Sources & Uses ---
-# The owner is financing a larger next phase via a $500,000 bank term loan
-# rather than continuing to draw the original Phase 0.5 personal LOC.
-# Septic and paving are new infrastructure the Phase 0.5 tracker above
-# never covered; the container bar replaces the $1,500 Walmart shed
-# placeholder (see PHASE_0_5_CAPITAL_IMPROVEMENTS) with a real full
-# buildout; the LOC payoff retires the existing personal LOC in full
-# ($120,000 actually drawn against it - not its full $170,000 facility
-# limit); contingency is the one Phase 0.5 item that hadn't been spent yet
-# (see above).
+# --- Lender-ready v3 Sources & Uses ---
+# The loan ask is sized to the named uses, not held at $500,000. Named hard
+# costs (septic, paving, container bar, GC) plus contingency, the health
+# permit, six months of vacant-land carry, and the $120,000 LOC payoff are
+# added first. Reserve & Safety Cash is the plug. If that plug would land
+# under RESERVE_FLOOR, the ask rises so the reserve equals the floor.
+# Contingency is not cut to force a round ask.
 #
-# PERMITS LINE - $1,700, NOT $7,000. This line previously carried $7,000,
-# dominated by the $5,300 TABC Mixed Beverage Permit (two-year fee, TABC
-# schedule in force since Sept 2021). **The MB permit has since been
-# obtained and paid for**, funded by the old personal LOC - so its $5,300
-# is already inside the $120,000 LOC-payoff line above, as part of the
-# "pre-loan soft costs" that make up the difference between that $120,000
-# draw and the $66,800 of itemized Phase 0.5 capital improvements. Leaving
-# $5,300 here as a forward-looking cost double-counted the same dollars
-# against the payoff (and inflated TOTAL_CAPITALIZED_BASIS, which
-# capitalizes this line). What remains is the health permit and business
-# license, still to be paid. The freed $5,300 moved to Reserve & Safety
-# Cash so TOTAL_PROJECT_COST stays at exactly $500,000.
+# Locked 2026-09-30 values (these supersede the earlier $100k septic /
+# $14,796 land-carry / 12-month construction draft):
+#   septic $212,000, still gated (in the budget, not released to spend)
+#   OSSF design $0 until a vendor is chosen
+#   paving asphalt $50,000 base, gravel $15,400 alternate
+#   container bar $50,000; GC allowance $50,000
+#   health permit $1,700; ACE civil retainer $3,000 already paid (not a use)
+#   contingency 10% Base / 15% Bank, on hard cost INCLUDING GC
+#   LOC payoff $120,000 drawn
+#   land carry = PID 984219 + PID 300451 + vacant-land insurance, 6 months prepaid
+#   Base asphalt @ 10% ask ≈ $563.6k; Bank asphalt @ 15% ask ≈ $581.7k
 #
-# Note the MB permit is deliberately NOT added to
-# PHASE_0_5_CAPITAL_IMPROVEMENTS: that list is physical capital
-# improvements feeding depreciation classification, and a liquor license is
-# an intangible on a different tax footing. It is captured (correctly, once)
-# via the LOC payoff. A new MB permittee may also have to post a conduct
-# surety bond and a tax security bond; bonding is NOT modeled - confirm
-# requirements with TABC.
+# The $5,300 TABC Mixed Beverage permit is already paid under the old LOC
+# and stays inside the payoff. It is not in PHASE_0_5 (a liquor license is
+# not a depreciable improvement) and not a second time in uses.
 #
-# "Reserve & Safety Cash" is what's left of the $500,000 ask after every
-# named big-ticket item above it - held back rather than earmarked to a
-# specific cost, sized as a plug so the grand total lands on exactly
-# $500,000. The owner deliberately chose to keep the loan request at the
-# full $500,000 (rather than trimming it to match itemized buildout costs)
-# so the leftover sits in reserve as safety cash instead.
-#
-# Permits and contingency were raised after the Aug 31 independent review
-# ($1,700 → $12,000; $6,300 → $24,000) and funded OUT OF this reserve plug,
-# so the ask stays $500,000 and the reserve falls $172,000 → $144,000.
-# The already-paid TABC Mixed Beverage permit is still NOT in this line
-# (it sits inside the LOC payoff). Paving stays the $50,000 asphalt base
-# (Sep 30 lock). GRAVEL_ALT_BUDGET is the unselected alternate — do not
-# swap it in without rebuilding the plug. A later Sep 30 draft wanted
-# additional named softs (several still TBD) and a ~$25k/10% contingency;
-# those amounts are not locked, so they are not applied here.
-PAVING_BUDGET = 50_000            # asphalt base (selected). Not the gravel alternate.
-GRAVEL_ALT_BUDGET = 15_400        # unselected alternate; Phase 0.5 gravel line is separate
-PERMITS_AND_SOFT_COSTS = 12_000   # site development, OSSF, health, TxDOT, fire, CO
-PERMITS_AND_SOFT_COSTS_LABEL = (
-    "Permits & soft costs (site development, OSSF, health, TxDOT driveway, "
-    "fire/life safety, certificate of occupancy)"
-)
-CONTINGENCY_BUDGET = 24_000
-_NAMED_USES_BEFORE_RESERVE = [
-    ("Payoff of existing high-interest line of credit (Phase 0.5 & pre-loan soft costs)", 120_000, "done"),
-    ("Septic system installation", 100_000, "not_started"),
-    ("Paved asphalt roads / internal access improvements", PAVING_BUDGET, "not_started"),
-    ("Container Bar (full buildout)", 50_000, "not_started"),
-    (PERMITS_AND_SOFT_COSTS_LABEL, PERMITS_AND_SOFT_COSTS, "not_started"),
-    ("Contingency", CONTINGENCY_BUDGET, "not_started"),
-]
-LOAN_ASK = 500_000
-RESERVE_AND_SAFETY_CASH = LOAN_ASK - sum(a for _, a, _ in _NAMED_USES_BEFORE_RESERVE)
-USE_OF_FUNDS = _NAMED_USES_BEFORE_RESERVE + [
-    ("Reserve & Safety Cash", RESERVE_AND_SAFETY_CASH, "not_started"),
-]
-TOTAL_PROJECT_COST = sum(a for _, a, _ in USE_OF_FUNDS)  # $500,000
-ALREADY_SPENT = sum(a for _, a, status in USE_OF_FUNDS if status == "done")  # $120,000
-NEW_CASH_NEEDED = TOTAL_PROJECT_COST - ALREADY_SPENT                          # $380,000
+# Timing, same lock: entitlement ~5 months, physical build 1 month
+# (CONSTRUCTION_PERIOD_MONTHS), months_to_open = 6, open ~March/April 2027.
+# The IRR clock uses months_to_open (cash flow starts then). The draw
+# schedule uses the 1-month build. Land carry is prepaid for all 6 months
+# and is not charged again as operating tax and insurance before opening.
 
-# --- Capital (financed via a $500,000 bank term loan, fixed-payment,
-# fully amortizing - NOT the original personal LOC financing the Phase 0.5
-# buildout above relied on). Rate/term are placeholders pending an actual
-# bank quote: 10% is the conservative end of a 9.5-10% range the owner
-# gave, and 25 years matches typical SBA-loan amortization. LOAN_AMOUNT is
-# re-derived from TOTAL_PROJECT_COST (not a second hardcoded 500_000) so
-# the two stay in sync by construction if USE_OF_FUNDS ever changes again.
-LOAN_AMOUNT = TOTAL_PROJECT_COST      # fully drawn at closing to fund the buildout
-LOAN_INTEREST_RATE = 0.10             # placeholder pending an actual bank quote
-LOAN_TERM_YEARS = 25                  # placeholder - typical SBA amortization
+# Entitlement, then a one-month post-permit build. Operations start at month 6.
+CONSTRUCTION_PERIOD_MONTHS = 1
+ENTITLEMENT_PERMIT_LAG_MONTHS = 5
+MONTHS_TO_OPEN = ENTITLEMENT_PERMIT_LAG_MONTHS + CONSTRUCTION_PERIOD_MONTHS  # 6
+OPS_OPEN = "2027-Q1"
+OPENING_YEAR = 2027
+OPENING_MONTH = 3   # March; the window is March/April 2027
+
+LOC_PAYOFF_DRAWN = 120_000
+LOAN_ASK_BASE = 500_000       # prior round ask; the sized ask replaces it when uses don't fit
+RESERVE_FLOOR = 40_000        # cash reserve at close; do not cut contingency to hold this
+
+SEPTIC = 212_000
+SEPTIC_UNLOCKED = False       # gated: counted in the ask, not released to spend
+PAVING_BUDGET = 50_000        # BASE asphalt
+GRAVEL_ALT_BUDGET = 15_400    # alternate; not the default
+PAVING_MODE = "asphalt"
+BAR = 50_000                  # container bar buildout
+GC_GENERAL_CONDITIONS_ALLOWANCE = 50_000
+CONTINGENCY_RATE_BASE = 0.10
+CONTINGENCY_RATE_BANK = 0.15
+
+HEALTH_LICENSE = 1_700
+PERMITS_AND_SOFT_COSTS = HEALTH_LICENSE  # alias used by older call sites
+PERMITS_AND_SOFT_COSTS_LABEL = (
+    "Permits & soft costs (health permit, business license)"
+)
+ACE_CIVIL_RETAINER = 3_000    # sunk / already paid — not a forward use
+ACE_CIVIL_REMAINDER = 0
+SDP_TNR = 0
+OSSF_DESIGN = 0               # $0 until Moore vs Delcon is chosen
+DEED_LEGAL = 0
+SWO_REINSPECTION = 0
+
+# Vacant-land carry during the six months before open. Not the operating
+# $900 GL/liquor policy and not the post-completion improvement tax.
+LAND_TAX_PID_984219 = 2_289.23          # TCAD 2026 estimate
+LAND_TAX_PID_300451 = 4_459.57          # Travis County 2025 bill
+VACANT_LAND_INSURANCE_ANNUAL = 700.00
+LAND_CARRY_ANNUAL = (LAND_TAX_PID_984219 + LAND_TAX_PID_300451
+                     + VACANT_LAND_INSURANCE_ANNUAL)  # $7,448.80
+LAND_CARRY_MONTHLY = round(LAND_CARRY_ANNUAL / 12)   # $621
+LAND_CARRY_MONTHS_PREPAID = MONTHS_TO_OPEN           # 6
+LAND_CARRY = LAND_CARRY_MONTHLY * LAND_CARRY_MONTHS_PREPAID  # $3,726
+
+LOC_PAYOFF_LABEL = (
+    "Payoff of existing high-interest line of credit (Phase 0.5 & pre-loan soft costs)"
+)
+SEPTIC_LABEL = "Septic system installation"
+BAR_LABEL = "Container bar buildout"
+GC_LABEL = "GC general conditions allowance (until bid)"
+LAND_CARRY_LABEL = "Land carry (vacant-land tax and insurance, 6 months prepaid)"
+RESERVE_LABEL = "Reserve & Safety Cash"
+CONTINGENCY_LABEL = "Contingency"
+
+
+def paving_amount(mode=None):
+    mode = PAVING_MODE if mode is None else mode
+    if mode == "asphalt":
+        return PAVING_BUDGET
+    if mode == "gravel":
+        return GRAVEL_ALT_BUDGET
+    raise ValueError(f"unknown paving mode: {mode}")
+
+
+def paving_label(mode=None):
+    if paving_amount(mode) == PAVING_BUDGET:
+        return "Paved asphalt roads / internal access improvements"
+    return "Gravel roads / internal access improvements (ALT)"
+
+
+def hard_cost_total(mode=None):
+    """Contingency base. Septic stays in the total while the gate is closed."""
+    return SEPTIC + paving_amount(mode) + BAR + GC_GENERAL_CONDITIONS_ALLOWANCE
+
+
+def contingency_amount(mode=None, rate=None):
+    rate = CONTINGENCY_RATE_BASE if rate is None else rate
+    return hard_cost_total(mode) * rate
+
+
+def soft_tbd_total():
+    return (SDP_TNR + OSSF_DESIGN + DEED_LEGAL + SWO_REINSPECTION
+            + ACE_CIVIL_REMAINDER)
+
+
+def labeled_uses_excluding_reserve(mode=None, contingency_rate=None):
+    """Named uses before the reserve plug. ACE retainer is not in this list."""
+    rate = CONTINGENCY_RATE_BASE if contingency_rate is None else contingency_rate
+    return [
+        (LOC_PAYOFF_LABEL, LOC_PAYOFF_DRAWN, "done"),
+        (SEPTIC_LABEL, SEPTIC, "gated" if not SEPTIC_UNLOCKED else "not_started"),
+        (paving_label(mode), paving_amount(mode), "not_started"),
+        (BAR_LABEL, BAR, "not_started"),
+        (GC_LABEL, GC_GENERAL_CONDITIONS_ALLOWANCE, "not_started"),
+        (PERMITS_AND_SOFT_COSTS_LABEL, HEALTH_LICENSE, "not_started"),
+        (LAND_CARRY_LABEL, LAND_CARRY, "not_started"),
+        ("SDP / TNR (TBD)", SDP_TNR, "tbd"),
+        ("OSSF design (TBD until vendor chosen)", OSSF_DESIGN, "tbd"),
+        ("Deed / legal (TBD)", DEED_LEGAL, "tbd"),
+        ("SWO reinspection (TBD)", SWO_REINSPECTION, "tbd"),
+        ("ACE civil remainder (TBD)", ACE_CIVIL_REMAINDER, "tbd"),
+        (CONTINGENCY_LABEL, contingency_amount(mode, rate), "not_started"),
+    ]
+
+
+def build_use_of_funds(mode=None, contingency_rate=None, ask=None):
+    """Plug-first sources and uses.
+
+    residual = ask − labeled uses. If residual is under RESERVE_FLOOR, the
+    ask rises by the shortfall so the reserve equals the floor. Contingency
+    is an input, not the plug. ACE_CIVIL_RETAINER is excluded.
+    """
+    ask = LOAN_ASK_BASE if ask is None else ask
+    rate = CONTINGENCY_RATE_BASE if contingency_rate is None else contingency_rate
+    lines = labeled_uses_excluding_reserve(mode, rate)
+    labeled = sum(amount for _, amount, _ in lines)
+    residual = ask - labeled
+    bumped = False
+    if residual < RESERVE_FLOOR:
+        ask = labeled + RESERVE_FLOOR
+        residual = RESERVE_FLOOR
+        bumped = True
+    lines = list(lines) + [(RESERVE_LABEL, residual, "not_started")]
+    return {
+        "ask": ask,
+        "ask_bumped": bumped,
+        "labeled_excluding_reserve": labeled,
+        "residual_reserve": residual,
+        "reserve_floor": RESERVE_FLOOR,
+        "holds_floor": residual + 1e-6 >= RESERVE_FLOOR,
+        "use_of_funds": lines,
+        "total_project_cost": sum(amount for _, amount, _ in lines),
+        "hard_cost_total": hard_cost_total(mode),
+        "contingency": contingency_amount(mode, rate),
+        "contingency_rate": rate,
+        "paving_mode": PAVING_MODE if mode is None else mode,
+        "ace_civil_retainer_sunk_excluded": ACE_CIVIL_RETAINER,
+        "land_carry": LAND_CARRY,
+    }
+
+
+_DEFAULT_SU = build_use_of_funds(mode="asphalt", contingency_rate=CONTINGENCY_RATE_BASE)
+USE_OF_FUNDS = _DEFAULT_SU["use_of_funds"]
+TOTAL_PROJECT_COST = _DEFAULT_SU["total_project_cost"]
+LOAN_ASK = _DEFAULT_SU["ask"]
+RESERVE_AND_SAFETY_CASH = _DEFAULT_SU["residual_reserve"]
+CONTINGENCY_BUDGET = _DEFAULT_SU["contingency"]
+ALREADY_SPENT = sum(amount for _, amount, status in USE_OF_FUNDS if status == "done")
+NEW_CASH_NEEDED = TOTAL_PROJECT_COST - ALREADY_SPENT
+
+# Placeholder terms pending a quote. 10% / 25 years is the SBA 7(a)
+# variable illustration (prime 7% + 3%). Product-level rates live in
+# LOAN_PRODUCTS. LOAN_AMOUNT tracks the sized ask.
+LOAN_AMOUNT = TOTAL_PROJECT_COST
+LOAN_INTEREST_RATE = 0.10
+LOAN_TERM_YEARS = 25
 
 
 def _amortization_payment(principal, annual_rate, term_years):
@@ -381,21 +485,16 @@ TRUCK_Y1_FILL_RAMP = {
 }
 
 # --- Opening Date ---
-# Operations begin March 2027. The August 2026 plan's September 2026 open
-# was not credible (septic, paving, bar, and permits still unfinished, and
-# it booked September event revenue the site could not have hosted).
-# "Operating month 1" in BAR_Y1_RAMP means "1st month since opening," NOT
-# January — it maps to this calendar month. Sid's Sep 30 timing lock is the
-# same open (within ~6 months, ~Mar 2027): 5 months of entitlement/permit
-# lag plus 1 month of post-permit build. That 6-month clock is
-# CONSTRUCTION_PERIOD_MONTHS (IRR timing). The 4-month pre-open cash burn
-# below is a different clock — debt service and a few fixed bills against
-# zero revenue — and is not a substitute for the 6-month IRR lag.
-OPENING_MONTH = 3   # March
-OPENING_YEAR = 2027
-POST_PERMIT_BUILD_MONTHS = 1
-ENTITLEMENT_PERMIT_LAG_MONTHS = 5
-TIME_TO_OPEN_MONTHS = POST_PERMIT_BUILD_MONTHS + ENTITLEMENT_PERMIT_LAG_MONTHS  # 6
+# Operations begin March 2027 (the March/April 2027 window). The August
+# 2026 plan's September 2026 open was not credible. "Operating month 1"
+# in BAR_Y1_RAMP is the first month since opening, not January.
+# CONSTRUCTION_PERIOD_MONTHS (1), ENTITLEMENT_PERMIT_LAG_MONTHS (5), and
+# MONTHS_TO_OPEN (6) are set with the sources-and-uses block above.
+# IRR/NPV delay the operating cash flows by MONTHS_TO_OPEN, because the
+# park is not open during entitlement. The draw schedule spreads construction
+# spend over the 1-month build only.
+POST_PERMIT_BUILD_MONTHS = CONSTRUCTION_PERIOD_MONTHS
+TIME_TO_OPEN_MONTHS = MONTHS_TO_OPEN
 
 
 def operating_to_calendar_month(op_month, opening_month=None):
@@ -524,22 +623,34 @@ CC_PROCESSING_RATE = 0.028
 CC_CARD_USAGE_RATE = 0.85
 SHRINKAGE_RATE = 0.025           # of beverage COGS value (grab-and-go single-serve
                                   # items may be easier to pilfer than pours - watch this)
-# The old 5% beverage-revenue share is retired. It paid about $2–$3/hr
-# across the open hours — below minimum wage. Labor is now scheduled hours.
-# BARTENDER_SHARE_RATE remains 0 so a stale caller cannot silently re-add
-# the share on top of wages.
+# The old 5% beverage-revenue share is retired. On the pre-v3 engine it
+# worked out to about $2.11/hr in Year 1 — under the $7.25 federal/Texas
+# minimum. BARTENDER_SHARE_RATE stays 0 so wages cannot be stacked on the share.
 BARTENDER_SHARE_RATE = 0.0
-# Scheduled labor (estimates — wage quotes are still evidence, not facts).
-# Daytime attendant covers the non-alcohol window only (11-hour beverage
-# day minus the 4.5-hour evening bar ≈ 6.5 hours). One attendant plus one
-# evening bartender is still a light crew for an 11-hour day; the event
-# extra body is the only relief, and only on COTA event days.
-DAYTIME_ATTENDANT_WAGE = 13.00    # $/hr, all-day non-alcohol window
-EVENING_BARTENDER_WAGE = 16.00    # $/hr, alcohol service window
-EVENT_EXTRA_WAGE = 15.00          # $/hr, one extra body on each COTA event day
-EVENT_EXTRA_HOURS_PER_DAY = DAYTIME_BEVERAGE_HOURS_PER_DAY  # full open day
-OVERTIME_ALLOWANCE_RATE = 0.10    # flat allowance on hourly wages, not a timecard
-MANAGER_ANNUAL_SALARY = 24_000    # cash salary; lodging is not part of this
+# Scheduled labor. Rates are estimates (Alok / Sep 4 response), not quotes.
+# Hours vary by day type and by season. Race days are heavier than a normal
+# weekend: the bar stays open longer and one extra person works the full day.
+# A flat overtime allowance stands in for time-and-a-half. It is not added
+# on top of a second statutory-OT calculation.
+DAYTIME_ATTENDANT_WAGE = 13.00
+EVENING_BARTENDER_WAGE = 16.00
+EVENT_EXTRA_WAGE = 15.00
+LABOR_WEEKDAY_DAYTIME_HOURS = 6.5     # before the evening bar, Mon–Thu
+LABOR_WEEKDAY_EVENING_HOURS = 4.5
+LABOR_WEEKEND_DAYTIME_HOURS = 7.5     # longer weekend lunch window
+LABOR_WEEKEND_EVENING_HOURS = 6.0     # later Fri–Sun close
+LABOR_RACE_EVENING_HOURS = 8.0        # race day: open earlier, run later
+EVENT_EXTRA_HOURS_PER_DAY = DAYTIME_BEVERAGE_HOURS_PER_DAY  # extra body, full open day
+EVENT_EXTRA_BODIES = 1
+# Season redistributes hours (winter shorter, October/F1 heavier). The
+# factors sum to 12 so a full year is not a hidden haircut. Race-day
+# premiums sit on top of this, so annual wages are higher than a flat schedule.
+LABOR_HOURS_SEASON = {
+    1: 0.85, 2: 0.88, 3: 0.95, 4: 1.00, 5: 1.05, 6: 1.08,
+    7: 1.08, 8: 1.05, 9: 1.00, 10: 1.10, 11: 0.98, 12: 0.98,
+}
+OVERTIME_ALLOWANCE_RATE = 0.10
+MANAGER_ANNUAL_SALARY = 24_000
 # Employer-side payroll burden on ALL cash wages (hourly + OT allowance +
 # manager salary). ~10% is a deliberately conservative blend (FICA 7.65% +
 # TX SUTA new-employer rate + FUTA). Confirm classification with a CPA.
@@ -894,17 +1005,17 @@ ANNUAL_RENT_GROWTH = 0.03        # truck rent escalation
 ANNUAL_COST_INFLATION = 0.03
 
 # --- Working Capital / Cash Reserve ---
-# The cash tracker used to start from an unexplained $15,000. The reserve
-# is the Sources & Uses plug (RESERVE_AND_SAFETY_CASH). Before opening, four
-# months of debt service, insurance, property tax (land + improvements), and
-# accounting accrue against zero revenue and are drawn from that reserve.
-# Cash at open is the residual — derived, not a second constant.
-PRE_OPEN_MONTHS = 4
+# RESERVE_AND_SAFETY_CASH is the sources-and-uses floor ($40,000 at close).
+# Land tax and vacant-land insurance for the six pre-open months are already
+# in LAND_CARRY, so they are not charged again here. Operating GL/liquor
+# insurance and the improvement tax start when the park opens.
+# What does come out of the reserve before open is contractual P&I (the
+# loan is outstanding from close; interest-only is not assumed) plus
+# accounting. That interest is inside the P&I payment — the draw schedule
+# reports it, and it is not added a second time.
+PRE_OPEN_MONTHS = MONTHS_TO_OPEN
 PRE_OPEN_COST_KEYS = (
     "loan_payment",
-    "insurance",
-    "property_tax",
-    "property_tax_improvements",
     "accounting_tax_prep",
 )
 PRE_OPEN_MONTHLY_BURN = sum(FIXED_COSTS[k] for k in PRE_OPEN_COST_KEYS)
@@ -974,16 +1085,121 @@ PARENT_ENTITY = "JVAM Ventures LLC"
 # a guaranty, it is all JVAM Ventures stakeholders, not one person.
 SPONSOR_PG_PREFERENCE = "no_pg_land_only"
 SPONSOR_PG_FALLBACK = "all_jvam_ventures_stakeholders"
-# Months between capital deployment (t=0) and the first operating month.
-# Sid's Sep 30 lock: 6 months to a March 2027 open (5 months entitlement
-# lag + 1 month post-permit build), replacing the old 4-month construction
-# constant. This is still a TIMING correction for IRR/NPV only. It does not
-# model a draw schedule, capitalized interest, or a developer fee. The
-# 4-month pre-open cash burn (PRE_OPEN_BURN) is the operating-cost clock
-# and is not added again here. Sid's narrower land-carry estimate
-# (tax + insurance × 6 months) is a different, still-unapplied draft — it
-# is not stacked on top of PRE_OPEN_BURN.
-CONSTRUCTION_PERIOD_MONTHS = TIME_TO_OPEN_MONTHS
+
+# PropCo owns the land and is the borrower. OpCo runs the bar and trucks'
+# day-to-day and leases the premises. The lease is an assumption, not a
+# signed document. It eliminates in the consolidated NOI.
+PROPCO_ENTITY = BORROWER_ENTITY
+OPCO_ENTITY = OPERATING_ENTITY
+INTERCOMPANY_BASE_RENT_ANNUAL = 30_000   # $2,500/mo related-party base rent
+INTERCOMPANY_NNN = True                  # OpCo reimburses PropCo property carry
+# Property-side fixed costs recovered under the NNN lease.
+PROPCO_OPEX_KEYS = (
+    "property_tax",
+    "property_tax_improvements",
+    "insurance",
+    "maintenance_reserve",
+)
+
+# Loan products for the DSCR matrix. Rates are placeholders, not quotes.
+# 7(a) matches the module placeholder (prime 7% + 3%, variable, 25 years).
+# 504 splits the debt 50/40 of project cost, i.e. 5/9 bank and 4/9 CDC.
+# Conventional uses the low end of the sponsor's 9.5–10% range.
+# SBA products typically require a personal guarantee. That conflicts with
+# the no-PG preference and is flagged, not waived.
+SBA_7A_RATE = 0.10
+SBA_504_BANK_RATE = 0.075
+SBA_504_CDC_RATE = 0.0697
+SBA_504_BANK_SHARE_OF_PROJECT = 0.50
+SBA_504_CDC_SHARE_OF_PROJECT = 0.40
+SBA_504_OWNER_EQUITY_SHARE = 0.10       # 15% if the lender treats this as a startup
+CONVENTIONAL_RATE = 0.095
+LOAN_PRODUCTS = {
+    "sba_7a": {
+        "label": "SBA 7(a)",
+        "structure": "single",
+        "rate": SBA_7A_RATE,
+        "rate_label": "10% variable (prime 7% + 3%), placeholder",
+        "amort_years": 25,
+        "dscr_min": 1.25,
+        "pg_typically_required": True,
+        "pg_flag": "TYPICALLY REQUIRES PG — conflicts with the no-PG preference.",
+        "notes": "Variable rate. Payment moves with prime. Not a quote.",
+    },
+    "sba_504": {
+        "label": "SBA 504 blend",
+        "structure": "blend",
+        "bank_rate": SBA_504_BANK_RATE,
+        "cdc_rate": SBA_504_CDC_RATE,
+        "bank_share_of_project": SBA_504_BANK_SHARE_OF_PROJECT,
+        "cdc_share_of_project": SBA_504_CDC_SHARE_OF_PROJECT,
+        "amort_years": 25,
+        "dscr_min": 1.25,
+        "owner_equity_share": SBA_504_OWNER_EQUITY_SHARE,
+        "pg_typically_required": True,
+        "pg_flag": "TYPICALLY REQUIRES PG on the bank first and the CDC debenture.",
+        "notes": ("Debt is split 50/40 of project (5/9 bank at ~7.5%, 4/9 CDC at "
+                  "6.97%), both 25 years. CDC fees are not in the payment. "
+                  "Owner equity of about 10% (15% if startup/special-use) is a "
+                  "program rule; the land basis already exceeds it. Not a quote."),
+    },
+    "conventional": {
+        "label": "Conventional / land-secured",
+        "structure": "single",
+        "rate": CONVENTIONAL_RATE,
+        "rate_label": "9.5% placeholder (low end of the sponsor's 9.5–10% range)",
+        "amort_years": 25,
+        "dscr_min": 1.25,
+        "pg_typically_required": False,
+        "pg_flag": "TARGET: no PG / land-only. Some CRE lenders still require a guaranty.",
+        "notes": "Closest structural fit to the no-PG preference. Rate is not a quote.",
+    },
+}
+DEFAULT_LOAN_PRODUCT = "sba_7a"
+LOAN_SIZE_SENSITIVITY = (500_000, 750_000)  # plus the sized ask, added at runtime
+DSCR_RATE_GRID = (0.085, 0.09, 0.095, 0.10, 0.105, 0.11, 0.115, 0.12)
+
+CRE_REVIEW_SUPERSESSION_BANNER = (
+    "Lender-ready v3. The $500,000 round ask and the LOC-era memo figures "
+    "are superseded. The Base asphalt ask is sized to hold a $40,000 reserve "
+    f"floor (about ${LOAN_ASK:,.0f}). Septic is ${SEPTIC:,.0f} and gated. "
+    "COTA is foundational: the no-COTA case is shown separately and is not "
+    "treated as upside. Personal-guarantee preference is no-PG / land-only; "
+    "SBA 7(a) and 504 typically still require a guaranty. No lender has been contacted."
+)
+
+
+def product_pg_conflict(product_key):
+    product = LOAN_PRODUCTS[product_key]
+    return (bool(product.get("pg_typically_required"))
+            and SPONSOR_PG_PREFERENCE == "no_pg_land_only")
+
+
+def get_loan_product(product_key=None):
+    key = DEFAULT_LOAN_PRODUCT if product_key is None else product_key
+    return {"key": key, **LOAN_PRODUCTS[key]}
+
+
+def get_entity_guarantor_notes():
+    return (
+        f"Borrower / PropCo: {PROPCO_ENTITY} (land title holder). "
+        f"OpCo: {OPCO_ENTITY} leases the premises. "
+        f"Parent: {PARENT_ENTITY}. "
+        f"PG preference: {SPONSOR_PG_PREFERENCE}. "
+        "SBA 7(a) and 504 typically require a personal guarantee; "
+        "a conventional land-secured loan is the path that might not. "
+        "Do not contact lenders from this model."
+    )
+
+
+def get_cre_review_supersession_banner():
+    return CRE_REVIEW_SUPERSESSION_BANNER
+# IRR/NPV delay. Operations start MONTHS_TO_OPEN after close (5 months of
+# entitlement + 1 month of construction). CONSTRUCTION_PERIOD_MONTHS stays
+# 1 — that is the draw window, not the delay to the first operating month.
+# Land carry is already in uses. Pre-open P&I is already in PRE_OPEN_BURN.
+# Neither is added again inside the IRR math.
+RETURNS_DELAY_MONTHS = MONTHS_TO_OPEN
 
 
 # =============================================================================
@@ -1185,35 +1401,48 @@ def event_days(event_list):
     return days
 
 
-def calc_scheduled_labor(event_list, cost_inflation_mult=1.0):
-    """Cash wages for the month. Lodging is not included.
+def calc_scheduled_labor(event_list, cost_inflation_mult=1.0, month=None):
+    """Cash wages for the month. Lodging is not included. The 5% share is not added.
 
-    Daytime attendant hours are the beverage window minus the evening bar
-    (they do not both get paid for the same evening hour). Overtime is a
-    flat allowance on hourly wages. The manager salary is 1/12 of
-    MANAGER_ANNUAL_SALARY. Employer burden applies to the whole cash wage
-    bill. cost_inflation_mult scales every wage line and the burden; it
-    must not be applied to the loan payment.
+    Weekdays and weekends use different scheduled hours. LABOR_HOURS_SEASON
+    shortens winter shifts and lengthens October. A race day (any COTA tier
+    on the calendar) pays the evening bartender up to LABOR_RACE_EVENING_HOURS
+    and adds EVENT_EXTRA_BODIES for the full open day. Overtime is the flat
+    allowance on hourly wages, not a second time-and-a-half pass.
+    cost_inflation_mult scales wages and burden. It does not scale the loan.
     """
-    days = WEEKDAY_DAYS_PER_MONTH + WEEKEND_DAYS_PER_MONTH
-    daytime_hours = max(0.0, DAYTIME_BEVERAGE_HOURS_PER_DAY - BAR_HOURS_PER_DAY)
-    mult = cost_inflation_mult
-    daytime_wages = days * daytime_hours * DAYTIME_ATTENDANT_WAGE * mult
-    evening_wages = days * BAR_HOURS_PER_DAY * EVENING_BARTENDER_WAGE * mult
-    extra_wages = (event_days(event_list) * EVENT_EXTRA_HOURS_PER_DAY
-                   * EVENT_EXTRA_WAGE * mult)
-    hourly = daytime_wages + evening_wages + extra_wages
+    season = LABOR_HOURS_SEASON.get(month, 1.0) if month else 1.0
+    mult = cost_inflation_mult * season
+    daytime_wages = (
+        WEEKDAY_DAYS_PER_MONTH * LABOR_WEEKDAY_DAYTIME_HOURS * DAYTIME_ATTENDANT_WAGE
+        + WEEKEND_DAYS_PER_MONTH * LABOR_WEEKEND_DAYTIME_HOURS * DAYTIME_ATTENDANT_WAGE
+    ) * mult
+    evening_wages = (
+        WEEKDAY_DAYS_PER_MONTH * LABOR_WEEKDAY_EVENING_HOURS * EVENING_BARTENDER_WAGE
+        + WEEKEND_DAYS_PER_MONTH * LABOR_WEEKEND_EVENING_HOURS * EVENING_BARTENDER_WAGE
+    ) * mult
+    race_days = event_days(event_list)
+    # Premium over the weekend evening shift already in evening_wages.
+    race_evening_extra_hours = max(0.0, LABOR_RACE_EVENING_HOURS - LABOR_WEEKEND_EVENING_HOURS)
+    race_evening_premium = (race_days * race_evening_extra_hours
+                            * EVENING_BARTENDER_WAGE * mult)
+    extra_wages = (race_days * EVENT_EXTRA_HOURS_PER_DAY * EVENT_EXTRA_WAGE
+                   * EVENT_EXTRA_BODIES * mult)
+    hourly = daytime_wages + evening_wages + race_evening_premium + extra_wages
     overtime = hourly * OVERTIME_ALLOWANCE_RATE
-    manager = (MANAGER_ANNUAL_SALARY / 12) * mult
+    manager = (MANAGER_ANNUAL_SALARY / 12) * cost_inflation_mult
     labor_wages = hourly + overtime + manager
     return {
         "daytime_wages": daytime_wages,
         "evening_wages": evening_wages,
+        "race_evening_premium": race_evening_premium,
         "event_extra_wages": extra_wages,
         "overtime_allowance": overtime,
         "manager_salary": manager,
         "labor_wages": labor_wages,
         "payroll_burden": labor_wages * EMPLOYER_PAYROLL_BURDEN_RATE,
+        "season_hours_factor": season,
+        "race_days": race_days,
     }
 
 
@@ -1294,7 +1523,7 @@ def calc_monthly_total(weekday_customers, weekend_customers, month, year_month=N
     daytime_bev_variable_costs = daytime_bev_cogs + daytime_bev_tax
     all_bev_rev = bar_like + daytime_bev_like
 
-    labor = calc_scheduled_labor(event_list, cost_inflation_mult)
+    labor = calc_scheduled_labor(event_list, cost_inflation_mult, month=month)
     labor_wages = labor["labor_wages"]
     payroll_burden = labor["payroll_burden"]
     cc_processing = all_bev_rev * CC_PROCESSING_RATE * CC_CARD_USAGE_RATE
@@ -1373,6 +1602,7 @@ def calc_monthly_total(weekday_customers, weekend_customers, month, year_month=N
         "daytime_wages": labor["daytime_wages"],
         "evening_wages": labor["evening_wages"],
         "event_extra_wages": labor["event_extra_wages"],
+        "race_evening_premium": labor["race_evening_premium"],
         "overtime_allowance": labor["overtime_allowance"],
         "manager_salary": labor["manager_salary"],
         "payroll_burden": payroll_burden,
@@ -1482,6 +1712,7 @@ def summarize_annual(months, loan_year=1):
         "total_daytime_wages": sum(m["daytime_wages"] for m in months),
         "total_evening_wages": sum(m["evening_wages"] for m in months),
         "total_event_extra_wages": sum(m["event_extra_wages"] for m in months),
+        "total_race_evening_premium": sum(m["race_evening_premium"] for m in months),
         "total_overtime_allowance": sum(m["overtime_allowance"] for m in months),
         "total_manager_salary": sum(m["manager_salary"] for m in months),
         "total_payroll_burden": sum(m["payroll_burden"] for m in months),
@@ -1770,6 +2001,23 @@ SCENARIOS = {
     },
     # Timing case, not a demand case. It is intentionally NOT part of the
     # worst-to-best ordering test.
+    # COTA is foundational, not upside. Same demand as Base, with the event
+    # calendar removed. Kept out of the worst-to-best order test.
+    "No COTA": {
+        "desc": ("Base-case trucks and bar with the COTA calendar removed. "
+                 "This is a foundational downside, not an upside case."),
+        "weekday_customers": BAR_WEEKDAY_CUSTOMERS,
+        "weekend_customers": BAR_WEEKEND_CUSTOMERS,
+        "avg_check": BAR_AVG_CHECK,
+        "truck_slots": TRUCK_SLOTS,
+        "truck_rent": TRUCK_PAD_RENT,
+        "truck_share_rate": TRUCK_REV_SHARE_RATE,
+        "truck_occupancy": TRUCK_OCCUPANCY,
+        "daytime_beverage_attach_rate": DAYTIME_BEVERAGE_ATTACH_RATE,
+        "cota_events": {m: [] for m in range(1, 13)},
+        "cota_impact_multiplier": 0.0,
+        "seasonal_pct": 1.0,
+    },
     "Delayed Opening (misses F1)": {
         "desc": ("Base-case demand, but the open slips past the October F1 "
                  "weekend, so Year 1 has no F1 parking or F1 bar uplift. "
@@ -1804,6 +2052,7 @@ def run_scenario_projection(params):
         truck_occupancy=params.get("truck_occupancy"),
         seasonal_pct=params.get("seasonal_pct", 1.0),
         daytime_beverage_attach_rate=params.get("daytime_beverage_attach_rate"),
+        cota_impact_multiplier=params.get("cota_impact_multiplier", 1.0),
     )
 
 
@@ -2271,7 +2520,7 @@ DEPRECIATION_15YR_ITEMS = [
     "Gravel", "Trash Cans", "Storage Shed (wooden, general)",
     "Septic system installation",
     "Paved asphalt roads / internal access improvements",
-    "Container Bar (full buildout)",
+    "Container bar buildout",
 ]
 _use_of_funds_cost = {label: amt for label, amt, _ in PHASE_0_5_CAPITAL_IMPROVEMENTS + USE_OF_FUNDS}
 DEPRECIABLE_BASIS_5YR = sum(_use_of_funds_cost[i] for i in DEPRECIATION_5YR_ITEMS)
@@ -2711,12 +2960,11 @@ def run_returns_analysis(hold_years=None, exit_cap_rate=None, sale_cost_pct=None
 
     The t=0 outlay (-TOTAL_CAPITALIZED_BASIS / -EQUITY_BASIS) still happens
     at time zero, but every subsequent year's cash flow is discounted
-    CONSTRUCTION_PERIOD_MONTHS/12 years later than the no-construction-period
-    convention would put it - capital sits in a buildout for that long before
-    Year 1 operations (and their cash flow) begin. This is a timing
-    correction only; the dollar amounts of TOTAL_CAPITALIZED_BASIS and each
-    year's NOI/net cash flow are unchanged (no draw schedule, capitalized
-    interest, land carry, or developer fee - see CONSTRUCTION_PERIOD_MONTHS).
+    RETURNS_DELAY_MONTHS/12 years later. That delay is months_to_open
+    (entitlement plus the one-month build), not CONSTRUCTION_PERIOD_MONTHS
+    alone. Land carry is in sources and uses. Pre-open debt service is in
+    PRE_OPEN_BURN. The draw schedule is build_construction_draw_schedule().
+    Those dollars are not added again inside this IRR.
 
     base_years: optionally pass a pre-computed run_multi_year_projection()
     result (used by run_cre_sensitivity_grid to avoid recomputing it).
@@ -2754,7 +3002,7 @@ def run_returns_analysis(hold_years=None, exit_cap_rate=None, sale_cost_pct=None
                             + [noi_by_year[hold_years - 1] + reversion_net])
     levered_cash_flows = ([-EQUITY_BASIS] + ncf_by_year[:hold_years - 1]
                           + [ncf_by_year[hold_years - 1] + reversion_net - exit_loan_balance])
-    construction_years = CONSTRUCTION_PERIOD_MONTHS / 12
+    construction_years = RETURNS_DELAY_MONTHS / 12
     unlevered_irr = _irr(unlevered_cash_flows, period_offset=construction_years)
     levered_irr = _irr(levered_cash_flows, period_offset=construction_years)
 
@@ -2922,6 +3170,469 @@ def run_bank_case_underwriting(loan_rate=None, hold_years=None, exit_cap_rate=No
         "unlevered_equity_multiple": returns["unlevered_equity_multiple"],
         "levered_equity_multiple": returns["levered_equity_multiple"],
     }
+
+
+# =============================================================================
+# SECTION 9b: LENDER PACKAGE — products, DSCR, PropCo/OpCo, exports
+# =============================================================================
+
+def annual_debt_service_for_product(loan_amount, product_key):
+    """Annual and monthly debt service for one product at one loan size.
+
+    A 504 blend splits the loan 5/9 bank and 4/9 CDC (50% and 40% of a
+    90%-debt project). Fees are not included.
+    """
+    product = LOAN_PRODUCTS[product_key]
+    years = product["amort_years"]
+    if product["structure"] == "blend":
+        debt_share = (product["bank_share_of_project"]
+                      + product["cdc_share_of_project"])
+        bank_amt = loan_amount * product["bank_share_of_project"] / debt_share
+        cdc_amt = loan_amount * product["cdc_share_of_project"] / debt_share
+        monthly = (
+            _amortization_payment(bank_amt, product["bank_rate"], years)
+            + _amortization_payment(cdc_amt, product["cdc_rate"], years)
+        )
+        return {
+            "monthly_payment": monthly,
+            "annual_debt_service": monthly * 12,
+            "bank_amount": bank_amt,
+            "cdc_amount": cdc_amt,
+        }
+    monthly = _amortization_payment(loan_amount, product["rate"], years)
+    return {
+        "monthly_payment": monthly,
+        "annual_debt_service": monthly * 12,
+        "bank_amount": loan_amount,
+        "cdc_amount": 0.0,
+    }
+
+
+def run_product_schedule_stub(product_key=None, loan_amount=None):
+    """Amortization outline. Does not contact a lender."""
+    key = DEFAULT_LOAN_PRODUCT if product_key is None else product_key
+    amount = LOAN_AMOUNT if loan_amount is None else loan_amount
+    debt = annual_debt_service_for_product(amount, key)
+    product = get_loan_product(key)
+    return {
+        "product": key,
+        "label": product["label"],
+        "loan_amount": amount,
+        "monthly_payment": debt["monthly_payment"],
+        "annual_debt_service": debt["annual_debt_service"],
+        "dscr_min": product["dscr_min"],
+        "pg_typically_required": product["pg_typically_required"],
+        "pg_conflict": product_pg_conflict(key),
+        "pg_flag": product["pg_flag"],
+        "notes": product["notes"],
+    }
+
+
+def calc_re_only_noi(annual):
+    """Conservative real-property NOI. Signed, not floored.
+
+    Full operating opex, the management fee, the replacement reserve, and
+    COTA event cost are all deducted from real-estate contribution. A lender
+    who only wants the property to repay the loan should use this, and should
+    expect it to be lower than going-concern NOI.
+    """
+    return (annual["total_real_estate_contribution"]
+            - annual["total_opex"]
+            - annual["total_management_fee"]
+            - annual["total_replacement_reserve"]
+            - annual["total_cota_cost"])
+
+
+def calc_going_concern_noi(annual):
+    return annual["total_noi"]
+
+
+def _bank_case_years(years=3):
+    stress = SCENARIOS["Stress Test"]
+    return run_multi_year_projection(
+        base_weekday_customers=stress["weekday_customers"],
+        base_weekend_customers=stress["weekend_customers"],
+        base_check=stress["avg_check"],
+        truck_occupancy=0.75,
+        seasonal_pct=0.85,
+        daytime_beverage_attach_rate=stress["daytime_beverage_attach_rate"],
+        cota_impact_multiplier=0.5,
+        years=years,
+    )
+
+
+def _noi_cases(years=2):
+    """Base, bank-case, and no-COTA NOI for operating years 1..years."""
+    base = run_multi_year_projection(years=years)
+    bank = _bank_case_years(years=years)
+    nocota = run_multi_year_projection(years=years, cota_impact_multiplier=0.0)
+    packs = {"base": base, "bank": bank, "no_cota": nocota}
+    out = {}
+    for name, rows in packs.items():
+        out[name] = {}
+        for year, _months, annual in rows:
+            out[name][year] = {
+                "noi": calc_going_concern_noi(annual),
+                "re_only_noi": calc_re_only_noi(annual),
+                "annual": annual,
+            }
+    return out
+
+
+def loan_sizes_for_sensitivity(extra=()):
+    """$500k (does not fund the uses), the sized Base ask, $750k, plus extras."""
+    sizes = [500_000, round(LOAN_ASK), 750_000]
+    for amount in extra:
+        if amount not in sizes:
+            sizes.append(amount)
+    return tuple(sizes)
+
+
+def run_loan_size_dscr(years=(1, 2), products=("sba_7a", "sba_504", "conventional"),
+                       amounts=None):
+    """NOI and DSCR by case, year, product, and loan size.
+
+    NOI does not change with the loan size: unassigned proceeds (the gap
+    between a $750k check and the sized ask, or a $500k check that does not
+    cover uses) are cash, not extra taxable improvements. DSCR uses that
+    same NOI over the product's debt service at that amount.
+
+    $500,000 is a debt-service sensitivity only. Named uses plus the reserve
+    floor do not fit inside it.
+    """
+    amounts = loan_sizes_for_sensitivity() if amounts is None else tuple(amounts)
+    cases = _noi_cases(years=max(years))
+    sized = build_use_of_funds()
+    rows = []
+    for case_name, by_year in cases.items():
+        for year in years:
+            noi = by_year[year]["noi"]
+            re_noi = by_year[year]["re_only_noi"]
+            for amount in amounts:
+                for key in products:
+                    debt = annual_debt_service_for_product(amount, key)
+                    ads = debt["annual_debt_service"]
+                    rows.append({
+                        "case": case_name,
+                        "year": year,
+                        "loan_amount": amount,
+                        "product": key,
+                        "product_label": LOAN_PRODUCTS[key]["label"],
+                        "noi": noi,
+                        "re_only_noi": re_noi,
+                        "annual_debt_service": ads,
+                        "monthly_payment": debt["monthly_payment"],
+                        "dscr": noi / ads if ads else None,
+                        "dscr_re_only": re_noi / ads if ads else None,
+                        "pg_conflict": product_pg_conflict(key),
+                        "fits_uses": amount + 1e-6 >= sized["ask"],
+                        "unassigned_proceeds": amount - sized["ask"],
+                    })
+    return {
+        "rows": rows,
+        "sized_ask": sized["ask"],
+        "reserve_floor": RESERVE_FLOOR,
+        "note_500k": "Debt-service sensitivity only. Uses plus the $40k floor do not fit in $500,000.",
+        "note_750k": ("Sensitivity. Proceeds above the sized ask have no named use "
+                      "unless scope is added."),
+    }
+
+
+def run_dscr_matrix(rates=None, years=(1, 2, 3), paving_mode=None, loan_amount=None):
+    """Lender Base vs Bank Case rate grid. The two cases are not mixed.
+
+    Each cell is going-concern DSCR and RE-only DSCR at that case's NOI and
+    that column's rate. Bank Case uses 15% contingency only to size its loan
+    amount. It does not change the Base sources and uses.
+    """
+    rates = DSCR_RATE_GRID if rates is None else tuple(rates)
+    mode = PAVING_MODE if paving_mode is None else paving_mode
+    base_su = build_use_of_funds(mode=mode, contingency_rate=CONTINGENCY_RATE_BASE)
+    bank_su = build_use_of_funds(mode=mode, contingency_rate=CONTINGENCY_RATE_BANK)
+    base_amount = base_su["ask"] if loan_amount is None else loan_amount
+    bank_amount = bank_su["ask"] if loan_amount is None else loan_amount
+    base_years = run_multi_year_projection(years=max(years))
+    bank_years = _bank_case_years(years=max(years))
+
+    def _pack(year_rows, amount):
+        packed = {}
+        ads_by_rate = {}
+        for year, _months, annual in year_rows:
+            if year not in years:
+                continue
+            noi = calc_going_concern_noi(annual)
+            re_noi = calc_re_only_noi(annual)
+            going = {}
+            re_only = {}
+            for rate in rates:
+                ads = _amortization_payment(amount, rate, LOAN_TERM_YEARS) * 12
+                ads_by_rate[rate] = ads
+                going[rate] = noi / ads if ads else None
+                re_only[rate] = re_noi / ads if ads else None
+            packed[year] = {
+                "going_concern": going,
+                "re_only": re_only,
+                "noi_gc": noi,
+                "noi_re": re_noi,
+            }
+        return packed, ads_by_rate
+
+    lender_base, ads_base = _pack(base_years, base_amount)
+    bank_case, ads_bank = _pack(bank_years, bank_amount)
+    return {
+        "lender_base": lender_base,
+        "bank_case": bank_case,
+        "ads_by_rate_base": ads_base,
+        "ads_by_rate_bank": ads_bank,
+        "loan_amount_base": base_amount,
+        "loan_amount_bank": bank_amount,
+        "meta": {
+            "paving_mode": mode,
+            "contingency_base": CONTINGENCY_RATE_BASE,
+            "contingency_bank": CONTINGENCY_RATE_BANK,
+            "reserve_floor": RESERVE_FLOOR,
+        },
+    }
+
+
+def build_construction_draw_schedule(use_of_funds=None, interest_rate=None):
+    """Draws across months_to_open. Construction spend is the last month.
+
+    Close draws the LOC payoff, the health permit, and prepaid land carry.
+    Hard cost, GC, and contingency draw in the one construction month after
+    entitlement. The reserve is not drawn; it stays cash.
+    Interest below is the interest inside a fully amortizing payment on the
+    drawn balance. Pre-open cash burn already charges full P&I, so this
+    interest is a memo and is not a second use.
+    """
+    su = use_of_funds if use_of_funds is not None else build_use_of_funds()
+    rate = LOAN_INTEREST_RATE if interest_rate is None else interest_rate
+    lines = {label: amount for label, amount, _status in su["use_of_funds"]}
+    close_draw = (lines.get(LOC_PAYOFF_LABEL, 0)
+                  + lines.get(PERMITS_AND_SOFT_COSTS_LABEL, 0)
+                  + lines.get(LAND_CARRY_LABEL, 0)
+                  + soft_tbd_total())
+    construction = (su["hard_cost_total"] + su["contingency"])
+    reserve = su["residual_reserve"]
+    months = []
+    cumulative = 0.0
+    interest_total = 0.0
+    for m in range(MONTHS_TO_OPEN):
+        draw = 0.0
+        if m == 0:
+            draw += close_draw
+        if m >= ENTITLEMENT_PERMIT_LAG_MONTHS:
+            # One construction month when CONSTRUCTION_PERIOD_MONTHS is 1.
+            slot = m - ENTITLEMENT_PERMIT_LAG_MONTHS
+            if slot < CONSTRUCTION_PERIOD_MONTHS:
+                draw += construction / CONSTRUCTION_PERIOD_MONTHS
+        interest = cumulative * rate / 12
+        cumulative += draw
+        interest_total += interest
+        months.append({
+            "m": m,
+            "phase": "construction" if m >= ENTITLEMENT_PERMIT_LAG_MONTHS else "entitlement",
+            "draw": draw,
+            "cumulative": cumulative,
+            "interest": interest,
+            "land_carry_slice": LAND_CARRY if m == 0 else 0.0,
+        })
+    return {
+        "months": months,
+        "total_draws": cumulative,
+        "interest_reserve_total": interest_total,
+        "land_carry_total": LAND_CARRY,
+        "reserve_held_back": reserve,
+        "reserve_after_reported_interest": reserve - interest_total,
+        "interest_is_memo": True,
+        "note": ("Interest is reported from the drawn balance. It is already "
+                 "inside pre-open P&I and is not added to uses."),
+    }
+
+
+def run_propco_opco_split(annual, base_rent=None):
+    """PropCo / OpCo statements. The intercompany lease eliminates on consolidation.
+
+    PropCo (JVAM Capital LLC) keeps truck rent, percentage rent, and event
+    parking, and receives base rent plus NNN recoveries.
+    OpCo (JVA Operations LLC) keeps food-and-beverage contribution and pays
+    the lease, the management fee, non-property opex, and COTA event cost.
+    Debt sits on PropCo because PropCo is the borrower.
+    """
+    base_rent = INTERCOMPANY_BASE_RENT_ANNUAL if base_rent is None else base_rent
+    propco_monthly = sum(OPERATING_FIXED_COSTS[k] for k in PROPCO_OPEX_KEYS)
+    propco_share = propco_monthly / MONTHLY_OPEX_NUT if MONTHLY_OPEX_NUT else 0.0
+    propco_opex = annual["total_opex"] * propco_share
+    opco_opex = annual["total_opex"] - propco_opex
+    nnn = propco_opex if INTERCOMPANY_NNN else 0.0
+    lease_payment = base_rent + nnn
+    propco_noi = (annual["total_real_estate_contribution"]
+                  + lease_payment
+                  - propco_opex
+                  - annual["total_replacement_reserve"])
+    opco_noi = (annual["total_business_contribution"]
+                - annual["total_cota_cost"]
+                - annual["total_management_fee"]
+                - opco_opex
+                - lease_payment)
+    consolidated = propco_noi + opco_noi
+    ads = ANNUAL_DEBT_SERVICE
+    return {
+        "propco_entity": PROPCO_ENTITY,
+        "opco_entity": OPCO_ENTITY,
+        "base_rent": base_rent,
+        "nnn_recovery": nnn,
+        "lease_payment": lease_payment,
+        "propco_opex": propco_opex,
+        "opco_opex": opco_opex,
+        "propco_noi": propco_noi,
+        "opco_noi": opco_noi,
+        "consolidated_noi": consolidated,
+        "consolidated_ties": abs(consolidated - annual["total_noi"]) < 1.0,
+        "annual_debt_service": ads,
+        "propco_dscr": propco_noi / ads if ads else None,
+        "opco_cash_flow": opco_noi,
+        "propco_cash_flow": propco_noi - ads,
+        "lease_note": ("Assumption, not a signed lease. $2,500/mo base rent plus "
+                       "NNN reimbursement of property tax, insurance, and maintenance. "
+                       "Eliminates in consolidation."),
+    }
+
+
+def equity_bridge():
+    """Sources, uses, and the equity bridge. Each subtotal is the sum of its rows."""
+    su = build_use_of_funds()
+    new_capex = sum(amount for label, amount, _status in USE_OF_FUNDS
+                    if label not in _LOC_PAYOFF_AND_RESERVE_LABELS)
+    sources = [
+        {"line": "Bank term loan (sized ask)", "amount": su["ask"], "role": "source"},
+        {"line": "Land equity (related-party basis, outside this loan)",
+         "amount": LAND_PURCHASE_PRICE, "role": "source"},
+        {"line": "ACE civil retainer (sunk, already paid, not a source of this close)",
+         "amount": ACE_CIVIL_RETAINER, "role": "memo"},
+    ]
+    uses = [{"line": label, "amount": amount, "role": status}
+            for label, amount, status in su["use_of_funds"]]
+    return {
+        "sources": sources,
+        "uses": uses,
+        "loan_sources": su["ask"],
+        "uses_total": su["total_project_cost"],
+        "ties": abs(su["ask"] - su["total_project_cost"]) < 1e-6,
+        "new_capex": new_capex,
+        "capitalized_basis": TOTAL_CAPITALIZED_BASIS,
+        "property_equity": PROPERTY_EQUITY,
+        "reserve": RESERVE_AND_SAFETY_CASH,
+        "total_economic_equity": TOTAL_ECONOMIC_EQUITY,
+        "economic_equity_identity": LAND_PURCHASE_PRICE + PHASE_0_5_TOTAL - LOC_PAYOFF_DRAWN,
+    }
+
+
+def export_assumptions_rows():
+    """Appendix rows: name, value, which workstream it came from."""
+    rows = [
+        ("Daytime attendant wage", DAYTIME_ATTENDANT_WAGE, "wage fix",
+         "$/hr estimate. Not a quote."),
+        ("Evening bartender wage", EVENING_BARTENDER_WAGE, "wage fix",
+         "$/hr estimate. Not a quote."),
+        ("Event extra wage", EVENT_EXTRA_WAGE, "wage fix",
+         "One extra body on race days."),
+        ("Weekday daytime / evening hours",
+         f"{LABOR_WEEKDAY_DAYTIME_HOURS} / {LABOR_WEEKDAY_EVENING_HOURS}", "wage fix",
+         "Mon–Thu scheduled hours."),
+        ("Weekend daytime / evening hours",
+         f"{LABOR_WEEKEND_DAYTIME_HOURS} / {LABOR_WEEKEND_EVENING_HOURS}", "wage fix",
+         "Fri–Sun. Heavier than weekdays."),
+        ("Race-day evening hours", LABOR_RACE_EVENING_HOURS, "wage fix",
+         "Premium over the weekend evening shift, plus the extra body."),
+        ("Overtime allowance", OVERTIME_ALLOWANCE_RATE, "wage fix",
+         "Flat allowance. Not stacked on a second time-and-a-half calc."),
+        ("Payroll burden", EMPLOYER_PAYROLL_BURDEN_RATE, "wage fix",
+         "Employer FICA/FUTA/SUTA blend. On all cash wages."),
+        ("Bartender revenue share", BARTENDER_SHARE_RATE, "wage fix",
+         "Removed so wages are not double counted."),
+        ("Manager salary", MANAGER_ANNUAL_SALARY, "wage fix",
+         "Cash. Lodging is provided and not expensed."),
+        ("Septic", SEPTIC, "patch", "Gated. ACE/Hunter comparable. In the ask."),
+        ("OSSF design", OSSF_DESIGN, "patch", "$0 until a vendor is chosen."),
+        ("Paving base / gravel alt", f"{PAVING_BUDGET} / {GRAVEL_ALT_BUDGET}", "patch",
+         "Asphalt is the default."),
+        ("Container bar", BAR, "patch", ""),
+        ("GC allowance", GC_GENERAL_CONDITIONS_ALLOWANCE, "patch", "Until bid."),
+        ("Health permit", HEALTH_LICENSE, "patch",
+         "TABC permit is inside the LOC payoff, not here."),
+        ("ACE retainer (excluded)", ACE_CIVIL_RETAINER, "patch", "Already paid."),
+        ("Contingency base / bank", f"{CONTINGENCY_RATE_BASE:.0%} / {CONTINGENCY_RATE_BANK:.0%}",
+         "patch", "Of hard cost including GC. Not cut to hold the reserve."),
+        ("LOC drawn", LOC_PAYOFF_DRAWN, "patch", ""),
+        ("Land carry prepaid", LAND_CARRY, "patch",
+         "PID 984219 + PID 300451 + $700 vacant insurance, 6 months."),
+        ("Reserve floor", RESERVE_FLOOR, "patch", "Held by sizing the ask."),
+        ("Sized Base ask", LOAN_ASK, "patch", "Asphalt, 10% contingency."),
+        ("Construction months", CONSTRUCTION_PERIOD_MONTHS, "patch",
+         "Post-permit build. Draw window."),
+        ("Months to open", MONTHS_TO_OPEN, "patch",
+         "5 months entitlement + 1 month build. Open ~Mar/Apr 2027."),
+        ("Opening", f"{OPENING_MONTH}/{OPENING_YEAR}", "review",
+         "March 2027 base. September 2026 open was not credible."),
+        ("PropCo / OpCo", f"{PROPCO_ENTITY} / {OPCO_ENTITY}", "review",
+         "PropCo owns the land and borrows. OpCo leases."),
+        ("Intercompany base rent", INTERCOMPANY_BASE_RENT_ANNUAL, "review",
+         "Assumption. Plus NNN. Eliminates in consolidation. Not a signed lease."),
+        ("Monte Carlo seed", MONTE_CARLO_DEFAULT_SEED, "review",
+         "Draws are independent. See MONTE_CARLO_SPEC."),
+        ("COTA role", "foundational", "review",
+         "No-COTA is an explicit case. F1 agreement through 2034."),
+        ("750k loan", 750_000, "sensitivity",
+         "No named use for proceeds above the sized ask."),
+    ]
+    return [{"name": n, "value": v, "source": s, "notes": note} for n, v, s, note in rows]
+
+
+def rows_to_csv(rows, columns):
+    """CSV text. No pandas dependency."""
+    def cell(value):
+        text = "" if value is None else str(value)
+        if any(ch in text for ch in ",\"\n"):
+            text = '"' + text.replace('"', '""') + '"'
+        return text
+    lines = [",".join(columns)]
+    for row in rows:
+        lines.append(",".join(cell(row.get(col, "")) for col in columns))
+    return "\n".join(lines) + "\n"
+
+
+def export_su_csv(paving_mode=None, contingency_rate=None):
+    su = build_use_of_funds(paving_mode, contingency_rate)
+    rows = [{"line": label, "amount": amount, "status": status}
+            for label, amount, status in su["use_of_funds"]]
+    rows.append({"line": "TOTAL", "amount": su["total_project_cost"], "status": ""})
+    return rows_to_csv(rows, ["line", "amount", "status"])
+
+
+def export_dscr_matrix_csv(matrix):
+    rows = []
+    for case_name, amount_key in (("lender_base", "loan_amount_base"),
+                                  ("bank_case", "loan_amount_bank")):
+        amount = matrix[amount_key]
+        for year, payload in matrix[case_name].items():
+            for basis in ("going_concern", "re_only"):
+                for rate, dscr in payload[basis].items():
+                    rows.append({
+                        "case": case_name, "year": year, "noi_basis": basis,
+                        "rate": rate, "dscr": dscr, "loan_amount": amount,
+                    })
+    return rows_to_csv(rows, ["case", "year", "noi_basis", "rate", "dscr", "loan_amount"])
+
+
+def export_draw_schedule_csv(schedule=None):
+    schedule = build_construction_draw_schedule() if schedule is None else schedule
+    return rows_to_csv(schedule["months"],
+                       ["m", "phase", "draw", "cumulative", "interest", "land_carry_slice"])
+
+
+def export_assumptions_csv():
+    return rows_to_csv(export_assumptions_rows(), ["name", "value", "source", "notes"])
 
 
 # =============================================================================
