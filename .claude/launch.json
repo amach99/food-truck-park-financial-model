@@ -2,10 +2,10 @@
   "version": "0.0.1",
   "configurations": [
     {
-      "name": "food-truck-park-dashboard",
+      "name": "ftp-dashboard",
       "runtimeExecutable": "streamlit",
-      "runtimeArgs": ["run", "streamlit_app_ftp.py", "--server.headless", "true"],
-      "port": 8501
+      "runtimeArgs": ["run", "streamlit_app_ftp.py", "--server.port", "8511", "--server.headless", "true"],
+      "port": 8511
     }
   ]
 }

@@ -4,3 +4,7 @@ pandas>=2.0.0
 
 # Test suite only (pytest -q). Not needed to run the dashboard or the CLI.
 pytest>=8.0.0
+
+# Business-plan document generator only (python build_business_plan.py).
+# Not needed to run the dashboard, the CLI, or the test suite.
+python-docx>=1.1.0

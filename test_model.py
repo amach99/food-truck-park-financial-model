@@ -1115,3 +1115,67 @@ def test_assumption_export_names_its_sources():
     assert "Bartender revenue share" in csv_text
     assert m.export_su_csv().startswith("line,amount,status")
     assert "m,phase,draw" in m.export_draw_schedule_csv()
+
+
+# ---------------------------------------------------------------------------
+# Carried over from the Sep 30 lender-review remediation (local branch)
+# ---------------------------------------------------------------------------
+
+FEDERAL_MINIMUM_WAGE = 7.25  # Texas adopts the federal floor (Tex. Lab. Code 62.051)
+
+
+def test_scheduled_wage_rates_clear_the_federal_minimum():
+    """Every hourly rate the schedule pays must clear $7.25 on its own.
+
+    The defect the 2026-08-31 lender review found was a bartender paid ONLY
+    a 5% revenue share - about $2.11/hr across the service window. Lodging
+    is disclosed but never credited against wages, so the cash rate is the
+    one that has to clear the floor."""
+    for rate in (m.DAYTIME_ATTENDANT_WAGE, m.EVENING_BARTENDER_WAGE, m.EVENT_EXTRA_WAGE):
+        assert rate >= FEDERAL_MINIMUM_WAGE
+    assert m.BARTENDER_SHARE_RATE == 0.0
+    assert not m.LODGING_EXPENSED
+
+
+def test_labor_does_not_ramp_in_year_one():
+    """The park is open the same hours in operating month 2 as at
+    stabilization, so the wage bill must NOT scale with the Year 1
+    discovery ramp."""
+    month = m.operating_to_calendar_month(2)
+    early = m.calc_monthly_total(20, 58, month, year_month=2)
+    late = m.calc_monthly_total(20, 58, month, year_month=None)
+    assert early["bar_revenue"] < late["bar_revenue"], "ramp should apply to revenue"
+    assert early["labor_wages"] == pytest.approx(late["labor_wages"])
+
+
+def test_mixed_beverage_taxes_are_not_stacked(event_month):
+    """GRT applies to the SALES PRICE, not to a receipt that already
+    includes the 8.25% mixed beverage sales tax (prices are tax-inclusive)."""
+    r = event_month
+    bar_like = r["bar_revenue"] + r["cota_bar_uplift"] + r["seasonal_revenue"]
+    assert bar_like > 0
+    sales_price = bar_like / (1 + m.MB_SALES_TAX_RATE)
+    assert r["mb_sales_tax"] == pytest.approx(bar_like - sales_price)
+    assert r["grt"] == pytest.approx(sales_price * m.GRT_RATE)
+    assert r["grt"] < bar_like * m.GRT_RATE, "GRT must not be charged on the sales tax"
+
+
+def test_business_plan_generates_from_the_model(tmp_path, monkeypatch):
+    """build_business_plan.py must run end to end against the current engine.
+
+    The generator reads ~70 engine names directly. When the engine is
+    refactored and the generator is not, the plan silently stops building -
+    this is the guard. Markdown output avoids a binary diff; the .docx path
+    shares every section function."""
+    pytest.importorskip("docx")
+    import build_business_plan as bbp
+
+    out = tmp_path / "plan.md"
+    monkeypatch.setattr("sys.argv", ["build_business_plan.py", str(out)])
+    bbp.main()
+    text = out.read_text(encoding="utf-8")
+    assert f"${m.LOAN_AMOUNT:,.0f}" in text
+    assert "{" not in text.replace("{}", ""), "unformatted f-string placeholder in plan"
+    assert "$-" not in text, "negative amounts must render as -$x"
+    if m.OPENING_CASH_RESERVE < m.RESERVE_AND_SAFETY_CASH * 0.25:
+        assert "does not cover that shortfall" in text or "thin point" in text

@@ -8,13 +8,13 @@ A financial feasibility model for a food truck park + bar & beverage stand
 (evening container bar — draft + canned beer, liquor shots, and cocktails —
 plus an all-day soda/juice/water/coffee stand) on the 4.432-acre property at
 13901 FM 812, Del Valle, TX — the same land as the earlier "The Cube"
-sports bar plan. This is the leanest concept modeled for the site:
-$500,000 total project cost, financed via a bank term loan (fixed-payment,
-fully amortizing — placeholder terms pending an actual bank quote). The
-buildout started smaller and personal-LOC-financed (~$81,600), but the
-owner is now pursuing a real $500,000 bank loan to fund a larger next
-phase (septic, paving, payoff of the existing personal LOC, and remaining
-construction) — see "Financing" below.
+sports bar plan. This is the leanest concept modeled for the site,
+financed via a bank term loan (fixed-payment, fully amortizing — placeholder
+terms pending an actual bank quote). The buildout started smaller and
+personal-LOC-financed (~$81,600); the next phase (septic, paving, payoff of
+the existing personal LOC, and remaining construction) is funded by a loan
+**sized to its itemized uses** — about $563.6K in the Base case — rather than
+the earlier round $500,000. See "Financing" below.
 
 ## Commands
 
@@ -30,6 +30,12 @@ python food_truck_park_model.py
 ```
 
 **Run the test suite after ANY change to the calculation engine:**
+
+Dependencies live in the project's `.venv/` (Python 3.14). Run `source
+.venv/bin/activate` first, or call it directly as `.venv/bin/python -m
+pytest -q`. A bare `pytest` outside the venv may resolve to a stale global
+shim (`/usr/local/bin/pytest`, hard-wired to a removed Python 3.7) and fail
+with `bad interpreter` before any test runs.
 
 ```bash
 pytest -q
@@ -55,6 +61,22 @@ python3 -c "import food_truck_park_model as m; m.run_breakeven_analysis()"
 python3 -c "import food_truck_park_model as m; m.run_loan_amortization_schedule()"
 ```
 
+**Lender business plan.** `build_business_plan.py` generates the business
+plan / loan proposal from the engine — `.docx` by default, Markdown when the
+output path ends in `.md` (used for Google Docs upload):
+
+```bash
+python build_business_plan.py "Del Valle Food Truck Park - Business Plan.docx"
+python build_business_plan.py plan.md
+```
+
+Never hand-edit the generated document, and never hardcode a projected
+figure in the generator — read it from the model. Narrative that depends on
+a number (e.g. whether the reserve covers the Year 1 troughs) must be
+conditional on that number, not written for today's value.
+`test_business_plan_generates_from_the_model` fails if an engine rename
+breaks the generator. `python-docx` is needed only for the generator.
+
 When editing dashboard-facing constants (bar/truck assumptions), verify both
 the CLI output above *and* the Streamlit dashboard, since the dashboard
 sliders default to the module's constants and several tabs hardcode
@@ -62,7 +84,7 @@ descriptive text/labels derived from those same numbers (see Architecture).
 
 ## Architecture
 
-Two files, strict separation of concerns:
+Two core files, strict separation of concerns, plus a document generator:
 
 - **`food_truck_park_model.py`** — pure calculation engine, no UI code. All
   business assumptions live here as module-level constants (Section 1),
@@ -88,6 +110,9 @@ Two files, strict separation of concerns:
   `get_multi_year`, `get_monte_carlo`, `get_scenario_results`) call straight
   into the model's `run_*` functions — the dashboard has no calculation
   logic of its own.
+- **`build_business_plan.py`** — imports the model and emits the lender
+  business plan (see Commands). Like the dashboard, it holds no calculation
+  logic; it only formats engine output and conditional narrative.
 
 ### Financing: sized bank term loan, fixed-payment amortizing (v3)
 

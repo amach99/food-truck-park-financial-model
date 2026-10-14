@@ -622,7 +622,7 @@ modules. Run `pytest -q` after every change.
       the revenue × exit-cap-rate IRR grid. Debt is held flat through the hold (same conservative
       convention as `MONTHLY_NUT` elsewhere), not the declining balance from `run_loc_payoff_schedule()` —
       a deliberate consistency choice, documented in the function's docstring.
-- [ ] **6. Model the development period.** Construction draw schedule over `USE_OF_FUNDS`, capitalized
+- [~] **6. Model the development period.** Construction draw schedule over `USE_OF_FUNDS`, capitalized
       interest reserve, land carry, developer fee. **Partially done, by explicit user scope decision:**
       only the timing shift landed — `CONSTRUCTION_PERIOD_MONTHS` (4 months) now delays every post-Year-0
       cash flow in `run_returns_analysis()`'s IRR/NPV by that many months (`_irr`/`_npv` take a
@@ -634,18 +634,56 @@ modules. Run `pytest -q` after every change.
       carry (property tax etc. during construction, before revenue exists to cover it), and the developer
       fee. None of these add cost yet — this item only fixed *when* existing dollars are discounted, not
       *how much* the development period actually costs. Revisit when ready to model the draw schedule.
+      **Update 2026-09 (after the independent lender review):** the pre-opening CARRY is now
+      modelled — `run_pre_opening_period()` accrues `PRE_OPENING_MONTHS` of debt service,
+      insurance, property tax and accounting against zero revenue, and
+      `run_cash_reserve_tracker()` opens from the reserve net of that burn. `OPENING_MONTH`
+      also moved to March 2027. **Update 2026-10 (lender-ready v3):** the construction draw
+      schedule (`build_construction_draw_schedule()`) and six months of prepaid land carry
+      (`LAND_CARRY`, a `USE_OF_FUNDS` line) are now modelled, and the clock is
+      `MONTHS_TO_OPEN` = 5 months entitlement + `CONSTRUCTION_PERIOD_MONTHS` = 1 month build.
+      Still not started: a capitalized interest reserve and the developer fee.
 - [ ] **7. Obtain signed leases on ≥50% of pads** before treating `TRUCK_Y1_FILL_RAMP` as anything but a
       guess. *(Business action, not code.)*
 
 ### Medium — quality and presentation
 
-- [ ] **8. Line-item cost inflation** instead of the lump-sum `inflation_penalty` subtraction.
+- [x] **8. Line-item cost inflation** ~~instead of the lump-sum `inflation_penalty` subtraction.~~
+      Done 2026-09: `cost_inflation_mult` threads through `calc_monthly_total()`, scaling
+      `MONTHLY_OPEX_NUT` and every wage rate, never the loan payment. `cost_inflation_adj`
+      survives as a reporting figure only, and `run_cash_reserve_tracker()` no longer
+      re-applies inflation (that would now double-count).
 - [ ] **9. Add operating metrics:** RevPAP, RevPOP, NOI/pad, revenue/acre, opex ratio, break-even occupancy.
 - [ ] **10. Two-way sensitivity tables** (rent × cap rate, cap rate × interest rate) + tornado chart.
 - [ ] **11. Weather stochastics** in Monte Carlo (rain-out probability on COTA event days).
 - [ ] **12. Credit loss provision** separate from vacancy (0.5–1% of PGI).
 - [ ] **13. Percentage-rent breakpoint** structure on `TRUCK_REV_SHARE_RATE`.
 - [ ] **14. Move income tax below NOI** into an equity waterfall; retire `after_tax_fcf_yield`.
+
+### Added by the 2026-08-31 independent lender review
+
+- [x] **19. Scheduled W-2 labor.** The revenue-share-only bartender comp worked out to
+      $2.11-2.72/hr against a $7.25 floor. `calc_scheduled_labor()` now builds payroll from hours.
+      ~$96K/yr of previously unmodelled cost; see CLAUDE.md "Staffing".
+- [x] **20. Unstack the tax-inclusive prices.** GRT was charged on a base that already
+      included the 8.25% mixed beverage sales tax; parking tax likewise.
+- [x] **21. Segment the valuation.** Property capitalized separately from the bar going
+      concern; LTV reported four ways instead of one flattering blended figure.
+- [x] **22. Credible permits and contingency.** First raised to $12,000 / $24,000 inside a
+      $500K plug (2026-09). Superseded by v3 (2026-10): the loan is now sized to its uses,
+      contingency is 10% Base / 15% Bank of hard cost including the GC allowance, and the
+      soft costs with no quote yet (SDP/TNR, OSSF design, deed/legal, SWO reinspection,
+      civil remainder) are separate $0 TBD lines rather than one padded permits figure.
+- [x] **23. Disclose the Monte Carlo inputs.** `MONTE_CARLO_SPEC` publishes
+      seed, distributions and bounds. Note the
+      simulation draws every parameter INDEPENDENTLY - a real simplification that
+      understates the downside tail.
+- [x] **24. Separate propco / opco projections** with the intercompany lease. Done in v3:
+      `run_propco_opco_split()` - the lease eliminates on consolidation, and the plan
+      generator renders both entities.
+- [ ] **25. Third-party collateral evidence.** Appraisal, title commitment, survey, and a
+      determination of whether COTA owns or merely operates the land across FM 812.
+      *(Business action, not code.)*
 
 ### Structural refactors
 
