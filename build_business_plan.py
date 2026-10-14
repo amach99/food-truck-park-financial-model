@@ -303,6 +303,7 @@ def gather():
                 ltv=_leverage(val, coll),
                 scenarios=scenarios, loan_sizes=m.run_loan_size_dscr(),
                 draws=m.build_construction_draw_schedule(),
+                reserve_options=m.run_reserve_options(),
                 propco=m.run_propco_opco_split(y2))
 
 
@@ -422,7 +423,7 @@ def exec_summary(b, d):
            f"{money(tracker['min_balance'])} and is negative in "
            f"{tracker['months_negative']} months of the projection. Additional sponsor "
            "liquidity, a larger reserve or an interest-only construction period would be "
-           "needed to close that gap."
+           "needed to close that gap; each is quantified at Section 5."
            if tracker["min_balance"] < 0 else
            f"On the projected Year 1 ramp the balance does not fall below "
            f"{money(tracker['min_balance'])}."), bold=True)
@@ -965,6 +966,8 @@ def s5_schedule(b, d):
             "is not enough to absorb the Year 1 seasonal troughs on its own; see the "
             "liquidity discussion in the Executive Summary.", bold=True)
 
+    _reserve_options_table(b, d["reserve_options"])
+
     b.h2("Permit Status Matrix")
     _placeholder(b,
         "TO BE COMPLETED BY BORROWER — the independent review asked specifically for this. "
@@ -1027,6 +1030,32 @@ def s5_schedule(b, d):
         "TO BE COMPLETED BY BORROWER — the review asked for a weekly staffing schedule for "
         "normal days and event days, and for confirmation of worker classification. Wage "
         "rates above are market estimates and should be replaced with real offers.")
+
+
+def _reserve_options_table(b, ro):
+    """How each financing choice changes liquidity. The plan uses 'current'."""
+    b.h2("Options to Strengthen Liquidity")
+    b.para(
+        "The structure in this plan charges full principal and interest from closing. The "
+        "alternatives below are measured against a single test: the lowest projected cash "
+        f"balance should still cover {ro['target_months_of_payment']} months of loan "
+        f"payments ({money(ro['min_balance_target'])}). The borrower is open to any of them "
+        "and would welcome the lender's preference.")
+    b.table(["Structure", "Loan", "Sponsor cash", "Cash at opening", "Lowest balance",
+             "Short of test", "Stabilized DSCR"],
+            [[o["label"], money(o["loan_amount"]), money(o["sponsor_cash"]),
+              money(o["opening_cash"]), money(o["min_balance"]),
+              money(o["gap_to_target"]) if o["gap_to_target"] > 0.5 else "—",
+              ratio(o["stabilized_dscr"])] for o in ro["options"]],
+            widths=[1.9, 0.9, 0.8, 0.9, 0.9, 0.8, 0.8])
+    opts = {o["key"]: o for o in ro["options"]}
+    cur, floor, sponsor = opts["current"], opts["higher_floor"], opts["sponsor_cash"]
+    b.note(
+        f"A borrowed reserve needs {money(floor['loan_amount'] - cur['loan_amount'])} of "
+        f"extra debt to do what {money(sponsor['sponsor_cash'])} of sponsor cash does, "
+        "because the extra loan raises the payment. Interest-only rows assume full "
+        "amortization begins at opening; the drawn-balance row follows the draw schedule "
+        "in Section 1 and requires a construction-loan structure.")
 
 
 def _month_name(mo):

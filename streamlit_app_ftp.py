@@ -827,6 +827,34 @@ with tabs[6]:
     )
     st.plotly_chart(fig_cr, use_container_width=True)
 
+    # Ways to close the pre-opening cash gap (read-only comparison)
+    st.subheader("Ways to Close the Cash Gap")
+    ro = model.run_reserve_options(all_years=all_years)
+    st.caption(
+        f"Loan payments start at closing, {model.PRE_OPEN_MONTHS} months before the park "
+        "opens, so most of the reserve is spent before the first sale. Each option below is "
+        "measured against one goal: the lowest cash balance should still cover "
+        f"{ro['target_months_of_payment']} months of loan payments "
+        f"(\\${ro['min_balance_target']:,.0f}). This is a comparison only — the rest of the "
+        "dashboard still uses the current structure.")
+    ro_df = pd.DataFrame([{
+        "Option": o["label"],
+        "Loan": fmt_dollar(o["loan_amount"]),
+        "Owner Cash Added": fmt_dollar(o["sponsor_cash"]),
+        "Monthly Payment": fmt_dollar(o["monthly_payment"]),
+        "Spent Before Opening": fmt_dollar(o["pre_open_burn"]),
+        "Cash at Opening": fmt_dollar(o["opening_cash"]),
+        "Lowest Balance": fmt_dollar(o["min_balance"]),
+        "Short of Goal": fmt_dollar(o["gap_to_target"]) if o["gap_to_target"] > 0.5 else "—",
+    } for o in ro["options"]])
+    st.dataframe(ro_df, use_container_width=True, hide_index=True)
+    st.caption(
+        "Borrowing a bigger reserve costs more than adding the same cushion as owner cash, "
+        "because the extra loan raises the monthly payment. Interest-only before opening "
+        "depends on the loan type: on the full loan it saves little; on a construction "
+        "loan that charges interest only on money drawn so far, it saves most of the "
+        "pre-opening cost. Both interest-only rows assume normal payments begin at opening.")
+
     # Loan amortization schedule
     st.subheader("Loan Amortization Schedule")
     st.caption(f"The \\${model.LOAN_AMOUNT:,.0f} loan (@ {model.LOAN_INTEREST_RATE:.1%}, "

@@ -1179,3 +1179,64 @@ def test_business_plan_generates_from_the_model(tmp_path, monkeypatch):
     assert "$-" not in text, "negative amounts must render as -$x"
     if m.OPENING_CASH_RESERVE < m.RESERVE_AND_SAFETY_CASH * 0.25:
         assert "does not cover that shortfall" in text or "thin point" in text
+
+
+# ---------------------------------------------------------------------------
+# Reserve options - how to close the pre-opening liquidity gap
+# ---------------------------------------------------------------------------
+
+@pytest.fixture(scope="module")
+def reserve_options():
+    return {row["key"]: row for row in m.run_reserve_options()["options"]}
+
+
+def test_reserve_options_current_row_matches_the_tracker(reserve_options):
+    """The 'current' row must reproduce the engine's own tracker exactly,
+    so the comparison is anchored to the numbers everywhere else."""
+    cur = reserve_options["current"]
+    tracker = m.run_cash_reserve_tracker(verbose=False)
+    assert cur["loan_amount"] == pytest.approx(m.LOAN_AMOUNT)
+    assert cur["opening_cash"] == pytest.approx(m.OPENING_CASH_RESERVE)
+    assert cur["min_balance"] == pytest.approx(tracker["min_balance"])
+    assert cur["months_negative"] == tracker["months_negative"]
+
+
+def test_reserve_options_leave_the_defaults_alone():
+    before = (m.LOAN_AMOUNT, m.RESERVE_FLOOR, m.RESERVE_AND_SAFETY_CASH,
+              m.OPENING_CASH_RESERVE, m.LOAN_MONTHLY_PAYMENT, m.PRE_OPEN_BURN)
+    m.run_reserve_options(min_balance_target=25_000)
+    after = (m.LOAN_AMOUNT, m.RESERVE_FLOOR, m.RESERVE_AND_SAFETY_CASH,
+             m.OPENING_CASH_RESERVE, m.LOAN_MONTHLY_PAYMENT, m.PRE_OPEN_BURN)
+    assert before == after
+
+
+def test_solved_options_hit_the_liquidity_target(reserve_options):
+    target = m.run_reserve_options()["min_balance_target"]
+    for key in ("higher_floor", "sponsor_cash"):
+        assert reserve_options[key]["min_balance"] == pytest.approx(target, abs=1.0)
+
+
+def test_higher_floor_costs_more_than_sponsor_cash(reserve_options):
+    """Borrowing the cushion raises the payment, which burns part of the
+    cushion, so the floor must rise by MORE than the equivalent equity."""
+    cur = reserve_options["current"]
+    floor = reserve_options["higher_floor"]
+    sponsor = reserve_options["sponsor_cash"]
+    extra_debt = floor["loan_amount"] - cur["loan_amount"]
+    assert extra_debt > sponsor["sponsor_cash"] > 0
+    assert sponsor["loan_amount"] == pytest.approx(cur["loan_amount"])
+    assert floor["stabilized_dscr"] < cur["stabilized_dscr"]
+    assert sponsor["stabilized_dscr"] == pytest.approx(cur["stabilized_dscr"])
+
+
+def test_interest_only_cuts_the_pre_opening_burn(reserve_options):
+    cur = reserve_options["current"]
+    full = reserve_options["io_full_balance"]
+    drawn = reserve_options["io_drawn_balance"]
+    assert drawn["pre_open_burn"] < full["pre_open_burn"] < cur["pre_open_burn"]
+    # Same loan, same post-opening payment: IO only changes the pre-open months.
+    for row in (full, drawn):
+        assert row["loan_amount"] == pytest.approx(cur["loan_amount"])
+        assert row["monthly_payment"] == pytest.approx(cur["monthly_payment"])
+        assert row["min_balance"] - cur["min_balance"] == pytest.approx(
+            cur["pre_open_burn"] - row["pre_open_burn"])

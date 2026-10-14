@@ -59,6 +59,7 @@ python3 -c "import food_truck_park_model as m; m.run_scenario_comparison()"
 python3 -c "import food_truck_park_model as m; m.run_sensitivity_analysis()"
 python3 -c "import food_truck_park_model as m; m.run_breakeven_analysis()"
 python3 -c "import food_truck_park_model as m; m.run_loan_amortization_schedule()"
+python3 -c "import food_truck_park_model as m; m.run_reserve_options(verbose=True)"
 ```
 
 **Lender business plan.** `build_business_plan.py` generates the business
@@ -327,6 +328,30 @@ directional, not exact. Nothing outside
 `run_loan_amortization_schedule()`, `run_cash_reserve_tracker()`, and every
 other tab's "month 1" still mean the first month of operations, unaffected
 by this change.
+
+### Reserve options — closing the pre-opening cash gap (added 2026-10)
+
+At the default structure the $40K `RESERVE_FLOOR` is mostly consumed by
+`PRE_OPEN_MONTHS` of full P&I before opening, and `run_cash_reserve_tracker()`
+goes negative. `run_reserve_options()` compares the fixes **read-only** — it
+never changes a module constant, and every other output still uses the
+current structure. Each row is tracked against the same goal: lowest balance
+≥ `RESERVE_TARGET_MONTHS_OF_PAYMENT` (3) months of P&I.
+
+- `current` — reproduces `run_cash_reserve_tracker()` exactly (tested).
+- `higher_floor` — floor solved by bisection; the loan grows, so the payment
+  grows, so the floor must rise by MORE than the equivalent sponsor cash.
+- `io_full_balance` / `io_drawn_balance` — interest-only before opening on
+  the full loan vs. on the drawn balance from
+  `build_construction_draw_schedule()`. Not solved; `gap_to_target` shows
+  what they leave short. Both assume full amortization from opening.
+- `sponsor_cash` — owners add cash at close; closed-form, loan unchanged.
+
+This works because NOI does not depend on the loan: a different structure is
+just `noi - payment` each month, via the tracker's `opening_balance` /
+`monthly_debt_service` overrides. Surfaced in the Multi-Year tab ("Ways to
+Close the Cash Gap") and Section 5 of the business plan. Choosing one is the
+owner's decision — don't change `RESERVE_FLOOR` (a Sep 30 lock) unasked.
 
 ### Staffing: scheduled wages, still a light crew
 

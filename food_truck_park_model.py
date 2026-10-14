@@ -2265,13 +2265,20 @@ def run_sensitivity_analysis():
 # SECTION 7: CASH RESERVE + LOAN AMORTIZATION TRACKER
 # =============================================================================
 
-def run_cash_reserve_tracker(all_years=None, verbose=True):
+def run_cash_reserve_tracker(all_years=None, verbose=True, opening_balance=None,
+                             monthly_debt_service=None):
     """Track working-capital balance month-by-month from OPENING_CASH_RESERVE,
-    plus the month cumulative NOI reaches the $500K total capital deployed."""
+    plus the month cumulative NOI reaches the $500K total capital deployed.
+
+    opening_balance / monthly_debt_service override the defaults so other
+    financing structures can be tracked without touching module constants
+    (see run_reserve_options). NOI does not depend on the loan, so a
+    different payment is simply noi - payment each month.
+    """
     if all_years is None:
         all_years = run_multi_year_projection()
 
-    balance = OPENING_CASH_RESERVE
+    balance = OPENING_CASH_RESERVE if opening_balance is None else opening_balance
     min_balance = balance
     min_balance_month = (1, OPENING_MONTH)  # placeholder: opening balance, before month 1
     months_negative = 0
@@ -2285,7 +2292,8 @@ def run_cash_reserve_tracker(all_years=None, verbose=True):
         for m in months:
             # net_cash_flow already reflects line-by-line opex and wage
             # inflation from run_multi_year_projection. Do not haircut again.
-            cf = m["net_cash_flow"]
+            cf = (m["net_cash_flow"] if monthly_debt_service is None
+                  else m["noi"] - monthly_debt_service)
             cumulative_cf += cf
             cumulative_noi += cf
             balance += cf
@@ -2306,7 +2314,7 @@ def run_cash_reserve_tracker(all_years=None, verbose=True):
         print(f"\n{'=' * 70}")
         print("  CASH RESERVE TRACKER")
         print(f"{'=' * 70}")
-        print(f"\n  Opening Operating Reserve: ${OPENING_CASH_RESERVE:,.0f}")
+        print(f"\n  Opening Operating Reserve: ${series[0]['balance'] - series[0]['cf']:,.0f}")
         print(f"  Lowest balance: ${min_balance:,.0f} "
               f"(Year {min_balance_month[0]}, {MONTH_NAMES[min_balance_month[1]]})")
         print(f"  Months with negative CF: {months_negative}")
@@ -2320,6 +2328,139 @@ def run_cash_reserve_tracker(all_years=None, verbose=True):
             "months_negative": months_negative,
             "break_even_month": break_even_month,
             "payback_month": payback_month, "series": series}
+
+
+# Liquidity target for run_reserve_options: the lowest projected cash balance
+# should still cover this many months of loan payments. Three months is a
+# common debt-service-reserve convention; it is a planning target, not a
+# lender term.
+RESERVE_TARGET_MONTHS_OF_PAYMENT = 3
+
+
+def _pre_open_other_monthly():
+    """Pre-opening monthly costs other than the loan (accounting today)."""
+    return sum(FIXED_COSTS[k] for k in PRE_OPEN_COST_KEYS if k != "loan_payment")
+
+
+def _reserve_option(key, label, loan_amount, reserve_at_close, pre_open_debt_cost,
+                    all_years, stabilized_noi, target, sponsor_cash=0.0, note=""):
+    """Track one financing structure from close through the projection."""
+    payment = _amortization_payment(loan_amount, LOAN_INTEREST_RATE, LOAN_TERM_YEARS)
+    burn = pre_open_debt_cost + _pre_open_other_monthly() * PRE_OPEN_MONTHS
+    opening = reserve_at_close + sponsor_cash - burn
+    tracker = run_cash_reserve_tracker(all_years, verbose=False, opening_balance=opening,
+                                       monthly_debt_service=payment)
+    return {
+        "key": key, "label": label, "note": note,
+        "loan_amount": loan_amount, "sponsor_cash": sponsor_cash,
+        "reserve_at_close": reserve_at_close + sponsor_cash,
+        "monthly_payment": payment, "pre_open_burn": burn,
+        "opening_cash": opening,
+        "min_balance": tracker["min_balance"], "min_month": tracker["min_month"],
+        "months_negative": tracker["months_negative"],
+        "gap_to_target": max(0.0, target - tracker["min_balance"]),
+        "stabilized_dscr": stabilized_noi / (payment * 12),
+    }
+
+
+def run_reserve_options(min_balance_target=None, all_years=None, verbose=False):
+    """Compare ways to close the pre-opening liquidity gap. Read-only.
+
+    The default structure charges full P&I from closing, which consumes most
+    of the $40K reserve floor before opening. Each option is tracked through
+    the same multi-year projection (NOI does not depend on the loan), and
+    nothing here changes a module constant:
+
+      current          - the default: RESERVE_FLOOR, P&I from close.
+      higher_floor     - borrow a bigger reserve. The floor is solved so the
+                         lowest balance equals the target. Because the extra
+                         debt raises the payment, the floor must rise by more
+                         than the cash it buys.
+      io_full_balance  - interest-only before opening on the FULL loan
+                         (a term loan funded at close). Same floor.
+      io_drawn_balance - interest-only before opening on the DRAWN balance
+                         per build_construction_draw_schedule() (a
+                         construction-loan structure). Same floor.
+      sponsor_cash     - the owners add cash to the reserve at close; loan
+                         unchanged. Solved to hit the target.
+
+    all_years defaults to run_multi_year_projection(); the dashboard passes
+    its slider-driven projection so the options follow the sidebar.
+
+    The IO rows are not solved; gap_to_target shows what they leave short.
+    Amortization after an IO period is assumed to run the full
+    LOAN_TERM_YEARS from opening, so the post-opening payment is unchanged.
+    """
+    target = (RESERVE_TARGET_MONTHS_OF_PAYMENT * LOAN_MONTHLY_PAYMENT
+              if min_balance_target is None else min_balance_target)
+    if all_years is None:
+        all_years = run_multi_year_projection()
+    _, steady = run_annual_projection(year=2)
+    noi = steady["total_noi"]
+    labeled = build_use_of_funds()["labeled_excluding_reserve"]
+    monthly_rate = LOAN_INTEREST_RATE / 12
+
+    def pi_from_close(loan):
+        return _amortization_payment(loan, LOAN_INTEREST_RATE, LOAN_TERM_YEARS) * PRE_OPEN_MONTHS
+
+    def floor_option(floor):
+        loan = labeled + floor
+        return _reserve_option(
+            "higher_floor", "Higher reserve floor (borrowed)", loan, floor,
+            pi_from_close(loan), all_years, noi, target,
+            note=f"Reserve floor raised from ${RESERVE_FLOOR:,.0f} to ${floor:,.0f}.")
+
+    current = _reserve_option(
+        "current", "Current structure", LOAN_AMOUNT, RESERVE_AND_SAFETY_CASH,
+        pi_from_close(LOAN_AMOUNT), all_years, noi, target,
+        note="P&I from closing on the full loan.")
+
+    lo, hi = RESERVE_FLOOR, RESERVE_FLOOR + 1_000_000
+    if floor_option(lo)["min_balance"] >= target:
+        hi = lo
+    for _ in range(80):
+        if hi - lo < 0.01:
+            break
+        mid = (lo + hi) / 2
+        if floor_option(mid)["min_balance"] < target:
+            lo = mid
+        else:
+            hi = mid
+    higher_floor = floor_option(hi)
+
+    io_full = _reserve_option(
+        "io_full_balance", "Interest-only before opening (full balance)",
+        LOAN_AMOUNT, RESERVE_AND_SAFETY_CASH,
+        LOAN_AMOUNT * monthly_rate * PRE_OPEN_MONTHS, all_years, noi, target,
+        note="Term loan funded at close; interest only until opening.")
+    draws = build_construction_draw_schedule()
+    io_drawn = _reserve_option(
+        "io_drawn_balance", "Interest-only before opening (drawn balance)",
+        LOAN_AMOUNT, RESERVE_AND_SAFETY_CASH, draws["interest_reserve_total"],
+        all_years, noi, target,
+        note="Construction-loan style; interest only on funds drawn per the draw schedule.")
+
+    sponsor = max(0.0, target - current["min_balance"])
+    sponsor_cash = _reserve_option(
+        "sponsor_cash", "Sponsor cash added at close", LOAN_AMOUNT,
+        RESERVE_AND_SAFETY_CASH, pi_from_close(LOAN_AMOUNT), all_years, noi, target,
+        sponsor_cash=sponsor, note="Owners fund the shortfall; loan unchanged.")
+
+    options = [current, higher_floor, io_full, io_drawn, sponsor_cash]
+    if verbose:
+        print(f"\n{'=' * 96}")
+        print(f"  RESERVE OPTIONS - target lowest balance ${target:,.0f} "
+              f"({RESERVE_TARGET_MONTHS_OF_PAYMENT} months of P&I)")
+        print(f"{'=' * 96}")
+        print(f"  {'Option':<46}{'Loan':>11}{'Sponsor':>10}{'Opening':>11}"
+              f"{'Lowest':>11}{'DSCR':>7}")
+        for o in options:
+            print(f"  {o['label']:<46}{o['loan_amount']:>11,.0f}{o['sponsor_cash']:>10,.0f}"
+                  f"{o['opening_cash']:>11,.0f}{o['min_balance']:>11,.0f}"
+                  f"{o['stabilized_dscr']:>6.2f}x")
+    return {"min_balance_target": target,
+            "target_months_of_payment": RESERVE_TARGET_MONTHS_OF_PAYMENT,
+            "options": options}
 
 
 def run_loan_amortization_schedule(all_years=None, sweep_pct=1.0, verbose=True):
