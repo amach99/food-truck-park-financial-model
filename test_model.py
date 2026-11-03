@@ -212,15 +212,18 @@ def test_cota_impact_multiplier_zero_removes_cota_but_not_truck_boost():
     assert off["total_gross"] < baseline["total_gross"]
 
 
-def test_cota_impact_multiplier_above_baseline_boosts_truck_traffic():
-    """Above 1.0, event months pull extra sales/occupancy into the food
-    trucks themselves, not just parking/bar/beverage revenue - and that
-    lifts total_daytime_beverage too, since it rides on truck traffic."""
+def test_cota_impact_above_baseline_scales_parking_not_food_sales():
+    """Above 1.0, parking and the drink residual scale. Food-truck sales
+    do not. The old +20% event spillover into truck food is retired."""
     _, baseline = m.run_annual_projection(year=2)
     _, high = m.run_annual_projection(year=2, cota_impact_multiplier=2.0)
-    assert high["total_trucks"] > baseline["total_trucks"]
-    assert high["total_daytime_beverage"] > baseline["total_daytime_beverage"]
+    assert m.COTA_TRUCK_BOOST_MAX == 0.0
+    assert high["total_trucks"] == pytest.approx(baseline["total_trucks"])
+    assert high["total_truck_rent"] == pytest.approx(baseline["total_truck_rent"])
+    assert high["total_truck_share"] == pytest.approx(baseline["total_truck_share"])
+    assert high["total_daytime_beverage"] == pytest.approx(baseline["total_daytime_beverage"])
     assert high["total_cota_parking"] == pytest.approx(baseline["total_cota_parking"] * 2)
+    assert high["total_cota_bar"] == pytest.approx(baseline["total_cota_bar"] * 2)
 
 
 def test_cota_truck_boost_only_applies_in_event_months():
@@ -292,9 +295,9 @@ def test_item_mix_percentages_sum_to_one():
 
 
 def test_cota_event_check_exceeds_normal_check():
-    """Event days run premium pricing across all four items, so the event
-    check must beat the everyday check - the COTA bar_uplift_per_weekend
-    figures are sized off that ratio."""
+    """The event menu is still priced above the everyday menu. The forecast
+    does not book that premium against an event-crowd volume; drink revenue
+    from parked cars uses the everyday check."""
     assert m.COTA_EVENT_AVG_CHECK > m.BAR_AVG_CHECK
     for item_price, event_price in [
         (m.DRAFT_BEER_PRICE, m.COTA_EVENT_DRAFT_BEER_PRICE),
@@ -682,29 +685,30 @@ def test_returns_analysis_irr_is_sane():
     _, stabilized = m.run_annual_projection(year=2)
     yield_on_cost = stabilized["total_noi"] / m.TOTAL_CAPITALIZED_BASIS
     assert result["unlevered_irr"] is not None
-    assert result["levered_irr"] is not None
-    # Sane band. A 9% exit on a ~6% yield-on-cost can print a small negative
-    # IRR. That is the underwriting result, not a solver failure.
+    # Sane band. A 9% exit on a low yield-on-cost can print a negative IRR.
+    # That is the underwriting result, not a solver failure.
     assert -0.5 < result["unlevered_irr"] < 0.5
     if yield_on_cost < m.LOAN_INTEREST_RATE:
         assert result["leverage_dilutive"] is True
-        assert result["levered_irr"] < result["unlevered_irr"]
+        if result["levered_irr"] is None:
+            # Equity is not recovered, so the solver has no sign change.
+            assert sum(result["levered_cash_flows"][1:]) < 0
+        else:
+            assert result["levered_irr"] < result["unlevered_irr"]
     else:
         assert result["leverage_dilutive"] is False
+        assert result["levered_irr"] is not None
         assert result["levered_irr"] > result["unlevered_irr"]
 
 
 def test_equity_multiple_is_defined_and_follows_the_exit_cap():
-    """At a 9% exit cap and a yield on cost under that cap, the 5-year
-    unlevered multiple does not clear 1.0x. Lock the direction, not a
-    headline multiple."""
+    """The multiple is defined. Five years of growth can clear 1.0x even
+    when the single-year yield on cost is under the exit cap."""
     result = m.run_returns_analysis()
-    _, stabilized = m.run_annual_projection(year=2)
-    yield_on_cost = stabilized["total_noi"] / m.TOTAL_CAPITALIZED_BASIS
     assert result["unlevered_equity_multiple"] > 0
-    assert result["levered_equity_multiple"] > 0
-    if yield_on_cost < m.MARKET_CAP_RATE:
-        assert result["unlevered_equity_multiple"] < 1.0
+    assert result["levered_equity_multiple"] is not None
+    if result["levered_equity_multiple"] < 0:
+        assert sum(result["levered_cash_flows"][1:]) < 0
 
 
 def test_returns_analysis_respects_hold_period_and_cap_rate():
@@ -723,7 +727,10 @@ def test_cre_sensitivity_grid_varies_with_revenue_and_cap_rate():
         revenue_deltas=(-0.10, 0.0, 0.10), exit_cap_rates=(0.08, 0.10))
     assert len(grid) == 3
     low, base, high = grid
-    assert low[0.08] < base[0.08] < high[0.08]      # more revenue -> higher IRR
+    # None means the cash flows never turn positive, which is worse than
+    # a solved negative IRR.
+    assert low[0.08] is None or low[0.08] < base[0.08]
+    assert base[0.08] < high[0.08]
     assert base[0.10] < base[0.08]                   # higher exit cap -> lower IRR
 
 
@@ -756,7 +763,12 @@ def test_rate_sensitivity_leaves_unlevered_irr_unaffected():
     low = m.run_returns_analysis(loan_rate=0.08)
     high = m.run_returns_analysis(loan_rate=0.12)
     assert low["unlevered_irr"] == pytest.approx(high["unlevered_irr"])
-    assert low["levered_irr"] > high["levered_irr"]
+    # A lower rate leaves the equity side with more cash. If both IRRs are
+    # undefined (equity never recovered), compare the cash sums.
+    if low["levered_irr"] is None and high["levered_irr"] is None:
+        assert sum(low["levered_cash_flows"][1:]) > sum(high["levered_cash_flows"][1:])
+    else:
+        assert low["levered_irr"] > high["levered_irr"]
 
 
 def test_run_returns_analysis_loan_rate_defaults_match_module_rate():
@@ -883,16 +895,28 @@ def test_opening_cash_derives_from_sources_and_uses():
 
 def test_scheduled_labor_replaces_revenue_share():
     _, y2 = m.run_annual_projection(year=2)
-    assert y2["total_manager_salary"] == pytest.approx(m.MANAGER_ANNUAL_SALARY)
+    assert y2["total_manager_salary"] == 0
     assert m.BARTENDER_SHARE_RATE == 0.0
     assert m.LODGING_PROVIDED and not m.LODGING_EXPENSED
-    # Wages plus burden replace the ~$12k share. The review's "~$96k" is the
-    # order of magnitude of the cost the share did not carry.
-    cash_labor = y2["total_labor_wages"] + y2["total_payroll_burden"]
-    assert cash_labor > 90_000
-    assert y2["total_event_extra_wages"] > 0
-    assert y2["total_race_evening_premium"] > 0
-    assert sum(m.LABOR_HOURS_SEASON.values()) == pytest.approx(12.0)
+    assert m.PARK_COVERAGE_HOURLY_WAGE == 15
+    assert m.BARTENDER_HOURS_PER_DAY == 0
+    # 45 day hours at $15 and 45 evening hours at $16. 90 hours a week.
+    labor = m.calc_scheduled_labor([])
+    assert labor["bartender_hours_per_week"] == 0
+    assert labor["day_shift_hours_per_week"] == pytest.approx(45)
+    assert labor["evening_shift_hours_per_week"] == pytest.approx(45)
+    assert m.PARK_COVERAGE_HOURS_PER_WEEK == pytest.approx(90)
+    assert labor["manager_hours_per_person_per_week"] == pytest.approx(22.5)
+    weeks = (m.WEEKDAY_DAYS_PER_MONTH + m.WEEKEND_DAYS_PER_MONTH) / 7.0
+    assert labor["labor_wages"] == pytest.approx(45 * weeks * 15 + 45 * weeks * 16)
+    assert m.PARK_COVERAGE_HEADCOUNT == 4
+    assert y2["total_event_extra_wages"] == 0
+    assert y2["total_race_evening_premium"] == 0
+    assert y2["total_overtime_allowance"] == 0
+    # October F1 does not add a person.
+    october = m.calc_scheduled_labor(m.COTA_EVENTS_BY_MONTH[10], month=10)
+    january = m.calc_scheduled_labor([], month=1)
+    assert october["labor_wages"] == pytest.approx(january["labor_wages"])
 
 
 def test_inflation_is_line_by_line_and_spares_the_loan():
@@ -918,13 +942,83 @@ def test_breakeven_says_when_a_target_is_unreachable():
             assert row["coverage_at_ceiling"] < row["target"]
 
 
-def test_revenue_mix_labels_contractual_and_transactional():
+def test_revenue_mix_keeps_pad_rent_separate_from_event_parking():
+    """Pad rent and event parking are different lines. Parking is the
+    COTA revenue. The drink residual is not inside the parking line."""
     _, y2 = m.run_annual_projection(year=2)
     mix = m.calc_revenue_mix(y2)
-    assert mix["property_and_parking_share"] == pytest.approx(0.504, abs=0.01)
-    assert mix["contractual_pad_rent_share"] == pytest.approx(0.043, abs=0.005)
+    assert mix["property_and_parking"] == pytest.approx(
+        mix["contractual_pad_rent"] + mix["noncontractual_percentage_rent"]
+        + mix["transactional_event_parking"])
+    assert mix["contractual_pad_rent"] > 0
+    assert mix["transactional_event_parking"] == pytest.approx(m.F1_WEEKEND_PARKING_REVENUE)
+    assert mix["contractual_pad_rent"] != mix["transactional_event_parking"]
+    assert mix["contractual_pad_rent_share"] < 0.10
+    drink = y2["total_cota_bar"] + y2["total_cota_daytime_bev"]
+    assert y2["total_cota_parking"] > drink * 5
     assert "non-contractual" in mix["percentage_rent_label"]
     assert "transactional" in mix["event_parking_label"]
+
+
+def test_only_f1_books_parking_and_the_weekend_is_20000():
+    """Sid's figure is $20,000 for the one F1 weekend. Other events have
+    no overflow, so parking, the drink residual, and lot staffing are zero.
+    January has no event. The 30 site-plan stalls are not this line."""
+    assert m.SITE_PLAN_CUSTOMER_SPACES == 30
+    assert m.F1_PARKING_CARS_BY_DAY == (90, 150, 200)
+    assert m.F1_WEEKEND_PARKING_REVENUE == 20_000
+    assert sum(m.F1_PARKING_CARS_BY_DAY) * m.F1_PARKING_PRICE_PER_CAR == pytest.approx(20_000)
+    assert m.EVENTS_WITH_PARKING == ("tier1_f1",)
+    for key, tier in m.COTA_EVENT_TIERS.items():
+        assert tier["parking_price"] == m.EVENT_PARKING_PRICE_PER_CAR[key]
+        assert "bar_uplift_per_weekend" not in tier
+        if key != "tier1_f1":
+            assert tier["incremental_cost"] == 0
+            quiet_event = m.calc_cota_event_revenue([key])
+            assert quiet_event["parking"] == 0
+            assert quiet_event["bar_uplift"] == 0
+            assert quiet_event["daytime_bev_uplift"] == 0
+            assert quiet_event["incremental_cost"] == 0
+
+    f1 = m.calc_cota_event_revenue(["tier1_f1"])
+    cars = sum(m.F1_PARKING_CARS_BY_DAY)
+    assert f1["parking"] == pytest.approx(20_000)
+    assert f1["incremental_cost"] == 0
+    assert m.F1_EVENT_SANITATION == 0
+    assert f1["bar_uplift"] == pytest.approx(
+        cars * m.COTA_BAR_ATTACH_PER_CAR * m.BAR_AVG_CHECK)
+    assert f1["parking"] > f1["bar_uplift"] + f1["daytime_bev_uplift"]
+
+    # October also has a GT weekend. That weekend adds no parking.
+    october = m.calc_monthly_total(20, 58, 10)
+    assert october["cota_parking"] == pytest.approx(20_000)
+    march = m.calc_monthly_total(20, 58, 3)  # NASCAR only
+    assert march["cota_parking"] == 0
+    assert march["cota_bar_uplift"] == 0
+    assert march["cota_incremental_cost"] == 0
+
+    quiet = m.calc_monthly_total(20, 58, 1, cota_events=[])
+    assert quiet["cota_parking"] == 0
+    assert quiet["cota_bar_uplift"] == 0
+    assert quiet["cota_daytime_bev_uplift"] == 0
+    assert october["truck_rent"] > 0
+    assert october["truck_rent"] != october["cota_parking"]
+    assert "event_parking_revenue" not in october
+
+
+def test_sba_7a_guarantee_fee_is_financed_for_dscr_only():
+    """3% of the 75% guaranteed portion, added to the note. The sized ask
+    and the operating payment do not include it."""
+    loan = 750_000
+    fee = m.sba_7a_guarantee_fee(loan)
+    assert fee == pytest.approx(loan * 0.75 * 0.03)
+    note = m.sba_7a_note_amount(loan)
+    assert note == pytest.approx(loan + fee)
+    ads = m.sba_7a_annual_debt_service(loan)
+    assert ads == pytest.approx(m._amortization_payment(note, 0.10, 25) * 12)
+    assert m.LOAN_AMOUNT == 563_626
+    assert m.OPENING_MONTH == 3
+    assert m.OPENING_YEAR == 2027
 
 
 def test_delayed_opening_misses_f1():
@@ -1034,16 +1128,21 @@ def test_land_carry_is_six_months_of_vacant_bills():
     assert m.LAND_CARRY_MONTHS_PREPAID == 6
 
 
-def test_labor_is_heavier_on_race_weekends_and_in_october():
+def test_labor_is_the_same_on_an_f1_day():
+    """F1 does not add a bartender hour or an extra body. Food sales
+    are not lifted either: October percentage rent matches April, and
+    both months have seasonality 1.00."""
     january = m.calc_scheduled_labor([], month=1)
-    october_quiet = m.calc_scheduled_labor([], month=10)
-    october_race = m.calc_scheduled_labor(m.COTA_EVENTS_BY_MONTH[10], month=10)
-    assert october_quiet["labor_wages"] > january["labor_wages"]
-    assert october_race["race_days"] > 0
-    assert october_race["labor_wages"] > october_quiet["labor_wages"]
-    assert october_race["event_extra_wages"] > 0
-    assert m.LABOR_WEEKEND_EVENING_HOURS > m.LABOR_WEEKDAY_EVENING_HOURS
-    assert m.LABOR_RACE_EVENING_HOURS > m.LABOR_WEEKEND_EVENING_HOURS
+    october = m.calc_scheduled_labor(m.COTA_EVENTS_BY_MONTH[10], month=10)
+    assert october["labor_wages"] == pytest.approx(january["labor_wages"])
+    assert october["event_extra_wages"] == 0
+    assert october["race_evening_premium"] == 0
+    assert m.COTA_TRUCK_BOOST_MAX == 0
+    months, _ = m.run_annual_projection(year=2)
+    april = next(r for r in months if r["month"] == 4)
+    october_m = next(r for r in months if r["month"] == 10)
+    assert october_m["truck_share"] == pytest.approx(april["truck_share"])
+    assert october_m["truck_rent"] == pytest.approx(april["truck_rent"])
 
 
 def test_no_cota_noi_is_below_base_and_is_a_named_scenario():

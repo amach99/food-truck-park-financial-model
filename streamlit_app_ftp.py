@@ -95,14 +95,11 @@ st.sidebar.subheader("Other")
 seasonal_pct = st.sidebar.slider("Seasonal Event Strength", 0.0, 2.0, 1.0, step=0.25)
 cota_impact_multiplier = st.sidebar.slider(
     "COTA Event Impact", 0.0, 2.0, 1.0, step=0.1, format="%.1fx",
-    help="0.0x = COTA has no effect at all — parking, bar uplift, and "
-         "daytime-beverage uplift all zero out, as if the event calendar "
-         "didn't exist. 1.0x (default) reproduces today's baseline modeled "
-         "calendar exactly. 2.0x is a deliberately optimistic 'exceptional "
-         "events' scenario: COTA revenue runs at 2x today's baseline, AND "
-         "event-weekend months pull extra foot traffic into the food "
-         "trucks themselves (up to +20% truck sales/occupancy in those "
-         "months only) — not just parking and bar customers.")
+    help="0.0x = COTA has no effect — event parking and the small drink "
+         "residual both go to zero, as if the event calendar didn't exist. "
+         "1.0x (default) is the baseline calendar. 2.0x doubles event "
+         "parking, the drink residual, and event staffing cost. It does "
+         "not add food-truck sales.")
 projection_view = st.sidebar.radio(
     "Projection View",
     ["Year 1 (with ramps)", "Steady state (no ramps)"],
@@ -181,15 +178,16 @@ def get_scenario_results():
 def months_to_df(months):
     rows = []
     for m in months:
-        cota = (m["cota_parking"] + m["cota_bar_uplift"]
-               + m["cota_daytime_bev_uplift"])
         rows.append({
             "Month": MONTH_NAMES[m["month"] - 1],
             "Gross Revenue": m["total_gross_revenue"],
+            "Pad Rent": m["truck_rent"],
+            "Percentage Rent": m["truck_share"],
             "Food Trucks": m["truck_gross"],
             "Evening Bar": m["bar_revenue"],
             "Daytime Beverages": m["daytime_beverage_revenue"],
-            "COTA": cota,
+            "COTA Event Parking": m["cota_parking"],
+            "COTA Drink Residual": m["cota_bar_uplift"] + m["cota_daytime_bev_uplift"],
             "Seasonal": m["seasonal_revenue"],
             "Utilities (pass-thru)": m["utility_billed"],
             "Trucks Active": m["trucks_active"],
@@ -286,14 +284,15 @@ with tabs[0]:
     col_left, col_right = st.columns(2)
     with col_left:
         st.subheader(f"Revenue Breakdown ({view_label})")
-        cota_total = (annual["total_cota_parking"] + annual["total_cota_bar"]
-                     + annual["total_cota_daytime_bev"])
         rev_data = {
             "Stream": ["Food Trucks", "Evening Bar", "Daytime Beverages",
-                       "COTA Events", "Seasonal", "Utilities (at cost)"],
+                       "COTA Event Parking", "COTA Drink Residual",
+                       "Seasonal", "Utilities (at cost)"],
             "Revenue": [annual["total_trucks"], annual["total_bar"],
                         annual["total_daytime_beverage"],
-                        cota_total, annual["total_seasonal"],
+                        annual["total_cota_parking"],
+                        annual["total_cota_bar"] + annual["total_cota_daytime_bev"],
+                        annual["total_seasonal"],
                         annual["total_utility_billed"]],
         }
         fig_pie = px.pie(
@@ -346,7 +345,9 @@ with tabs[0]:
 with tabs[1]:
     st.header(f"Annual Projection — {view_label}")
 
-    stream_cols = ["Food Trucks", "Evening Bar", "Daytime Beverages", "COTA", "Seasonal"]
+    stream_cols = ["Pad Rent", "Percentage Rent", "Evening Bar",
+                   "Daytime Beverages", "COTA Event Parking",
+                   "COTA Drink Residual", "Seasonal"]
     fig_stack = go.Figure()
     colors = px.colors.qualitative.Set2
     for i, col in enumerate(stream_cols):
@@ -392,11 +393,13 @@ with tabs[1]:
                "(PURA §39.107) — it adds gross revenue but zero NOI.")
 
     st.subheader("Monthly Detail")
-    display_df = df[["Month", "Gross Revenue", "Food Trucks", "Evening Bar",
-                     "Daytime Beverages", "COTA", "NOI",
+    display_df = df[["Month", "Gross Revenue", "Pad Rent", "Percentage Rent",
+                     "Evening Bar", "Daytime Beverages", "COTA Event Parking",
+                     "COTA Drink Residual", "NOI",
                      "Cash Flow", "Nut Coverage"]].copy()
-    for col in ["Gross Revenue", "Food Trucks", "Evening Bar", "Daytime Beverages",
-               "COTA", "NOI", "Cash Flow"]:
+    for col in ["Gross Revenue", "Pad Rent", "Percentage Rent", "Evening Bar",
+               "Daytime Beverages", "COTA Event Parking", "COTA Drink Residual",
+               "NOI", "Cash Flow"]:
         display_df[col] = display_df[col].apply(fmt_dollar)
     display_df["Nut Coverage"] = display_df["Nut Coverage"].apply(lambda x: f"{x:.2f}x")
     st.dataframe(display_df, use_container_width=True, hide_index=True)
@@ -738,15 +741,14 @@ with tabs[6]:
 
     my_rows = []
     for yr, months_data, ann in all_years:
-        cota_total = (ann["total_cota_parking"] + ann["total_cota_bar"]
-                     + ann["total_cota_daytime_bev"])
         my_rows.append({
             "Year": f"Year {yr}",
             "Annual Revenue": ann["total_gross"],
             "Food Trucks": ann["total_trucks"],
             "Evening Bar": ann["total_bar"],
             "Daytime Beverages": ann["total_daytime_beverage"],
-            "COTA": cota_total,
+            "COTA Event Parking": ann["total_cota_parking"],
+            "COTA Drink Residual": ann["total_cota_bar"] + ann["total_cota_daytime_bev"],
             "Cost Inflation": ann["cost_inflation_adj"],
             "Free Cash Flow": ann["total_net_cash"],
             "FCF Yield": ann["fcf_yield"],
@@ -779,7 +781,8 @@ with tabs[6]:
 
     disp_my = my_df.copy()
     for col in ["Annual Revenue", "Food Trucks", "Evening Bar", "Daytime Beverages",
-                "COTA", "Cost Inflation", "Free Cash Flow"]:
+                "COTA Event Parking", "COTA Drink Residual",
+                "Cost Inflation", "Free Cash Flow"]:
         disp_my[col] = disp_my[col].apply(fmt_dollar)
     disp_my["FCF Yield"] = disp_my["FCF Yield"].apply(lambda x: f"{x:.1%}")
     st.dataframe(disp_my, use_container_width=True, hide_index=True)
@@ -1108,12 +1111,13 @@ with tabs[8]:
         {"Expense": "Shrinkage",
          "Rate": f"{model.SHRINKAGE_RATE:.1%} of COGS value",
          "Annual (Base Case)": base["total_shrinkage"]},
-        {"Expense": "Scheduled labor (daytime, evening, event extra, OT, manager)",
-         "Rate": (f"${model.DAYTIME_ATTENDANT_WAGE:.0f}/hr daytime, "
-                  f"${model.EVENING_BARTENDER_WAGE:.0f}/hr evening, "
-                  f"${model.EVENT_EXTRA_WAGE:.0f}/hr event extra, "
-                  f"{model.OVERTIME_ALLOWANCE_RATE:.0%} OT, "
-                  f"${model.MANAGER_ANNUAL_SALARY:,.0f} manager. Lodging not expensed."),
+        {"Expense": "Scheduled labor (day manager + evening manager-bartender)",
+         "Rate": (f"Mon–Thu 8am–9pm, Friday 8am–10pm, weekends 10am–10pm. "
+                  f"{model.DAY_SHIFT_HOURS_PER_WEEK:.0f} day hours/week at "
+                  f"${model.PARK_COVERAGE_HOURLY_WAGE:.0f}/hr and "
+                  f"{model.EVENING_SHIFT_HOURS_PER_WEEK:.0f} evening hours/week at "
+                  f"${model.EVENING_SHIFT_HOURLY_WAGE:.0f}/hr. "
+                  "No separate bartender. No overtime."),
          "Annual (Base Case)": base["total_labor_wages"]},
         {"Expense": "Employer Payroll Burden (FICA/FUTA/SUTA)",
          "Rate": f"{model.EMPLOYER_PAYROLL_BURDEN_RATE:.0%} on all cash wages",
@@ -1125,8 +1129,8 @@ with tabs[8]:
          "Rate": (f"{model.PARKING_SALES_TAX_RATE:.2%} / "
                   f"{1 + model.PARKING_SALES_TAX_RATE:.4f} of the tax-inclusive price"),
          "Annual (Base Case)": base["total_cota_parking_sales_tax"]},
-        {"Expense": "COTA Incremental Costs (event staffing/porta-potty)",
-         "Rate": "flat per event tier",
+        {"Expense": "F1 weekend sanitation",
+         "Rate": "Covered by the year-round porta-potty and hand-wash. No separate bill.",
          "Annual (Base Case)": base["total_cota_cost"]},
         {"Expense": "Utility Pass-Through Cost (at cost, net-zero)",
          "Rate": "billed at cost, no markup",
@@ -1203,7 +1207,8 @@ with tabs[8]:
         "stand, on a $50,000 budgeted buildout",
         "Utilities sub-metered and billed at cost (PURA §39.107) — "
         "no utility margin risk",
-        "COTA upside preserved: event parking + bar uplift on race weekends",
+        "COTA is event parking on event days. Drink sales from parked cars "
+        "are a small residual, and food-truck sales are not lifted",
         "100% of liquor/beer revenue retained (no rev-share on bar sales)",
         "All-day beverages are staffed by a daytime attendant, separate from "
         "the evening bartender, plus one extra body on COTA event days. "
@@ -1397,8 +1402,8 @@ with tabs[10]:
         Four revenue streams stack here: contracted monthly rent from food
         truck tenants forms a stable base, the evening container bar adds
         draft and canned beer, liquor shots, and cocktails, the
-        all-day stand adds soda/juice/water/coffee, and COTA event weekends
-        layer parking and bar upside on top. The
+        all-day stand adds soda/juice/water/coffee, and COTA event days
+        add parking. Drink sales from those cars are a small residual. The
         \\${model.TOTAL_PROJECT_COST:,.0f} total project cost (the owner's
         real Phase 0.5 buildout tracker plus septic, paving, and the
         remaining construction phase) is financed through a **bank term
@@ -1463,18 +1468,20 @@ with tabs[10]:
              "rent is non-contractual",
              _mo("total_daytime_beverage"),
              f"~{1 - model.DAYTIME_BEVERAGE_VARIABLE_COST_RATE:.0%} after COGS + sales tax"),
-            ("4. COTA Events",
-             f"{model.EVENT_PARKING_SPACES}-space event parking (dedicated 3-acre "
-             "lot), day-by-day occupancy building to the marquee day (F1: 45% Fri "
-             "/ 75% Sat / 100% Sun) + uplift on the bar and daytime beverages, "
-             f"with the bar at premium event pricing "
-             f"(${model.COTA_EVENT_DRAFT_BEER_PRICE:.0f} draft / "
-             f"${model.COTA_EVENT_BEER_PRICE:.0f} canned / "
-             f"${model.COTA_EVENT_SHOT_PRICE:.0f} shot / "
-             f"${model.COTA_EVENT_COCKTAIL_PRICE:.0f} cocktail)",
-             "Event months only",
+            ("4. COTA Event Parking",
+             f"Open-land event parking, {model.EVENT_PARKING_CARS_PER_DAY} cars "
+             f"on a peak day (low end of the Oct 2026 F1 count of 200-300; "
+             f"the site plan's {model.SITE_PLAN_CUSTOMER_SPACES} customer stalls "
+             f"are not this line). Only F1 is booked, at "
+             f"${model.F1_WEEKEND_PARKING_REVENUE:,.0f} for the weekend "
+             f"(Fri 90 / Sat 150 / Sun 200 cars, implied "
+             f"${model.F1_PARKING_PRICE_PER_CAR:.2f}/car). Every other event "
+             f"is $0 parking, $0 drink residual, and $0 lot crew. A small F1 "
+             f"drink residual is {model.COTA_BAR_ATTACH_PER_CAR:.0%} of those "
+             f"cars at the everyday check.",
+             "Event days only",
              f"Parking ~{_parking_margin:.0%} after upkeep + sales tax, "
-             "less per-tier event staffing"),
+             "less attendant and porta-potty cost"),
             ("5. Seasonal Events",
              "Super Bowl / March Madness / NYE watch parties on the big TVs. "
              "Separate from the everyday sports-calendar effect (see Ramps & "
@@ -1560,9 +1567,11 @@ with tabs[10]:
              "Actual bill; county assesses the land at "
              f"{fmt_dollar(model.LAND_ASSESSED_VALUE)}"),
             ("Property tax — improvements",
-             f"{model.PROPERTY_TAX_IMPROVEMENT_RATE:.1%} of buildout "
-             f"({fmt_dollar(model.FIXED_COSTS['property_tax_improvements'] * 12)}/yr)",
-             "The buildout joins the tax roll once complete"),
+             f"{model.PROPERTY_TAX_EFFECTIVE_RATE:.2%} of real-property cost "
+             f"({fmt_dollar(model.TAXABLE_REAL_PROPERTY)}), "
+             f"{fmt_dollar(model.FIXED_COSTS['property_tax_improvements'] * 12)}/yr",
+             "Same rate as this parcel's $4,000 land bill on a $300,000 assessment. "
+             "Contingency, permits, and inventory are not in the base"),
             ("Employer payroll (FICA/FUTA/SUTA)",
              f"~{model.EMPLOYER_PAYROLL_BURDEN_RATE:.0%} of all cash wages",
              "Applies to daytime, evening, event-extra, overtime allowance, "
@@ -1598,8 +1607,7 @@ with tabs[10]:
             | Land | {model.LAND_ACRES} deeded acres, owned outright (\${model.LAND_PURCHASE_PRICE:,.0f} basis) — no rent or mortgage in the nut |
             | Truck count | {model.TRUCK_SLOTS} hubs, leasing up over Year 1 (no more budgeted) |
             | Cost basis | Itemized from the owner's real Phase 0.5 cost tracker + the actual loan request |
-            | Manager | \${model.MANAGER_ANNUAL_SALARY:,.0f} cash salary. Lodging is provided and not expensed |
-            | Floor labor | Daytime \${model.DAYTIME_ATTENDANT_WAGE:.0f}/hr, evening \${model.EVENING_BARTENDER_WAGE:.0f}/hr. Weekday hours {model.LABOR_WEEKDAY_DAYTIME_HOURS:.1f}/{model.LABOR_WEEKDAY_EVENING_HOURS:.1f}, weekend {model.LABOR_WEEKEND_DAYTIME_HOURS:.1f}/{model.LABOR_WEEKEND_EVENING_HOURS:.1f}, race-day evening {model.LABOR_RACE_EVENING_HOURS:.1f} plus one extra body. {model.OVERTIME_ALLOWANCE_RATE:.0%} overtime allowance, {model.EMPLOYER_PAYROLL_BURDEN_RATE:.0%} burden. The 5% share is removed. Wages are estimates |
+            | Coverage | Mon–Thu 8am–9pm, Friday 8am–10pm, weekends 10am–10pm. Day half at \${model.PARK_COVERAGE_HOURLY_WAGE:.0f}/hr, evening half at \${model.EVENING_SHIFT_HOURLY_WAGE:.0f}/hr. 45 hours on each role. Four people, no overtime. {model.EMPLOYER_PAYROLL_BURDEN_RATE:.0%} burden. Lodging is not expensed |
             | Bar offering | Full container bar: \${model.DRAFT_BEER_PRICE:.0f} draft / \${model.BEER_PRICE:.0f} canned / \${model.SHOT_PRICE:.0f} shots / \${model.COCKTAIL_PRICE:.0f} cocktails; premium pricing during COTA events |
             | Coverage metrics | Nut Coverage (plain-language) + real DSCR (CRE Investment Summary tab) |
             | Primary output | Owner summary + FCF yield + loan amortization schedule + CRE underwriting view |
@@ -2017,7 +2025,15 @@ with tabs[11]:
         st.metric("Equity Multiple",
                   f"{returns['levered_equity_multiple']:.2f}x" if returns["levered_equity_multiple"] is not None else "n/a")
         st.metric("NPV", fmt_dollar(returns["levered_npv"]))
-    if returns["leverage_dilutive"] and returns["levered_irr"] is not None and returns["unlevered_irr"] is not None:
+    if (returns["leverage_dilutive"] and returns["levered_irr"] is None
+            and returns["unlevered_irr"] is not None):
+        st.warning(
+            "Levered IRR is undefined: equity cash flows never turn positive, "
+            "so the sale does not repay the loan. The loan dilutes the deal. "
+            f"Unlevered IRR is {returns['unlevered_irr']:.1%}."
+        )
+    elif (returns["leverage_dilutive"] and returns["levered_irr"] is not None
+          and returns["unlevered_irr"] is not None):
         st.warning(
             f"Levered IRR ({returns['levered_irr']:.1%}) is below unlevered IRR "
             f"({returns['unlevered_irr']:.1%}). At these assumptions the loan "

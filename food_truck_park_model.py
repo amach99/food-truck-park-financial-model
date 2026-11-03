@@ -354,9 +354,9 @@ LOAN_MONTHLY_PAYMENT = _amortization_payment(LOAN_AMOUNT, LOAN_INTEREST_RATE, LO
 # No. 2104 (portions of Lot 2, Block A, Final Plat of Del Valle Dollar
 # General, Travis County Doc. No. 201600109). Earlier versions of this
 # model rounded to 4.5; use the deeded figure, since a lender pulls the
-# deed. The ~2.932-acre tract is the dedicated event parking area
-# (EVENT_PARKING_SPACES below); the 1.500-acre tract carries the pads,
-# bar, and seating.
+# deed. The ~2.932-acre tract is the open land used for event parking
+# (EVENT_PARKING_CARS_PER_DAY below). It is not a stamped stall count.
+# The 1.500-acre tract carries the pads, bar, and seating.
 LAND_ACRES = 4.432
 LAND_PURCHASE_PRICE = 1_400_000  # what the owner actually paid (owned outright, not financed here)
 LAND_ASSESSED_VALUE = 300_000    # county tax assessment - basis for the ~$4K/yr property tax bill
@@ -384,28 +384,73 @@ TOTAL_CAPITALIZED_BASIS = (
     LAND_PURCHASE_PRICE + PHASE_0_5_TOTAL
     + sum(a for label, a, _ in USE_OF_FUNDS if label not in _LOC_PAYOFF_AND_RESERVE_LABELS)
 )
-# The existing $4,000/yr bill taxes RAW LAND only. Once the buildout is
-# finished, Travis County adds the improvements (gravel lot, electrical,
-# plumbing, structures, shade, lighting) to the tax roll and the bill goes
-# up - a real recurring cost the model previously ignored. Conservatively
-# assume the FULL capitalized buildout (TOTAL_CAPITALIZED_BASIS less land -
-# i.e. excluding the LOC payoff and Reserve, which are financial, not
-# physical, and would badly overstate a county assessment if taxed as
-# improvements) becomes assessed value (some line items - inventory,
-# contingency, permits - arguably aren't taxable real property, so this
-# still overstates rather than understates) at a 2.0% effective rate.
-# 2.0% is above the ~1.33% the owner's own land bill implies ($4,000 on a
-# $300K assessment) and above the ~1.54% Travis County median, chosen
-# deliberately on the "conservative = higher expense" rule.
-PROPERTY_TAX_IMPROVEMENT_RATE = 0.020
+# The existing land bill is about $4,000/yr on a $300,000 assessment
+# (LAND_ASSESSED_VALUE). That is 1.333%, and it is the rate this parcel
+# actually pays. Del Valle ISD's own 2025-26 rate is $0.9489 per $100;
+# the rest of the bill is the county and the other Travis County units.
+# The old improvement tax used 2.0% of every non-land dollar in the
+# capitalized basis ($470,426, including contingency, the GC allowance,
+# permits, and inventory). That is not what the appraisal district taxes.
+# Taxable improvements here are the real-property items only (site work,
+# septic, paving, container), at cost, times this parcel's own rate.
+# Five-year fixtures (TVs, coolers, about $9,600) are personal property
+# and are not in this line. At the same rate they would add about $11/month.
+PROPERTY_TAX_EFFECTIVE_RATE = 4_000 / LAND_ASSESSED_VALUE
+REAL_PROPERTY_IMPROVEMENT_LABELS = (
+    "Turf", "Sail Shades", "Gates", "Pole Lighting / String Lights",
+    "Signs", "Electrical", "Plumbing", "Telephone pole",
+    "Full land clearing", "Yard Multi-Purpose Poles (set & anchor)",
+    "Gravel", "Trash Cans", "Storage Shed (wooden, general)",
+    "Septic system installation",
+    "Paved asphalt roads / internal access improvements",
+    "Container bar buildout",
+)
+_IMPROVEMENT_COST = {label: amt for label, amt, _ in
+                     PHASE_0_5_CAPITAL_IMPROVEMENTS + USE_OF_FUNDS}
+TAXABLE_REAL_PROPERTY = sum(_IMPROVEMENT_COST[label]
+                            for label in REAL_PROPERTY_IMPROVEMENT_LABELS)
+PROPERTY_TAX_IMPROVEMENT_RATE = PROPERTY_TAX_EFFECTIVE_RATE
 PROPERTY_TAX_IMPROVEMENTS_MONTHLY = round(
-    (TOTAL_CAPITALIZED_BASIS - LAND_PURCHASE_PRICE) * PROPERTY_TAX_IMPROVEMENT_RATE / 12)
-# Dedicated 3-acre lot within the property, laid out for COTA event parking.
-# Owner estimate: fits 240-300 cars -> using the midpoint.
-EVENT_PARKING_SPACES = 270       # spaces available for COTA event parking
-# Typical carpool occupancy for a motorsport/event day crowd - used to turn
-# parked cars into an attendee count for the daytime-beverage COTA uplift
-# below (a car full of people buys more drinks than the car itself).
+    TAXABLE_REAL_PROPERTY * PROPERTY_TAX_EFFECTIVE_RATE / 12)
+# Everyday customer parking on the site plan. Hunter's sizing, not a
+# stamped count. These stalls are not event inventory and they earn no
+# parking revenue.
+SITE_PLAN_CUSTOMER_SPACES = 30
+# Peak-day crowd used only for the F1 drink residual. Sid parked an
+# estimated 200-300 cars/day on Oct 23-25 2026. The low end is 200.
+# Friday and Saturday are not full. This count does not set the
+# parking dollars. Those are F1_WEEKEND_PARKING_REVENUE.
+EVENT_PARKING_CARS_PER_DAY = 200
+EVENT_PARKING_SPACES = EVENT_PARKING_CARS_PER_DAY  # name older readers still use
+# One F1 weekend. Sid's estimate of the parking revenue for that weekend,
+# per year. Fri 90 + Sat 150 + Sun 200 = 440 cars. The implied gate price
+# is $20,000 / 440. The revenue line is this constant, so the total cannot
+# drift off $20,000. Every other event books $0. Sid's reason: no other
+# event has enough overflow to bring cars to the park.
+F1_PARKING_CARS_BY_DAY = (90, 150, 200)
+F1_WEEKEND_PARKING_REVENUE = 20_000
+F1_PARKING_PRICE_PER_CAR = F1_WEEKEND_PARKING_REVENUE / sum(F1_PARKING_CARS_BY_DAY)
+# Only F1 is a parking event. Other prices are zero on purpose.
+EVENT_PARKING_PRICE_PER_CAR = {
+    "tier1_f1": F1_PARKING_PRICE_PER_CAR,
+    "tier2_motogp": 0,
+    "tier2_nascar": 0,
+    "tier3_wec": 0,
+    "tier3_gt_transam": 0,
+    "tier3_concert": 0,
+    "tier3_festival": 0,
+    "tier4_trackday": 0,
+}
+EVENTS_WITH_PARKING = ("tier1_f1",)
+# Residual drinks from cars that are otherwise just parking. 10% of cars
+# buy one alcohol drink at the everyday check (not the premium event
+# check). 10% of people in the car buy one non-alcohol drink at the
+# everyday beverage price. The park's everyday food-truck attach is 35%;
+# event parkers are lower because they leave for the track.
+COTA_BAR_ATTACH_PER_CAR = 0.10
+COTA_EVENT_BEV_ATTACH_PER_PERSON = 0.10
+# Typical carpool, used only to turn parked cars into a headcount for
+# that small non-alcohol residual.
 PEOPLE_PER_CAR = 2.5
 # Lot upkeep on event-parking revenue: trash/debris cleanup, striping wear,
 # gravel replenishment from the added traffic - distinct from the flat
@@ -414,7 +459,8 @@ PEOPLE_PER_CAR = 2.5
 PARKING_UPKEEP_RATE = 0.05
 # Motor vehicle parking is an explicitly TAXABLE SERVICE in Texas (34 TAC
 # 3.315) at the full combined Del Valle/Travis County rate. Event lots
-# charge a round cash price at the gate ($80 a spot, not $80 + tax), so the
+# charge a round cash price at the gate (the F1 weekend is $20,000
+# tax-inclusive, not $20,000 + tax), so the
 # tax comes out of that price rather than being added on top - the same
 # tax-inclusive logic used for the bar. This was missing entirely before;
 # on a full COTA calendar it is a real five-figure annual cost.
@@ -422,24 +468,19 @@ PARKING_SALES_TAX_RATE = 0.0825
 
 # --- COTA Impact Slider (dashboard-adjustable "what if COTA didn't happen /
 # was exceptional" lever) ---
-# COTA_IMPACT_MULTIPLIER scales the COTA parking/bar-uplift/daytime-bev-
-# uplift/incremental-cost totals computed by calc_cota_event_revenue(): 0.0
+# COTA_IMPACT_MULTIPLIER scales the COTA parking, the small drink residual,
+# and the event operating cost computed by calc_cota_event_revenue(): 0.0
 # = COTA has zero effect (as if the event calendar didn't exist), 1.0 =
-# today's default modeled calendar (COTA_EVENTS_BY_MONTH / COTA_EVENT_TIERS
-# as-is, unchanged from before this lever existed), up to 2.0 = a
-# deliberately optimistic "very high performing events" scenario. The
-# dashboard slider runs 0-100% and maps to this 0.0-2.0 range so the
-# midpoint (50%) reproduces today's baseline exactly.
+# today's default modeled calendar, up to 2.0 = a deliberately optimistic
+# "very high performing events" scenario. The dashboard slider runs
+# 0.0-2.0 directly, so 1.0 reproduces the baseline calendar.
 COTA_IMPACT_MULTIPLIER_DEFAULT = 1.0
-# Above a multiplier of 1.0 (i.e. sliding past today's baseline toward
-# "exceptional events"), COTA event months ALSO pull extra foot traffic
-# into the food trucks themselves - not just parking/bar/beverage revenue.
-# COTA_TRUCK_BOOST_MAX is the ceiling on that effect: at multiplier 2.0
-# (slider all the way right), truck sales in event months run up to 20%
-# hotter, and vacant slots close the gap toward full occupancy by up to
-# 20% of the remaining gap. Zero at multiplier <= 1.0, so today's baseline
-# behavior is completely unaffected by this lever's existence.
-COTA_TRUCK_BOOST_MAX = 0.20
+# Food-truck sales do not rise because a COTA weekend is on the calendar.
+# The old lever added up to +20% truck sales in event months once the
+# slider passed 1.0. That spillover is retired. The slider still scales
+# parking, the drink residual, and event staffing cost. It does not
+# move pad rent or percentage rent.
+COTA_TRUCK_BOOST_MAX = 0.0
 
 # --- Food Truck Park ---
 # 4 utility hubs are being BUILT (the park is still under construction as of
@@ -571,7 +612,13 @@ _beer_rev_frac = (BEER_MIX_PCT * BEER_PRICE) / AVG_ITEM_PRICE
 _shot_rev_frac = (SHOT_MIX_PCT * SHOT_PRICE) / AVG_ITEM_PRICE
 _cocktail_rev_frac = (COCKTAIL_MIX_PCT * COCKTAIL_PRICE) / AVG_ITEM_PRICE
 COGS_RATE = (_draft_rev_frac * 0.37 + _beer_rev_frac * 0.37
-             + _shot_rev_frac * 0.25 + _cocktail_rev_frac * 0.30)   # ~32.2%
+             + _shot_rev_frac * 0.25 + _cocktail_rev_frac * 0.30)   # ~32.2% recipe rate
+# The forecast does not use COGS_RATE. Sid's inventory budget replaces it.
+# $2,000 a month on average, spread with SEASONALITY (the weights sum to
+# 10.4, so April, at 1.00, is a bit above $2,000 and a winter month is
+# below it). The $2,000 includes shrinkage. Sales tax and mixed-beverage
+# tax stay on the receipt and are not inside this number.
+DRINK_INVENTORY_MONTHLY = 2_000
 # --- Alcohol taxes: TWO separate Texas taxes, both apply ---
 # Selling liquor "by the drink" (shots poured/sealed on premises) requires a
 # TABC Mixed Beverage Permit (MB). Under an MB permit, EVERY alcoholic
@@ -621,8 +668,7 @@ _GRT_ON_RECEIPT = GRT_RATE / (1.0 + MB_SALES_TAX_RATE) if MB_SALES_TAX_RATE else
 VARIABLE_COST_RATE = COGS_RATE + _GRT_ON_RECEIPT + _MB_TAX_ON_RECEIPT
 CC_PROCESSING_RATE = 0.028
 CC_CARD_USAGE_RATE = 0.85
-SHRINKAGE_RATE = 0.025           # of beverage COGS value (grab-and-go single-serve
-                                  # items may be easier to pilfer than pours - watch this)
+SHRINKAGE_RATE = 0.0             # inside DRINK_INVENTORY_MONTHLY; not charged again
 # The old 5% beverage-revenue share is retired. On the pre-v3 engine it
 # worked out to about $2.11/hr in Year 1 — under the $7.25 federal/Texas
 # minimum. BARTENDER_SHARE_RATE stays 0 so wages cannot be stacked on the share.
@@ -649,8 +695,35 @@ LABOR_HOURS_SEASON = {
     1: 0.85, 2: 0.88, 3: 0.95, 4: 1.00, 5: 1.05, 6: 1.08,
     7: 1.08, 8: 1.05, 9: 1.00, 10: 1.10, 11: 0.98, 12: 0.98,
 }
-OVERTIME_ALLOWANCE_RATE = 0.10
-MANAGER_ANNUAL_SALARY = 24_000
+# The flat 10% overtime allowance is retired. Nobody on this schedule
+# works more than 40 hours, so there is no overtime premium.
+OVERTIME_ALLOWANCE_RATE = 0.0
+MANAGER_ANNUAL_SALARY = 0            # replaced by PARK_COVERAGE_HOURLY_WAGE
+# The separate 4pm-9pm bartender is retired. The evening half of the
+# open day is the manager-bartender.
+BARTENDER_HOURS_PER_DAY = 0.0
+# Open hours are wages only. Bar revenue is customer counts, not these hours.
+# Mon-Thu 8am-9pm (13 hours), Friday 8am-10pm (14 hours), Sat-Sun 10am-10pm
+# (12 hours). 13 x 4 + 14 + 12 x 2 = 90 hours a week. Each day is split in
+# half: the day manager at $15 takes the first half, the evening
+# manager-bartender at $16 takes the second. That is 45 hours a week on
+# each role. Four people rotate, about 22.5 hours each. No overtime.
+PARK_MON_THU_OPEN_HOURS = 13.0
+PARK_FRIDAY_OPEN_HOURS = 14.0
+PARK_WEEKEND_OPEN_HOURS = 12.0
+PARK_MON_THU_PER_WEEK = 4
+PARK_FRIDAYS_PER_WEEK = 1
+PARK_WEEKEND_DAYS_PER_WEEK = 2
+PARK_COVERAGE_HOURS_PER_WEEK = (
+    PARK_MON_THU_OPEN_HOURS * PARK_MON_THU_PER_WEEK
+    + PARK_FRIDAY_OPEN_HOURS * PARK_FRIDAYS_PER_WEEK
+    + PARK_WEEKEND_OPEN_HOURS * PARK_WEEKEND_DAYS_PER_WEEK)  # 90
+PARK_COVERAGE_HOURS_PER_DAY = PARK_COVERAGE_HOURS_PER_WEEK / 7.0  # average, not a flat day
+PARK_COVERAGE_HEADCOUNT = 4
+PARK_COVERAGE_HOURLY_WAGE = 15.00
+EVENING_SHIFT_HOURLY_WAGE = EVENING_BARTENDER_WAGE  # $16
+DAY_SHIFT_HOURS_PER_WEEK = PARK_COVERAGE_HOURS_PER_WEEK / 2.0  # 45
+EVENING_SHIFT_HOURS_PER_WEEK = DAY_SHIFT_HOURS_PER_WEEK
 # Employer-side payroll burden on ALL cash wages (hourly + OT allowance +
 # manager salary). ~10% is a deliberately conservative blend (FICA 7.65% +
 # TX SUTA new-employer rate + FUTA). Confirm classification with a CPA.
@@ -838,23 +911,17 @@ UTILITY_BILL_PER_TRUCK = 350     # trucks pull heavy 50A loads
 # in COTA_EVENTS_BY_MONTH.
 F1_AGREEMENT_THROUGH_YEAR = 2034
 COTALAND_STATUS = "scheduled_competitor_not_park_revenue"
-# Parking uses the dedicated 3-acre lot (EVENT_PARKING_SPACES = 270 spaces)
-# on event days. The F1 tier price of $80/spot is an estimate checked against
-# neighboring lots on F1 weekends - and this lot offers more
-# value (on-site food trucks, bar, and a place to hang out while post-event
-# traffic clears), which supports both the price and repeat/word-of-mouth
-# demand vs. a bare gravel lot. "incremental_cost" is hired parking-operations
-# staff (to organize/run the lot) + extra porta-potty rental for the weekend
-# - not a big-venue staffing budget - scaled up ~1.8x from the original
-# 150-space sizing to cover the larger lot's staffing needs.
-# Bar uplift: on event days the bar extends hours / opens early to serve
-# event crowds AND runs premium event pricing across all four items instead
-# of the normal $6/$7/$3/$12, so uplift = customer-volume uplift x the event
-# check. The stored bar_uplift_per_weekend dollar figures below were sized at
-# the old $15.375 event check (beer/shots only) and are rescaled by
-# $17.055/$15.375 = 1.109 now that the container bar pours draft and
-# cocktails at event pricing too - the VOLUME assumptions behind them are
-# unchanged (see the note about not double-counting the hours restriction).
+# Event parking is one PropCo line (cota_parking). It is zero in months
+# with no event on the calendar. Pad rent is a different line (truck_rent):
+# pad rent may be passive for SBA; event parking is transactional.
+# "incremental_cost" is hired parking attendants plus extra porta-potties.
+# Only F1 still has that cost ($10,800). Every other event is $0: no
+# overflow cars, so no lot crew and no porta-potties. The park's own
+# race-day wage premium still runs on those calendar days. That is the
+# bar crew, not the parking lot. Drink residual is F1 cars only
+# (COTA_BAR_ATTACH_PER_CAR / COTA_EVENT_BEV_ATTACH_PER_PERSON).
+# Premium event menu prices still exist (COTA_EVENT_*); the forecast does
+# not multiply them by an event-crowd volume.
 COTA_EVENT_DRAFT_BEER_PRICE = 10.00
 COTA_EVENT_BEER_PRICE = 12.00
 COTA_EVENT_SHOT_PRICE = 5.00
@@ -870,54 +937,59 @@ COTA_EVENT_AVG_CHECK = DRINKS_PER_VISIT * (
 # ...); the last entry is the peak/marquee day and matches what the tier
 # used to model as a single flat occupancy. ESTIMATE - validate against a
 # real event's actual day-by-day sell-through once you have one on record.
+# No separate F1 sanitation bill. The year-round porta-potty and hand-wash
+# station already cover that weekend. Sid's $351.81 Dumpster Dogs charge
+# was for a weekend when those units were not yet on contract.
+F1_EVENT_SANITATION = 0.0
+
 COTA_EVENT_TIERS = {
     "tier1_f1": {
         "name": "F1 US Grand Prix",
-        "parking_price": 80, "daily_occupancy": [0.45, 0.75, 1.00],  # Fri practice / Sat quali / Sun race
-        "bar_uplift_per_weekend": 11_276,
-        "incremental_cost": 10_800,
+        "parking_price": EVENT_PARKING_PRICE_PER_CAR["tier1_f1"],
+        "daily_occupancy": [0.45, 0.75, 1.00],  # Fri practice / Sat quali / Sun race
+        "incremental_cost": F1_EVENT_SANITATION,  # covered by the year-round units
     },
     "tier2_motogp": {
         "name": "MotoGP Grand Prix of the Americas",
-        "parking_price": 55, "daily_occupancy": [0.40, 0.70, 0.93],  # Fri practice / Sat quali / Sun race
-        "bar_uplift_per_weekend": 5_042,
-        "incremental_cost": 6_300,
+        "parking_price": EVENT_PARKING_PRICE_PER_CAR["tier2_motogp"],
+        "daily_occupancy": [0.40, 0.70, 0.93],
+        "incremental_cost": 0,  # no overflow cars, no lot crew
     },
     "tier2_nascar": {
         "name": "NASCAR Cup Series (DuraMAX Texas Grand Prix)",
-        "parking_price": 50, "daily_occupancy": [0.55, 0.80],  # Sat support races / Sun race
-        "bar_uplift_per_weekend": 2_823,
-        "incremental_cost": 4_500,
+        "parking_price": EVENT_PARKING_PRICE_PER_CAR["tier2_nascar"],
+        "daily_occupancy": [0.55, 0.80],  # Sat support races / Sun race
+        "incremental_cost": 0,
     },
     "tier3_wec": {
         "name": "WEC 6 Hours of COTA",
-        "parking_price": 35, "daily_occupancy": [0.45, 0.70],
-        "bar_uplift_per_weekend": 1_686,
-        "incremental_cost": 2_160,
+        "parking_price": EVENT_PARKING_PRICE_PER_CAR["tier3_wec"],
+        "daily_occupancy": [0.45, 0.70],
+        "incremental_cost": 0,
     },
     "tier3_gt_transam": {
         "name": "GT World Challenge / TransAm / Other Races",
-        "parking_price": 25, "daily_occupancy": [0.25, 0.35],
-        "bar_uplift_per_weekend": 860,
-        "incremental_cost": 900,
+        "parking_price": EVENT_PARKING_PRICE_PER_CAR["tier3_gt_transam"],
+        "daily_occupancy": [0.25, 0.35],
+        "incremental_cost": 0,
     },
     "tier3_concert": {
         "name": "Major Concert (Germania Amphitheater)",
-        "parking_price": 30, "daily_occupancy": [0.55],
-        "bar_uplift_per_weekend": 566,
-        "incremental_cost": 720,
+        "parking_price": EVENT_PARKING_PRICE_PER_CAR["tier3_concert"],
+        "daily_occupancy": [0.55],
+        "incremental_cost": 0,
     },
     "tier3_festival": {
         "name": "Festival (FoodieLand, etc.)",
-        "parking_price": 30, "daily_occupancy": [0.35, 0.45],
-        "bar_uplift_per_weekend": 471,
-        "incremental_cost": 720,
+        "parking_price": EVENT_PARKING_PRICE_PER_CAR["tier3_festival"],
+        "daily_occupancy": [0.35, 0.45],
+        "incremental_cost": 0,
     },
     "tier4_trackday": {
         "name": "Track Day / Car Club / Bike Night",
-        "parking_price": 0, "daily_occupancy": [0.10],
-        "bar_uplift_per_weekend": 294,
-        "incremental_cost": 180,
+        "parking_price": EVENT_PARKING_PRICE_PER_CAR["tier4_trackday"],
+        "daily_occupancy": [0.10],
+        "incremental_cost": 0,
     },
 }
 
@@ -968,17 +1040,31 @@ COTA_EVENTS_BY_MONTH = {
 # business projects well under $1M, so franchise tax due is $0 - but the
 # entity must still file a Public Information Report or face a $50 penalty
 # and loss of good standing. That filing is covered by accounting_tax_prep.
+# Year-round sanitation. Midpoints of published Austin monthly rates with
+# weekly service. Not the one-weekend Dumpster Dogs bill.
+# Porta-potty $142–$250: midpoint $196.
+# Hand-wash $100–$235: midpoint $168.
+# 4-yard front-load dumpster, weekly pickup, $199–$324: midpoint $262.
+PORTA_POTTY_MONTHLY = 196
+HANDWASH_STATION_MONTHLY = 168
+DUMPSTER_MONTHLY = 262
+WASTE_SERVICE_MONTHLY = (PORTA_POTTY_MONTHLY + HANDWASH_STATION_MONTHLY
+                         + DUMPSTER_MONTHLY)
 FIXED_COSTS = {
-    "insurance": 900,                # GL + liquor liability + park liability (estimate - revisit now
-                                      # that the bar pours cocktails, not just prepackaged items)
+    "insurance": 400,                # operating GL + liquor liability. The vacant-land
+                                      # policy is $700/yr (~$58/mo), close to Sid's ~$63,
+                                      # and it is in the prepaid land carry, not here.
+                                      # Sensitivity, not the base: $250 and $600.
     "water_bill": 150,               # estimate pending first bill
     "electric_bill": 350,            # estimate pending first bill (common-area: lights, TVs, misters, bar coolers)
     "septic": 100,                   # estimate - drainage beyond the rented porta-potty unit
-    "marketing": 750,                # $500 marketing person + $150/mo ad spend
-    "waste_service": 388,            # actual: porta-potty $268 (TX Disposal Systems) + dumpster $120
+    "marketing": 250,                # Sid: $250/mo total, replacing $750
+    "waste_service": WASTE_SERVICE_MONTHLY,
     "wifi_internet": 165,            # actual: StarLink
     "pos_tech_subscriptions": 120,   # actual: Clover POS
-    "licenses_permits": 300,         # TABC MB permit renewal ($2,650/2yr = $110/mo) + health permit + business license
+    "licenses_permits": 300,         # PLACEHOLDER. Not a quote. Stands in for the
+                                      # TABC renewal, the health permit, and the
+                                      # business license until those bills are in.
     "maintenance_reserve": 400,      # supplies/materials only, not labor (estimate)
     "property_tax": 333,             # actual: $4,000/yr bill / 12 (county assesses LAND at $300K, not the $1.4M purchase price)
     "property_tax_improvements": PROPERTY_TAX_IMPROVEMENTS_MONTHLY,  # buildout gets added to the tax roll once complete
@@ -1039,15 +1125,14 @@ ANNUAL_COTA_VISITORS = 700_000   # 1.5M total visitors/year, 700K event-attendin
 ANNUAL_COTA_VISITOR_SPENDING = 50  # avg spend per visitor at bar/parking
 
 # --- CRE Valuation & Returns (Section 9) ---
-# Management fee and replacement reserve are variable costs (% of revenue),
-# not flat dollar amounts, so they're computed per-month in calc_monthly_total
-# rather than living in FIXED_COSTS. Both are REAL costs now, not a
-# valuation-tab-only adjustment - a change of operator/manager would bring a
-# market fee whether or not this owner charges themselves one, and a
-# working F&B-adjacent property needs a real capital replacement reserve
-# regardless of who's collecting it. Rates are standard commercial property
-# management / FF&E reserve market ranges.
-MANAGEMENT_FEE_RATE = 0.04           # % of EGI ex. utility pass-through
+# Sid self-manages. He hires the staff and collects the vendor rent.
+# There is no management company, so the management fee is zero in every
+# case, including the lender NOI. The old rate was 4% of EGI excluding
+# the utility pass-through, not 12%. Nothing else in the model charges
+# a management fee. The Bank case uses the same formula.
+# The 3% replacement reserve is a capital set-aside, not a management
+# fee, and it stays.
+MANAGEMENT_FEE_RATE = 0.0            # was 4% of EGI ex. utility pass-through
 REPLACEMENT_RESERVE_RATE = 0.03      # % of EGI ex. utility pass-through
 # Going-in AND default exit cap rate for the valuation/returns engine below.
 # Both directions (implied value today, reversion value at exit) default to
@@ -1245,12 +1330,9 @@ def calc_truck_revenue(month, year_month=None, slots=None, pad_rent=None,
     `occupancy` (0-1) is an expected-value haircut for vendor vacancy/churn -
     applied to both rent and revenue share, since an empty slot earns neither.
 
-    `event_month_boost` (0.0-COTA_TRUCK_BOOST_MAX) is the COTA-impact-slider
-    driven bump for months with an event on the calendar and the slider
-    pushed past its baseline position (see COTA_TRUCK_BOOST_MAX) - it lifts
-    per-truck sales directly and closes the vacancy gap toward full
-    occupancy proportionally, rather than pushing occupancy past 1.0.
-    Zero by default, so existing callers are unaffected.
+    `event_month_boost` is the retired food-truck spillover. It is always
+    zero while COTA_TRUCK_BOOST_MAX is 0. An event does not lift pad rent
+    or percentage rent.
     """
     max_slots = slots if slots is not None else TRUCK_SLOTS
     rent = pad_rent if pad_rent is not None else TRUCK_PAD_RENT
@@ -1340,26 +1422,24 @@ def calc_cota_event_revenue(event_list, parking_spaces=None,
                             daytime_beverage_avg_price=None,
                             impact_multiplier=1.0):
     """
-    COTA event weekends: paid parking + bar uplift + daytime-beverage
-    uplift. Parking and the beverage uplift are summed day-by-day using
-    each tier's daily_occupancy curve (lighter early days, peak on the
-    marquee day) rather than one flat rate x days. The beverage uplift is
-    derived directly from that same parking attendance (cars x
-    PEOPLE_PER_CAR x attach rate x avg price) rather than a separate
-    hardcoded per-tier number - a packed event-day parking lot obviously
-    sells more water/soda/coffee than a normal day, and this ties that
-    directly to the crowd size the model already computes for parking.
-    event_list: list of tier keys, e.g. ["tier1_f1", "tier3_concert"].
+    COTA days. Only the F1 weekend has parking.
 
-    `impact_multiplier` scales every total (including incremental_cost -
-    a bigger event needs more staffing too) uniformly: 0.0 zeroes COTA out
-    entirely regardless of the calendar passed in, 1.0 (default) is
-    unchanged/baseline behavior, values above 1.0 amplify it. See
-    COTA_IMPACT_MULTIPLIER_DEFAULT for the dashboard slider mapping.
+    Parking revenue on F1 is F1_WEEKEND_PARKING_REVENUE ($20,000), not
+    a recount of cars times a round gate price. The car list
+    F1_PARKING_CARS_BY_DAY is the crowd for the drink residual only.
+    Every other tier adds nothing: no parking, no drink residual, no
+    attendants, no porta-potties. `parking_spaces` is accepted so older
+    callers still run; it does not change the $20,000.
+
+    `daytime_beverage_attach_rate` is ignored. The event attach is
+    COTA_EVENT_BEV_ATTACH_PER_PERSON. `daytime_beverage_avg_price`
+    overrides that residual's unit price when passed.
+
+    `impact_multiplier` scales the F1 lines. 0.0 zeroes them. A non-F1
+    list stays zero at any multiplier. Food-truck sales are not here.
     """
-    spaces = parking_spaces if parking_spaces is not None else EVENT_PARKING_SPACES
-    bev_rate = (daytime_beverage_attach_rate if daytime_beverage_attach_rate is not None
-                else DAYTIME_BEVERAGE_ATTACH_RATE)
+    del parking_spaces  # F1 dollars are the weekend constant
+    del daytime_beverage_attach_rate  # event attach is its own constant
     bev_price = (daytime_beverage_avg_price if daytime_beverage_avg_price is not None
                  else DAYTIME_BEVERAGE_AVG_PRICE)
     if not event_list or impact_multiplier <= 0:
@@ -1371,13 +1451,14 @@ def calc_cota_event_revenue(event_list, parking_spaces=None,
     total_daytime_bev = 0
     total_cost = 0
     for tier_key in event_list:
-        tier = COTA_EVENT_TIERS.get(tier_key, COTA_EVENT_TIERS["tier3_gt_transam"])
-        for day_occupancy in tier["daily_occupancy"]:
-            cars = int(spaces * day_occupancy)
-            total_parking += cars * tier["parking_price"]
+        if tier_key not in EVENTS_WITH_PARKING:
+            continue
+        tier = COTA_EVENT_TIERS[tier_key]
+        total_parking += F1_WEEKEND_PARKING_REVENUE
+        for cars in F1_PARKING_CARS_BY_DAY:
+            total_bar += cars * COTA_BAR_ATTACH_PER_CAR * BAR_AVG_CHECK
             attendees = cars * PEOPLE_PER_CAR
-            total_daytime_bev += attendees * bev_rate * bev_price
-        total_bar += tier["bar_uplift_per_weekend"]
+            total_daytime_bev += attendees * COTA_EVENT_BEV_ATTACH_PER_PERSON * bev_price
         total_cost += tier["incremental_cost"]
 
     total_parking *= impact_multiplier
@@ -1401,48 +1482,48 @@ def event_days(event_list):
     return days
 
 
-def calc_scheduled_labor(event_list, cost_inflation_mult=1.0, month=None):
-    """Cash wages for the month. Lodging is not included. The 5% share is not added.
+def drink_inventory_cost(month, cost_inflation_mult=1.0):
+    """$2,000 a month on average, weighted by SEASONALITY. Includes shrinkage."""
+    mean = sum(SEASONALITY.values()) / len(SEASONALITY)
+    season = SEASONALITY.get(month, mean)
+    return DRINK_INVENTORY_MONTHLY * (season / mean) * cost_inflation_mult
 
-    Weekdays and weekends use different scheduled hours. LABOR_HOURS_SEASON
-    shortens winter shifts and lengthens October. A race day (any COTA tier
-    on the calendar) pays the evening bartender up to LABOR_RACE_EVENING_HOURS
-    and adds EVENT_EXTRA_BODIES for the full open day. Overtime is the flat
-    allowance on hourly wages, not a second time-and-a-half pass.
-    cost_inflation_mult scales wages and burden. It does not scale the loan.
+
+def calc_scheduled_labor(event_list, cost_inflation_mult=1.0, month=None):
+    """Cash wages. Same hours every day, including F1. Lodging is not expensed.
+
+    Four people rotate half-day shifts. Mon-Thu are 8am-9pm (13 hours),
+    Friday is 8am-10pm (14 hours), and weekends are 10am-10pm (12 hours):
+    90 hours a week. The day half is $15 and the evening half is $16.
+    The evening person is the bartender. There is no separate 4pm-9pm
+    bartender. 45 hours a week on each role, about 22.5 hours per person.
+    No overtime.
+    event_list does not change the pay. cost_inflation_mult scales wages.
+    It does not scale the loan.
     """
-    season = LABOR_HOURS_SEASON.get(month, 1.0) if month else 1.0
-    mult = cost_inflation_mult * season
-    daytime_wages = (
-        WEEKDAY_DAYS_PER_MONTH * LABOR_WEEKDAY_DAYTIME_HOURS * DAYTIME_ATTENDANT_WAGE
-        + WEEKEND_DAYS_PER_MONTH * LABOR_WEEKEND_DAYTIME_HOURS * DAYTIME_ATTENDANT_WAGE
-    ) * mult
-    evening_wages = (
-        WEEKDAY_DAYS_PER_MONTH * LABOR_WEEKDAY_EVENING_HOURS * EVENING_BARTENDER_WAGE
-        + WEEKEND_DAYS_PER_MONTH * LABOR_WEEKEND_EVENING_HOURS * EVENING_BARTENDER_WAGE
-    ) * mult
-    race_days = event_days(event_list)
-    # Premium over the weekend evening shift already in evening_wages.
-    race_evening_extra_hours = max(0.0, LABOR_RACE_EVENING_HOURS - LABOR_WEEKEND_EVENING_HOURS)
-    race_evening_premium = (race_days * race_evening_extra_hours
-                            * EVENING_BARTENDER_WAGE * mult)
-    extra_wages = (race_days * EVENT_EXTRA_HOURS_PER_DAY * EVENT_EXTRA_WAGE
-                   * EVENT_EXTRA_BODIES * mult)
-    hourly = daytime_wages + evening_wages + race_evening_premium + extra_wages
-    overtime = hourly * OVERTIME_ALLOWANCE_RATE
-    manager = (MANAGER_ANNUAL_SALARY / 12) * cost_inflation_mult
-    labor_wages = hourly + overtime + manager
+    del event_list, month  # the schedule does not change for a race or a season
+    days = WEEKDAY_DAYS_PER_MONTH + WEEKEND_DAYS_PER_MONTH  # 30.4-day month
+    weeks = days / 7.0
+    mult = cost_inflation_mult
+    daytime = DAY_SHIFT_HOURS_PER_WEEK * weeks * PARK_COVERAGE_HOURLY_WAGE * mult
+    evening = EVENING_SHIFT_HOURS_PER_WEEK * weeks * EVENING_SHIFT_HOURLY_WAGE * mult
+    hours_each = PARK_COVERAGE_HOURS_PER_WEEK / PARK_COVERAGE_HEADCOUNT
+    labor_wages = daytime + evening
     return {
-        "daytime_wages": daytime_wages,
-        "evening_wages": evening_wages,
-        "race_evening_premium": race_evening_premium,
-        "event_extra_wages": extra_wages,
-        "overtime_allowance": overtime,
-        "manager_salary": manager,
+        "daytime_wages": daytime,
+        "evening_wages": evening,
+        "race_evening_premium": 0.0,
+        "event_extra_wages": 0.0,
+        "overtime_allowance": 0.0,
+        "manager_salary": 0.0,
         "labor_wages": labor_wages,
         "payroll_burden": labor_wages * EMPLOYER_PAYROLL_BURDEN_RATE,
-        "season_hours_factor": season,
-        "race_days": race_days,
+        "season_hours_factor": 1.0,
+        "race_days": 0,
+        "bartender_hours_per_week": 0.0,
+        "day_shift_hours_per_week": DAY_SHIFT_HOURS_PER_WEEK,
+        "evening_shift_hours_per_week": EVENING_SHIFT_HOURS_PER_WEEK,
+        "manager_hours_per_person_per_week": hours_each,
     }
 
 
@@ -1471,13 +1552,10 @@ def calc_monthly_total(weekday_customers, weekend_customers, month, year_month=N
       3. COTA events            6. All-day beverages (soda/juice/water/coffee)
     Returns detailed breakdown dict.
 
-    `cota_impact_multiplier` (default 1.0 = today's baseline calendar) is
-    the dashboard's "COTA Event Impact" slider: 0.0 zeroes every COTA
-    revenue/cost line as if the event calendar didn't exist; values above
-    1.0 amplify it AND, in months with events on the calendar, spill over
-    into extra food-truck sales/occupancy (COTA_TRUCK_BOOST_MAX) - a
-    high-performing COTA weekend pulls in more than just parking and bar
-    customers.
+    `cota_impact_multiplier` (default 1.0) is the dashboard's "COTA Event
+    Impact" slider. 0.0 zeroes parking, the drink residual, and event
+    cost. Values above 1.0 scale those same lines. They do not add
+    food-truck sales (COTA_TRUCK_BOOST_MAX is 0).
     """
     if cota_events is not None:
         event_list = cota_events
@@ -1515,9 +1593,11 @@ def calc_monthly_total(weekday_customers, weekend_customers, month, year_month=N
     # daytime_bev_uplift) for cost-rate purposes, same as bar_like always has.
     bar_like = bar_rev + cota["bar_uplift"] + seasonal_rev
     daytime_bev_like = daytime_bev_rev + cota["daytime_bev_uplift"]
-    cogs = bar_like * COGS_RATE
+    # Inventory is Sid's $2,000 average, not the recipe COGS rate. Taxes
+    # stay on the cash receipt. Shrinkage is inside the $2,000.
+    cogs = drink_inventory_cost(month, cost_inflation_mult)
     grt, mb_sales_tax = alcohol_taxes_on_inclusive_receipts(bar_like)
-    daytime_bev_cogs = daytime_bev_like * DAYTIME_BEVERAGE_COGS_RATE
+    daytime_bev_cogs = 0.0
     daytime_bev_tax = daytime_bev_like * DAYTIME_BEVERAGE_SALES_TAX_RATE
     bar_variable_costs = cogs + grt + mb_sales_tax
     daytime_bev_variable_costs = daytime_bev_cogs + daytime_bev_tax
@@ -1527,11 +1607,11 @@ def calc_monthly_total(weekday_customers, weekend_customers, month, year_month=N
     labor_wages = labor["labor_wages"]
     payroll_burden = labor["payroll_burden"]
     cc_processing = all_bev_rev * CC_PROCESSING_RATE * CC_CARD_USAGE_RATE
-    shrinkage = (bar_like * COGS_RATE * SHRINKAGE_RATE
-                 + daytime_bev_like * DAYTIME_BEVERAGE_COGS_RATE * SHRINKAGE_RATE)
+    shrinkage = 0.0
 
-    gross_margin = (bar_like * (1 - VARIABLE_COST_RATE)
-                     + daytime_bev_like * (1 - DAYTIME_BEVERAGE_VARIABLE_COST_RATE))
+    gross_margin = (bar_like - grt - mb_sales_tax
+                    + daytime_bev_like - daytime_bev_tax
+                    - cogs)
     bev_net = (gross_margin - labor_wages - payroll_burden
                - cc_processing - shrinkage)
     parking_upkeep = cota["parking"] * PARKING_UPKEEP_RATE
@@ -2589,11 +2669,13 @@ def print_owner_summary():
     print(f"  {'FCF Yield (after-tax)':<25} {conservative['after_tax_fcf_yield']:>15.1%} {base['after_tax_fcf_yield']:>15.1%}")
 
     print(f"\n  REVENUE STREAMS (Base Case, Year 1)")
-    print(f"  {'Food Trucks (rent + share)':<32} ${base['total_trucks']:>14,.0f}")
+    print(f"  {'Food Trucks — pad rent':<32} ${base['total_truck_rent']:>14,.0f}")
+    print(f"  {'Food Trucks — percentage rent':<32} ${base['total_truck_share']:>14,.0f}")
     print(f"  {'Evening Bar (container bar)':<32} ${base['total_bar']:>14,.0f}")
     print(f"  {'All-Day Beverages (soda/juice/water/coffee)':<32} ${base['total_daytime_beverage']:>14,.0f}")
-    print(f"  {'COTA Events (all)':<32} "
-          f"${base['total_cota_parking'] + base['total_cota_bar'] + base['total_cota_daytime_bev']:>14,.0f}")
+    print(f"  {'COTA Event Parking':<32} ${base['total_cota_parking']:>14,.0f}")
+    print(f"  {'COTA drink residual':<32} "
+          f"${base['total_cota_bar'] + base['total_cota_daytime_bev']:>14,.0f}")
     print(f"  {'Seasonal Watch Parties':<32} ${base['total_seasonal']:>14,.0f}")
     print(f"  {'Utility Pass-Through (at cost)':<32} ${base['total_utility_billed']:>14,.0f}")
 
@@ -2607,7 +2689,7 @@ def print_owner_summary():
           f"check (${BAR_AVG_CHECK:.2f}) and better blended margin than a "
           f"prepackaged-only stand")
     print(f"  - Utilities sub-metered and billed at cost (no margin leakage)")
-    print(f"  - COTA event upside preserved: parking + bar uplift")
+    print(f"  - COTA is event parking. Drink sales from parked cars are a small residual")
 
 
 # =============================================================================
@@ -3163,9 +3245,12 @@ def run_returns_analysis(hold_years=None, exit_cap_rate=None, sale_cost_pct=None
         "levered_equity_multiple": (sum(levered_cash_flows[1:]) / EQUITY_BASIS
                                     if EQUITY_BASIS > 0 else None),
         "cash_on_cash_year1": ncf_by_year[0] / EQUITY_BASIS if EQUITY_BASIS > 0 else None,
+        # Dilutive when the equity IRR is below the unlevered IRR, and also
+        # when equity is never recovered (no sign change, IRR undefined).
+        # Hiding that case would report the loan as neutral.
         "leverage_dilutive": (
-            levered_irr is not None and unlevered_irr is not None
-            and levered_irr < unlevered_irr
+            unlevered_irr is not None
+            and (levered_irr is None or levered_irr < unlevered_irr)
         ),
     }
 
@@ -3321,7 +3406,10 @@ def annual_debt_service_for_product(loan_amount, product_key):
     """Annual and monthly debt service for one product at one loan size.
 
     A 504 blend splits the loan 5/9 bank and 4/9 CDC (50% and 40% of a
-    90%-debt project). Fees are not included.
+    90%-debt project). Fees are not included. SBA 7(a) DSCR that finances
+    the 3% guarantee fee on the 75% guaranteed portion is
+    sba_7a_annual_debt_service(), not this function. The operating loan
+    payment does not include that fee.
     """
     product = LOAN_PRODUCTS[product_key]
     years = product["amort_years"]
@@ -3347,6 +3435,31 @@ def annual_debt_service_for_product(loan_amount, product_key):
         "bank_amount": loan_amount,
         "cdc_amount": 0.0,
     }
+
+
+# SBA 7(a) guarantee fee for the DSCR report. 3% of the 75% guaranteed
+# portion. Financed into the note, so the payment is higher than the
+# fee-free payment in annual_debt_service_for_product(). Not added to
+# LOAN_AMOUNT, the monthly nut, or the sized ask.
+SBA_7A_GUARANTEE_SHARE = 0.75
+SBA_7A_GUARANTEE_FEE_RATE = 0.03
+
+
+def sba_7a_guarantee_fee(loan_amount):
+    """3% of the 75% guaranteed portion. Does not change project proceeds."""
+    return loan_amount * SBA_7A_GUARANTEE_SHARE * SBA_7A_GUARANTEE_FEE_RATE
+
+
+def sba_7a_note_amount(loan_amount):
+    """Note balance if the guarantee fee is financed. Proceeds stay loan_amount."""
+    return loan_amount + sba_7a_guarantee_fee(loan_amount)
+
+
+def sba_7a_annual_debt_service(loan_amount, rate=None, years=None):
+    """Annual debt service on the fee-financed 7(a) note. 10% / 25 years."""
+    rate = SBA_7A_RATE if rate is None else rate
+    years = LOAN_PRODUCTS["sba_7a"]["amort_years"] if years is None else years
+    return _amortization_payment(sba_7a_note_amount(loan_amount), rate, years) * 12
 
 
 def run_product_schedule_stub(product_key=None, loan_amount=None):
@@ -3722,8 +3835,15 @@ def export_assumptions_rows():
          "Assumption. Plus NNN. Eliminates in consolidation. Not a signed lease."),
         ("Monte Carlo seed", MONTE_CARLO_DEFAULT_SEED, "review",
          "Draws are independent. See MONTE_CARLO_SPEC."),
-        ("COTA role", "foundational", "review",
-         "No-COTA is an explicit case. F1 agreement through 2034."),
+        ("COTA role", "event parking", "review",
+         "No-COTA is an explicit case. F1 agreement through 2034. "
+         "Drink residual is small. Food-truck sales are not lifted."),
+        ("Event parking cars per peak day", EVENT_PARKING_CARS_PER_DAY, "review",
+         "Low end of the Oct 23-25 2026 F1 count (200-300). Not the 30 site-plan stalls."),
+        ("F1 weekend parking revenue", F1_WEEKEND_PARKING_REVENUE, "review",
+         "Sid's estimate for the one F1 weekend. Every other event is $0."),
+        ("Site-plan customer spaces", SITE_PLAN_CUSTOMER_SPACES, "review",
+         "Hunter sizing. Not event inventory and not a revenue line."),
         ("750k loan", 750_000, "sensitivity",
          "No named use for proceeds above the sized ask."),
     ]
@@ -3787,24 +3907,25 @@ def print_annual_summary(months, annual, label=""):
     if label:
         print(f"  {label}")
     print(f"{'=' * 93}")
-    print(f"{'Month':<7} {'Gross':>10} {'Trucks':>9} {'Bar':>9} {'DayBev':>8} "
-          f"{'COTA':>9} {'NOI':>10} {'NutCov':>7}")
-    print("-" * 93)
+    print(f"{'Month':<6} {'Gross':>10} {'Trucks':>9} {'Bar':>9} {'DayBev':>8} "
+          f"{'Parking':>9} {'EvtDrk':>8} {'NOI':>10} {'NutCov':>7}")
+    print("-" * 100)
+    print("  Parking is COTA event parking only (zero with no event). "
+          "EvtDrk is the drink residual, not parking.")
     for m in months:
-        cota = (m["cota_parking"] + m["cota_bar_uplift"]
-               + m["cota_daytime_bev_uplift"])
-        print(f"{month_names[m['month']]:<7} ${m['total_gross_revenue']:>9,.0f} "
+        drink = m["cota_bar_uplift"] + m["cota_daytime_bev_uplift"]
+        print(f"{month_names[m['month']]:<6} ${m['total_gross_revenue']:>9,.0f} "
               f"${m['truck_gross']:>8,.0f} "
               f"${m['bar_revenue']:>8,.0f} ${m['daytime_beverage_revenue']:>7,.0f} "
-              f"${cota:>8,.0f} "
+              f"${m['cota_parking']:>8,.0f} ${drink:>7,.0f} "
               f"${m['noi']:>9,.0f} {m['monthly_nut_coverage']:>6.2f}x")
-    print("-" * 93)
-    cota_total = (annual["total_cota_parking"] + annual["total_cota_bar"]
-                 + annual["total_cota_daytime_bev"])
-    print(f"{'YEAR':<7} ${annual['total_gross']:>9,.0f} "
+    print("-" * 100)
+    drink_total = annual["total_cota_bar"] + annual["total_cota_daytime_bev"]
+    print(f"{'YEAR':<6} ${annual['total_gross']:>9,.0f} "
           f"${annual['total_trucks']:>8,.0f} ${annual['total_bar']:>8,.0f} "
           f"${annual['total_daytime_beverage']:>7,.0f} "
-          f"${cota_total:>8,.0f} ${annual['total_noi']:>9,.0f} "
+          f"${annual['total_cota_parking']:>8,.0f} ${drink_total:>7,.0f} "
+          f"${annual['total_noi']:>9,.0f} "
           f"{annual['avg_monthly_nut_coverage']:>6.2f}x")
     print(f"\n  Annual Nut:              ${ANNUAL_NUT:,.0f}")
     print(f"  Free Cash Flow (pre-tax): ${annual['total_net_cash']:,.0f}")

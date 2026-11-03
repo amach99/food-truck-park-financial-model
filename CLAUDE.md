@@ -252,18 +252,7 @@ reintroduces the double-counted-principal bug this split fixed.
 
 ### Management fee & replacement reserve — real costs, not a display adjustment
 
-`MANAGEMENT_FEE_RATE` (4%) and `REPLACEMENT_RESERVE_RATE` (3%) are real,
-variable operating costs computed in `calc_monthly_total()` off EGI
-excluding the utility pass-through (a fee on wash revenue would be
-meaningless). They reduce `total_net_before_fixed` — and therefore every
-downstream cash-flow figure across the whole dashboard, not just the CRE
-tab — by roughly $25-30K/yr at stabilized. This is deliberate: a lender or
-buyer always normalizes for a market management fee and a capital
-replacement reserve regardless of how the current owner actually staffs
-the property (the manager here works in exchange for free housing, not a
-fee), and a working F&B property needs a real reserve whether or not this
-owner sets one aside. If these rates change, `test_management_fee_and_reserve_scale_with_egi`
-guards the identity.
+`MANAGEMENT_FEE_RATE` is 0. Sid hires the staff and collects the rent, so there is no management company. The old rate was 4% of EGI excluding utilities, not 12%, and no other case adds a management charge. `REPLACEMENT_RESERVE_RATE` (3%) stays. It is a capital set-aside computed in `calc_monthly_total()` off EGI excluding the utility pass-through, not a management fee. `test_management_fee_and_reserve_scale_with_egi` still checks both rates.
 
 ### Land basis — `TOTAL_PROJECT_COST` vs. `TOTAL_CAPITALIZED_BASIS`
 
@@ -358,17 +347,15 @@ owner's decision — don't change `RESERVE_FLOOR` (a Sep 30 lock) unasked.
 Cash labor is `calc_scheduled_labor()`, not a line in `FIXED_COSTS` and
 not a percent of beverage sales. `BARTENDER_SHARE_RATE` is 0 so the old
 5% share cannot stack on top of wages.
-- Daytime attendant: `DAYTIME_ATTENDANT_WAGE` ($13/hr) for the non-alcohol
-  window (`DAYTIME_BEVERAGE_HOURS_PER_DAY` − `BAR_HOURS_PER_DAY`).
-- Evening bartender: `EVENING_BARTENDER_WAGE` ($16/hr) for the alcohol window.
-- One extra body on each COTA event day: `EVENT_EXTRA_WAGE` ($15/hr).
-- `OVERTIME_ALLOWANCE_RATE` (10%) on hourly wages only.
-- Manager: `MANAGER_ANNUAL_SALARY` ($24,000). Lodging is provided
-  (`LODGING_PROVIDED`) and not expensed (`LODGING_EXPENSED` is False).
-  IRC §119 / FLSA §3(m) are flagged, not assumed.
+- Mon–Thu 8am–9pm (13 hours), Friday 8am–10pm (14 hours), weekends 10am–10pm (12 hours): 90 hours a week.
+- Day half: `PARK_COVERAGE_HOURLY_WAGE` ($15/hr), 45 hours a week.
+- Evening half: `EVENING_SHIFT_HOURLY_WAGE` ($16/hr), 45 hours a week. That person is the bartender. There is no separate 4pm–9pm bartender.
+- Four people rotate those half-day shifts, about 22.5 hours each. No overtime.
+- These hours do not drive revenue. Bar sales are customer counts. The beverage window follows truck traffic.
+- No extra body on a COTA day. F1 does not change the schedule.
+- Lodging is provided (`LODGING_PROVIDED`) and not expensed (`LODGING_EXPENSED` is False).
 - Employer burden: `EMPLOYER_PAYROLL_BURDEN_RATE` (10%) on all cash wages.
-`maintenance_reserve` is still supplies only. One attendant plus one
-bartender is a light crew for an 11-hour day; wage rates are estimates
+`maintenance_reserve` is still supplies only. Wage rates are estimates
 pending quotes. Do not revive `EXTRA_BARTENDER_COST` / `BIG_EVENT_MONTHS`.
 
 ### Revenue model shape
@@ -426,15 +413,11 @@ default) reproduces today's baseline calendar exactly:
 - **`0.0x`** zeroes every COTA revenue/cost line (`calc_cota_event_revenue`
   returns all-zero regardless of what's on the calendar) — "as if COTA
   didn't exist."
-- **`2.0x`** doubles COTA parking/bar-uplift/daytime-bev-uplift/incremental-
-  cost, AND — only in months that actually have an event on the calendar,
-  and only for the portion of the multiplier above `1.0` — boosts
-  food-truck sales and closes the vacancy gap toward full occupancy
-  (`COTA_TRUCK_BOOST_MAX`, capped at +20% at the slider's max). This is the
-  one place in the model where a COTA event spills over into truck revenue;
-  everywhere else, COTA and truck traffic are independent. Daytime-beverage
-  revenue rides along automatically since it derives from
-  `truck_total_sales` (see below) — no separate wiring needed.
+- **`2.0x`** doubles COTA event parking, the small drink residual, and
+  event staffing cost. It does not lift food-truck sales.
+  `COTA_TRUCK_BOOST_MAX` is 0. Everyday daytime-beverage revenue still
+  rides on `truck_total_sales`. Event parking is a separate line and is
+  zero in months with no event.
 
 Held fixed (not randomized) across every Monte Carlo simulation via
 `base_cota_impact_multiplier`, same convention as `base_truck_rent`/
@@ -505,20 +488,23 @@ checking, because the change cascaded:
   err-toward-higher-expenses rule — replace it with real recipe costing
   when available.
 
-On COTA/major-event days, the bar extends hours to capture the event crowd
-**and** charges premium event pricing across all four items
-(`COTA_EVENT_DRAFT_BEER_PRICE`/`COTA_EVENT_BEER_PRICE`/
-`COTA_EVENT_SHOT_PRICE`/`COTA_EVENT_COCKTAIL_PRICE` = $10/$12/$5/$16 vs.
-the normal $6/$7/$3/$12), giving `COTA_EVENT_AVG_CHECK` $17.06.
-`COTA_EVENT_TIERS[...]["bar_uplift_per_weekend"]` values are dollar
-figures = customer-*volume* uplift × the event check; when the check
-changes they must be rescaled by the **event**-check ratio (they were
-rescaled ×1.109 for this change, $15.375 → $17.055), and
-`SEASONAL_EVENTS[...]["rev_base"]` by the **normal**-check ratio (×1.2725).
-Both sets are hardcoded and hand-maintained — same drift risk `SCENARIOS`
-carries. Don't apply the reduced-customer-count logic to event-day figures
-— that would double-count the hours restriction — and don't forget the
-premium-pricing multiplier if these numbers are re-derived.
+On COTA event days the forecast books parking, not a drink spike.
+Peak-day capacity is `EVENT_PARKING_CARS_PER_DAY` (200, the low end of
+the Oct 23-25 2026 F1 count of 200-300). The site plan's
+`SITE_PLAN_CUSTOMER_SPACES` (30) are everyday customer stalls and are
+not a revenue line. Only F1 books parking, and that revenue is
+`F1_WEEKEND_PARKING_REVENUE` ($20,000 for the one weekend). The car
+curve (90 / 150 / 200) sizes the F1 drink residual only. Every other
+event is $0 parking, $0 drink residual, and $0 attendants/porta-potties.
+Parking is `cota_parking`, the existing PropCo line.
+Drink residual is `COTA_BAR_ATTACH_PER_CAR` (10% of cars, one everyday
+check) plus `COTA_EVENT_BEV_ATTACH_PER_PERSON` (10% of people in the
+car, everyday beverage price). Do not restore `bar_uplift_per_weekend`.
+The premium event menu (`COTA_EVENT_*`, check about $17.06) is still
+priced above the everyday menu and is not the volume forecast.
+`SEASONAL_EVENTS[...]["rev_base"]` was rescaled by the normal-check
+ratio (×1.2725) and stays that way. F1 still carries the $10,800
+attendant and porta-potty cost. Other events do not.
 
 The `SCENARIOS` `avg_check` values were rescaled by the same ×1.2725 normal
 -check ratio ($7.45/$8.05/$8.55/$9.00/$9.95 →
