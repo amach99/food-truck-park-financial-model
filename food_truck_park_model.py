@@ -503,6 +503,15 @@ TRUCK_REV_SHARE_RATE = 0.10      # actual starting terms: 10% revenue share
 # uncertain, so $20K is held as a deliberately conservative base with clear
 # upside - adjust via the slider to test a busier-location premium.
 TRUCK_AVG_MONTHLY_SALES = 20_000  # per truck gross sales (conservative base)
+# The park opens at 10am. An 8am open would have caught a weekday breakfast
+# window the model cannot price by the hour. Sales are spread evenly across
+# the seven days. Mon–Thu would have lost 2 hours of a 13-hour day and
+# Friday 2 hours of a 14-hour day. Those morning hours are taken at half
+# the pace of the rest of the day, because breakfast is lighter than lunch.
+# That is about 5.4% of truck food sales. The beverage window rides on
+# those sales, so it falls by the same share. Pad rent and the evening bar
+# do not. Setting this to 0 leaves the 8am sales in.
+WEEKDAY_MORNING_SALES_HAIRCUT = 0.054
 TRUCK_MARGIN = 1.0               # pure profit (trucks carry their own OpEx)
 # Expected fraction of built slots actually rented at any given time, once
 # the lot has reached its steady state. Vendors sign 6-month contracts,
@@ -703,13 +712,14 @@ MANAGER_ANNUAL_SALARY = 0            # replaced by PARK_COVERAGE_HOURLY_WAGE
 # open day is the manager-bartender.
 BARTENDER_HOURS_PER_DAY = 0.0
 # Open hours are wages only. Bar revenue is customer counts, not these hours.
-# Mon-Thu 8am-9pm (13 hours), Friday 8am-10pm (14 hours), Sat-Sun 10am-10pm
-# (12 hours). 13 x 4 + 14 + 12 x 2 = 90 hours a week. Each day is split in
-# half: the day manager at $15 takes the first half, the evening
-# manager-bartender at $16 takes the second. That is 45 hours a week on
-# each role. Four people rotate, about 22.5 hours each. No overtime.
-PARK_MON_THU_OPEN_HOURS = 13.0
-PARK_FRIDAY_OPEN_HOURS = 14.0
+# The park opens at 10am every day. Mon–Thu 10am–9pm (11 hours). Fri–Sun
+# 10am–10pm (12 hours). 11 x 4 + 12 x 3 = 80 hours a week. Each day is
+# split in half: the day manager at $15 takes the first half, the evening
+# manager-bartender at $16 takes the second, about 3pm to close. That is
+# 40 hours a week on each role. Four people rotate, about 20 hours each.
+# No overtime.
+PARK_MON_THU_OPEN_HOURS = 11.0
+PARK_FRIDAY_OPEN_HOURS = 12.0
 PARK_WEEKEND_OPEN_HOURS = 12.0
 PARK_MON_THU_PER_WEEK = 4
 PARK_FRIDAYS_PER_WEEK = 1
@@ -717,12 +727,12 @@ PARK_WEEKEND_DAYS_PER_WEEK = 2
 PARK_COVERAGE_HOURS_PER_WEEK = (
     PARK_MON_THU_OPEN_HOURS * PARK_MON_THU_PER_WEEK
     + PARK_FRIDAY_OPEN_HOURS * PARK_FRIDAYS_PER_WEEK
-    + PARK_WEEKEND_OPEN_HOURS * PARK_WEEKEND_DAYS_PER_WEEK)  # 90
-PARK_COVERAGE_HOURS_PER_DAY = PARK_COVERAGE_HOURS_PER_WEEK / 7.0  # average, not a flat day
+    + PARK_WEEKEND_OPEN_HOURS * PARK_WEEKEND_DAYS_PER_WEEK)  # 80
+PARK_COVERAGE_HOURS_PER_DAY = PARK_COVERAGE_HOURS_PER_WEEK / 7.0
 PARK_COVERAGE_HEADCOUNT = 4
 PARK_COVERAGE_HOURLY_WAGE = 15.00
 EVENING_SHIFT_HOURLY_WAGE = EVENING_BARTENDER_WAGE  # $16
-DAY_SHIFT_HOURS_PER_WEEK = PARK_COVERAGE_HOURS_PER_WEEK / 2.0  # 45
+DAY_SHIFT_HOURS_PER_WEEK = PARK_COVERAGE_HOURS_PER_WEEK / 2.0  # 40
 EVENING_SHIFT_HOURS_PER_WEEK = DAY_SHIFT_HOURS_PER_WEEK
 # Employer-side payroll burden on ALL cash wages (hourly + OT allowance +
 # manager salary). ~10% is a deliberately conservative blend (FICA 7.65% +
@@ -1342,6 +1352,8 @@ def calc_truck_revenue(month, year_month=None, slots=None, pad_rent=None,
     if event_month_boost:
         occ = occ + (1.0 - occ) * event_month_boost
         sales = sales * (1 + event_month_boost)
+    # 10am open. See WEEKDAY_MORNING_SALES_HAIRCUT. Rent is not touched.
+    sales = sales * (1.0 - WEEKDAY_MORNING_SALES_HAIRCUT)
 
     slots_active = resolve_truck_count(year_month, max_slots)
 
@@ -1492,12 +1504,11 @@ def drink_inventory_cost(month, cost_inflation_mult=1.0):
 def calc_scheduled_labor(event_list, cost_inflation_mult=1.0, month=None):
     """Cash wages. Same hours every day, including F1. Lodging is not expensed.
 
-    Four people rotate half-day shifts. Mon-Thu are 8am-9pm (13 hours),
-    Friday is 8am-10pm (14 hours), and weekends are 10am-10pm (12 hours):
-    90 hours a week. The day half is $15 and the evening half is $16.
-    The evening person is the bartender. There is no separate 4pm-9pm
-    bartender. 45 hours a week on each role, about 22.5 hours per person.
-    No overtime.
+    Four people rotate half-day shifts. The park opens at 10am. Mon–Thu
+    run to 9pm (11 hours) and Fri–Sun run to 10pm (12 hours): 80 hours a
+    week. The day half is $15 and the evening half is $16. The evening
+    person is the bartender. There is no separate 4pm–9pm bartender.
+    40 hours a week on each role, about 20 hours per person. No overtime.
     event_list does not change the pay. cost_inflation_mult scales wages.
     It does not scale the loan.
     """

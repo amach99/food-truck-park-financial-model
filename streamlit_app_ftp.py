@@ -1112,10 +1112,11 @@ with tabs[8]:
          "Rate": f"{model.SHRINKAGE_RATE:.1%} of COGS value",
          "Annual (Base Case)": base["total_shrinkage"]},
         {"Expense": "Scheduled labor (day manager + evening manager-bartender)",
-         "Rate": (f"Mon–Thu 8am–9pm, Friday 8am–10pm, weekends 10am–10pm. "
-                  f"{model.DAY_SHIFT_HOURS_PER_WEEK:.0f} day hours/week at "
+         "Rate": (f"Opens 10am. Mon–Thu to 9pm, Fri–Sun to 10pm, "
+                  f"{model.PARK_COVERAGE_HOURS_PER_WEEK:.0f} hours/week. "
+                  f"{model.DAY_SHIFT_HOURS_PER_WEEK:.0f} day hours at "
                   f"${model.PARK_COVERAGE_HOURLY_WAGE:.0f}/hr and "
-                  f"{model.EVENING_SHIFT_HOURS_PER_WEEK:.0f} evening hours/week at "
+                  f"{model.EVENING_SHIFT_HOURS_PER_WEEK:.0f} evening hours at "
                   f"${model.EVENING_SHIFT_HOURLY_WAGE:.0f}/hr. "
                   "No separate bartender. No overtime."),
          "Annual (Base Case)": base["total_labor_wages"]},
@@ -1607,7 +1608,7 @@ with tabs[10]:
             | Land | {model.LAND_ACRES} deeded acres, owned outright (\${model.LAND_PURCHASE_PRICE:,.0f} basis) — no rent or mortgage in the nut |
             | Truck count | {model.TRUCK_SLOTS} hubs, leasing up over Year 1 (no more budgeted) |
             | Cost basis | Itemized from the owner's real Phase 0.5 cost tracker + the actual loan request |
-            | Coverage | Mon–Thu 8am–9pm, Friday 8am–10pm, weekends 10am–10pm. Day half at \${model.PARK_COVERAGE_HOURLY_WAGE:.0f}/hr, evening half at \${model.EVENING_SHIFT_HOURLY_WAGE:.0f}/hr. 45 hours on each role. Four people, no overtime. {model.EMPLOYER_PAYROLL_BURDEN_RATE:.0%} burden. Lodging is not expensed |
+            | Coverage | Opens 10am. Mon–Thu to 9pm, Fri–Sun to 10pm, {model.PARK_COVERAGE_HOURS_PER_WEEK:.0f} hours/week. Day half at \${model.PARK_COVERAGE_HOURLY_WAGE:.0f}/hr, evening half at \${model.EVENING_SHIFT_HOURLY_WAGE:.0f}/hr. Four people, no overtime. {model.EMPLOYER_PAYROLL_BURDEN_RATE:.0%} burden. Lodging is not expensed |
             | Bar offering | Full container bar: \${model.DRAFT_BEER_PRICE:.0f} draft / \${model.BEER_PRICE:.0f} canned / \${model.SHOT_PRICE:.0f} shots / \${model.COCKTAIL_PRICE:.0f} cocktails; premium pricing during COTA events |
             | Coverage metrics | Nut Coverage (plain-language) + real DSCR (CRE Investment Summary tab) |
             | Primary output | Owner summary + FCF yield + loan amortization schedule + CRE underwriting view |

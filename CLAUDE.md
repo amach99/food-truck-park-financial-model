@@ -347,10 +347,11 @@ owner's decision — don't change `RESERVE_FLOOR` (a Sep 30 lock) unasked.
 Cash labor is `calc_scheduled_labor()`, not a line in `FIXED_COSTS` and
 not a percent of beverage sales. `BARTENDER_SHARE_RATE` is 0 so the old
 5% share cannot stack on top of wages.
-- Mon–Thu 8am–9pm (13 hours), Friday 8am–10pm (14 hours), weekends 10am–10pm (12 hours): 90 hours a week.
-- Day half: `PARK_COVERAGE_HOURLY_WAGE` ($15/hr), 45 hours a week.
-- Evening half: `EVENING_SHIFT_HOURLY_WAGE` ($16/hr), 45 hours a week. That person is the bartender. There is no separate 4pm–9pm bartender.
-- Four people rotate those half-day shifts, about 22.5 hours each. No overtime.
+- Opens at 10am. Mon–Thu to 9pm (11 hours), Fri–Sun to 10pm (12 hours): 80 hours a week.
+- Day half: `PARK_COVERAGE_HOURLY_WAGE` ($15/hr), 40 hours a week.
+- Evening half: `EVENING_SHIFT_HOURLY_WAGE` ($16/hr), 40 hours a week. That person is the bartender. There is no separate 4pm–9pm bartender.
+- Four people rotate those half-day shifts, about 20 hours each. No overtime.
+- `WEEKDAY_MORNING_SALES_HAIRCUT` (5.4%) reduces truck food sales and the beverage window for the 8–10am window that is no longer open. Pad rent and the evening bar are not reduced.
 - These hours do not drive revenue. Bar sales are customer counts. The beverage window follows truck traffic.
 - No extra body on a COTA day. F1 does not change the schedule.
 - Lodging is provided (`LODGING_PROVIDED`) and not expensed (`LODGING_EXPENSED` is False).

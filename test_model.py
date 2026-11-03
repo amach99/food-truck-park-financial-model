@@ -900,15 +900,15 @@ def test_scheduled_labor_replaces_revenue_share():
     assert m.LODGING_PROVIDED and not m.LODGING_EXPENSED
     assert m.PARK_COVERAGE_HOURLY_WAGE == 15
     assert m.BARTENDER_HOURS_PER_DAY == 0
-    # 45 day hours at $15 and 45 evening hours at $16. 90 hours a week.
+    # 40 day hours at $15 and 40 evening hours at $16. 80 hours a week.
     labor = m.calc_scheduled_labor([])
     assert labor["bartender_hours_per_week"] == 0
-    assert labor["day_shift_hours_per_week"] == pytest.approx(45)
-    assert labor["evening_shift_hours_per_week"] == pytest.approx(45)
-    assert m.PARK_COVERAGE_HOURS_PER_WEEK == pytest.approx(90)
-    assert labor["manager_hours_per_person_per_week"] == pytest.approx(22.5)
+    assert labor["day_shift_hours_per_week"] == pytest.approx(40)
+    assert labor["evening_shift_hours_per_week"] == pytest.approx(40)
+    assert m.PARK_COVERAGE_HOURS_PER_WEEK == pytest.approx(80)
+    assert labor["manager_hours_per_person_per_week"] == pytest.approx(20)
     weeks = (m.WEEKDAY_DAYS_PER_MONTH + m.WEEKEND_DAYS_PER_MONTH) / 7.0
-    assert labor["labor_wages"] == pytest.approx(45 * weeks * 15 + 45 * weeks * 16)
+    assert labor["labor_wages"] == pytest.approx(40 * weeks * 15 + 40 * weeks * 16)
     assert m.PARK_COVERAGE_HEADCOUNT == 4
     assert y2["total_event_extra_wages"] == 0
     assert y2["total_race_evening_premium"] == 0
@@ -1126,6 +1126,26 @@ def test_land_carry_is_six_months_of_vacant_bills():
     assert m.LAND_CARRY_MONTHLY == 621
     assert m.LAND_CARRY == 3_726
     assert m.LAND_CARRY_MONTHS_PREPAID == 6
+
+
+def test_morning_open_cuts_food_sales_not_pad_rent_or_the_bar():
+    """10am open. 5.4% of truck food sales and the beverage window.
+    Pad rent and the evening bar are not in that haircut."""
+    assert m.WEEKDAY_MORNING_SALES_HAIRCUT == pytest.approx(0.054)
+    trucks = m.TRUCK_SLOTS * m.TRUCK_OCCUPANCY
+    season = m.SEASONALITY[4]
+    sales = m.TRUCK_AVG_MONTHLY_SALES * (1.0 - m.WEEKDAY_MORNING_SALES_HAIRCUT)
+    got = m.calc_truck_revenue(4)
+    assert got["rent_income"] == pytest.approx(trucks * m.TRUCK_PAD_RENT)
+    assert got["share_income"] == pytest.approx(
+        trucks * sales * m.TRUCK_REV_SHARE_RATE * season)
+    bev = m.calc_daytime_beverage_revenue(got["truck_total_sales"])
+    full_sales = trucks * m.TRUCK_AVG_MONTHLY_SALES * season
+    full_bev = m.calc_daytime_beverage_revenue(full_sales)
+    assert bev == pytest.approx(full_bev * (1.0 - m.WEEKDAY_MORNING_SALES_HAIRCUT))
+    bar = m.calc_monthly_total(20, 58, 4)
+    assert bar["bar_revenue"] > 0
+    assert bar["truck_rent"] == pytest.approx(got["rent_income"])
 
 
 def test_labor_is_the_same_on_an_f1_day():
