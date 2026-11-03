@@ -1296,6 +1296,19 @@ def test_business_plan_generates_from_the_model(tmp_path, monkeypatch):
     assert f"${m.LOAN_AMOUNT:,.0f}" in text
     assert "{" not in text.replace("{}", ""), "unformatted f-string placeholder in plan"
     assert "$-" not in text, "negative amounts must render as -$x"
+    headings = [
+        "## 1. Executive Summary",
+        "## 2. Company Description",
+        "## 3. Market Analysis",
+        "## 4. Management",
+        "## 5. Product or Service",
+        "## 6. Marketing & Sales",
+        "## 7. Funding Request",
+        "## 8. Projections",
+        "## 9. Appendix",
+    ]
+    found = [line for line in text.splitlines() if line.startswith("## ")]
+    assert found == headings
     if m.OPENING_CASH_RESERVE < m.RESERVE_AND_SAFETY_CASH * 0.25:
         assert "does not cover that shortfall" in text or "thin point" in text
 

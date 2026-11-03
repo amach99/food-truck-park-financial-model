@@ -308,7 +308,9 @@ def gather():
 
 
 # --------------------------------------------------------------------------
-# Sections - ordered to the independent review's recommended lender narrative
+# Earlier section writers. Not called. main() uses the nine outline_*
+# sections Nationwide asked for. Kept so a number that still belongs in
+# the plan can be copied from here instead of retyped.
 # --------------------------------------------------------------------------
 
 def cover(b, d):
@@ -1544,30 +1546,607 @@ def s9_appendix(b, d):
         "before filing.")
 
 
+# The facility this proposal asks Nationwide Commercial Capital to consider.
+# The engine's LOAN_AMOUNT remains the itemized uses. Debt service below is
+# the model's SBA 7(a) payment, including the guarantee fee.
+REQUESTED_LOAN = 750_000
+
+
+def _ads(amount=None, product="sba_7a"):
+    amount = REQUESTED_LOAN if amount is None else amount
+    if product == "sba_7a":
+        return m.sba_7a_annual_debt_service(amount)
+    return m.annual_debt_service_for_product(amount, product)["annual_debt_service"]
+
+
+def _dscr(noi, amount=None, product="sba_7a"):
+    ads = _ads(amount, product)
+    return noi / ads if ads else None
+
+
+def _year2():
+    """Second operating year: growth and cost inflation, not the flat run-rate."""
+    return m.run_multi_year_projection(years=2)[1][2]
+
+
+def _noi_cases():
+    return m._noi_cases(years=2)
+
+
+def outline_executive_summary(b, d):
+    y1, y2 = d["y1"], d["y2"]
+    ads = _ads()
+    b.pagebreak()
+    b.h1("1. Executive Summary")
+    b.para(
+        "JVAM Capital LLC requests a $750,000 SBA 7(a) loan to finish a food truck "
+        "park and container bar at 13901 FM 812, Del Valle, Texas, on land the company "
+        "already owns free and clear, directly across FM 812 from Circuit of the Americas.")
+    b.para(
+        f"The itemized uses in this plan total {money(m.LOAN_AMOUNT)}. That stack already "
+        f"includes a gated septic allowance of {money(m.SEPTIC)}. The requested facility is "
+        f"{money(REQUESTED_LOAN)}. The difference, {money(REQUESTED_LOAN - m.LOAN_AMOUNT)}, "
+        "is not assigned to a line item. The sponsor is waiting on quotes for septic versus "
+        "a sewer connection. Those quotes are not in the model, and the opening date is "
+        f"not changed. Opening is {_month_name(m.OPENING_MONTH)} {m.OPENING_YEAR}.")
+    b.para(
+        f"On the current projections, stabilized net operating income is "
+        f"{money(y2['total_noi'])}. Against the requested 7(a) payment of {money(ads)} a "
+        f"year, including the guarantee fee financed into the note, stabilized coverage is "
+        f"{ratio(_dscr(y2['total_noi']))}. Year 1 coverage, during lease-up, is "
+        f"{ratio(_dscr(y1['total_noi']))}. The sponsor manages the property himself. There "
+        f"is no management company and no management fee. A "
+        f"{pct(m.REPLACEMENT_RESERVE_RATE, 0)} replacement reserve is still deducted.")
+    b.para(
+        "The principal operating risk is reliance on one Formula 1 weekend for event "
+        f"parking. That weekend is modelled at {money(m.F1_WEEKEND_PARKING_REVENUE)}. No "
+        "other COTA event is given parking revenue or a food-sales uplift. There is no "
+        "contract with COTA.")
+
+
+def outline_company(b, d):
+    b.pagebreak()
+    b.h1("2. Company Description")
+    b.para(
+        "JVAM Capital LLC will own the real estate. JVA Operations LLC will run the park "
+        "and hold the TABC Mixed Beverage Permit. Both are Texas entities, wholly owned by "
+        "JVAM Ventures LLC. Alok Macharla is the manager of both Texas entities.")
+    b.para(
+        "The business rents pads to food trucks, sells drinks from a container bar, and "
+        "parks cars on the open land during the Formula 1 weekend. It is not a full-service "
+        "restaurant and it does not sell tobacco. Dollar General is next door and already "
+        "sells packaged goods.")
+    b.para(
+        "What is hard to copy is the location. The site fronts FM 812 opposite Circuit of "
+        "the Americas. A food-truck park in central Austin cannot offer event parking on "
+        "this side of the road. The plan does not treat that adjacency as a guarantee of "
+        "sales. Only the F1 weekend is given parking revenue.")
+    b.para(
+        "The customers are food-truck operators looking for a pad, Del Valle and southeast "
+        "Austin residents using the park on ordinary days, and drivers who need a place to "
+        "leave a car during the F1 weekend. Vendor leases are not signed. Six operators "
+        "have expressed interest.")
+
+
+def outline_market(b, d):
+    y2 = d["y2"]
+    b.pagebreak()
+    b.h1("3. Market Analysis")
+    b.para(
+        f"The site is {m.LAND_ACRES} deeded acres at 13901 FM 812, Del Valle, Travis County, "
+        "held free and clear. A Dollar General is immediately adjacent. The nearest COTA "
+        "parking facility, Lot T, is about 0.5 miles by road. The main public entrance at "
+        "9201 Circuit of the Americas Boulevard is about 1.3 miles by road. Whether the land "
+        "directly across FM 812 is owned or only operated by COTA is a title question.")
+    b.para(
+        f"The model carries {m.LOCAL_HOUSEHOLDS:,} households in the local trade area and "
+        f"{m.ANNUAL_COTA_VISITORS:,.0f} event visitors a year at the circuit as context. "
+        "Those figures are not a forecast of this park's customers. Revenue in Section 8 "
+        "is built from pad counts, drink counts and one parking weekend.")
+    b.para(
+        f"Everyday customer parking on the site plan is {m.SITE_PLAN_CUSTOMER_SPACES} spaces. "
+        "Those spaces earn no parking revenue. The Formula 1 peak-day count of "
+        f"{m.EVENT_PARKING_CARS_PER_DAY} cars is what the sponsor observed in October 2026, "
+        "not a stamped stall layout. The parking dollars in this plan are the flat "
+        f"{money(m.F1_WEEKEND_PARKING_REVENUE)} weekend.")
+    b.para(
+        "The local need is a permanent place for food trucks with utilities, a restroom "
+        "solution, and a drink stand, plus a legal place to park during the largest race "
+        "weekend. The park opens at 10am. It does not try to capture an 8am breakfast rush. "
+        f"Truck food sales and the beverage window are reduced by "
+        f"{pct(m.WEEKDAY_MORNING_SALES_HAIRCUT, 1)} for that reason. The evening bar is not "
+        "reduced, because it is not a morning business. Pad rent is not reduced, because it "
+        "is a monthly charge.")
+    b.h2("Event calendar")
+    b.para(
+        "Twelve COTA-area dates are on the calendar. Only the Formula 1 weekend produces "
+        f"parking revenue, and that revenue is a flat {money(m.F1_WEEKEND_PARKING_REVENUE)}. "
+        "MotoGP, NASCAR, endurance races, concerts and festivals are on the calendar and "
+        "are modelled at zero parking and zero food-sales uplift. The sponsor's experience "
+        "at the October 2026 F1 weekend was that overflow from the other events does not "
+        "reach this site, and that F1 itself did not lift food sales. A small drink residual "
+        "is still modelled on the F1 cars. It is not a second business.")
+    rows = []
+    for key, tier in m.COTA_EVENT_TIERS.items():
+        count = sum(1 for month in m.COTA_EVENTS_BY_MONTH.values() for k in month if k == key)
+        if key == "tier1_f1":
+            price = money(m.F1_WEEKEND_PARKING_REVENUE) + " for the weekend"
+        elif count:
+            price = "$0 — no overflow parking"
+        else:
+            price = "Not used"
+        rows.append([
+            tier["name"], price,
+            f"{count}x per year" if count else "Not in the modelled year",
+        ])
+    b.table(["Event", "Parking revenue in this plan", "Frequency"], rows,
+            widths=[2.6, 2.2, 1.6])
+    b.para(
+        f"F1 parking is {pct(y2['total_cota_parking'] / y2['total_gross'])} of stabilized "
+        f"revenue. All event-linked revenue, including the small drink residual, is "
+        f"{pct(y2['event_dependent_revenue_share'])}. There is no contract with COTA. The "
+        f"F1 agreement at the circuit runs through {m.F1_AGREEMENT_THROUGH_YEAR}.")
+    b.h2("Competitors")
+    b.para(
+        "COTALAND is a scheduled competitor. It is not modelled as revenue for this park. "
+        "Dollar General is next door and already sells packaged goods, which is why this "
+        "plan does not sell tobacco or convenience items.")
+    _placeholder(b,
+        "TO BE COMPLETED BY BORROWER. Name COTALAND, nearby food-truck parks, private "
+        "F1 parking lots, and Dollar General, with distance and how this site differs. "
+        "Do not claim the site has no competition.")
+
+
+def outline_management(b, d):
+    y2 = d["y2"]
+    b.pagebreak()
+    b.h1("4. Management")
+    b.para(
+        "Alok Macharla manages both Texas companies. He will hire the floor staff directly "
+        "and collect the vendor rent. There is no third-party management company, and the "
+        f"projections deduct a management fee of {pct(m.MANAGEMENT_FEE_RATE, 0)}. A "
+        f"{pct(m.REPLACEMENT_RESERVE_RATE, 0)} replacement reserve is still deducted. It is "
+        "a capital set-aside, not a management fee.")
+    b.para(
+        f"The floor is four people on a rotation, {m.PARK_COVERAGE_HOURS_PER_WEEK:.0f} "
+        "staffed hours a week, seven days. The park opens at 10am. Monday through Thursday "
+        "it closes at 9pm (11 hours). Friday, Saturday and Sunday it closes at 10pm "
+        "(12 hours). Each day is split in half. The day manager is paid "
+        f"{money(m.PARK_COVERAGE_HOURLY_WAGE, cents=True)} an hour. The evening "
+        "manager-bartender is paid "
+        f"{money(m.EVENING_SHIFT_HOURLY_WAGE, cents=True)} an hour and is the only person "
+        "tending bar. There is no separate bartender and no overtime. Employer payroll "
+        f"burden is {pct(m.EMPLOYER_PAYROLL_BURDEN_RATE, 0)}.")
+    weeks = (m.WEEKDAY_DAYS_PER_MONTH + m.WEEKEND_DAYS_PER_MONTH) / 7.0
+    b.table(["Role", "Hours per week", "Rate", "Stabilized wages"], [
+        ["Day manager, first half of each day",
+         f"{m.DAY_SHIFT_HOURS_PER_WEEK:.0f}",
+         f"{money(m.PARK_COVERAGE_HOURLY_WAGE, cents=True)}/hr",
+         money(y2["total_daytime_wages"])],
+        ["Evening manager-bartender, second half through close",
+         f"{m.EVENING_SHIFT_HOURS_PER_WEEK:.0f}",
+         f"{money(m.EVENING_SHIFT_HOURLY_WAGE, cents=True)}/hr",
+         money(y2["total_evening_wages"])],
+        ["Overtime", "None. About 20 hours per person.", "—",
+         money(y2["total_overtime_allowance"])],
+        ["Employer payroll burden", "On all cash wages",
+         pct(m.EMPLOYER_PAYROLL_BURDEN_RATE, 0),
+         money(y2["total_payroll_burden"])],
+        ["Total cash labor", "", "",
+         money(y2["total_labor_wages"] + y2["total_payroll_burden"])],
+    ], widths=[2.6, 1.6, 1.2, 1.2])
+    b.note(
+        "Housing may be provided and is not expensed and not credited against wages. "
+        "Whether IRC §119 or FLSA §3(m) applies is a question for counsel. "
+        f"A 30.4-day month is {weeks:.2f} weeks, which is how the annual wage total is built.")
+    _placeholder(b,
+        "TO BE COMPLETED BY BORROWER. Attach Alok Macharla's résumé and a short statement "
+        "of operating experience that a credit officer can rely on. Confirm worker "
+        "classification for the four rotating staff.")
+
+
+def outline_product(b, d):
+    y2 = d["y2"]
+    b.pagebreak()
+    b.h1("5. Product or Service")
+    b.para(
+        "The park sells four things an ordinary customer can buy, plus a pad to a vendor.")
+    b.table(["What is sold", "Who buys it", "How often", "Stabilized revenue"], [
+        ["Pad rent", "Food-truck operator", "Monthly, whether or not the truck is busy",
+         money(y2["total_truck_rent"])],
+        ["Percentage rent", "Food-truck operator, as a share of food sales",
+         "Monthly, and it moves with sales", money(y2["total_truck_share"])],
+        ["Evening bar: draft beer, canned beer, shots, cocktails",
+         "Park customer after 3pm", "By the visit", money(y2["total_bar"])],
+        ["Soda, juice, water, coffee", "Daytime park customer", "By the visit",
+         money(y2["total_daytime_beverage"])],
+        ["F1 weekend parking", "Driver attending the race", "One weekend a year",
+         money(y2["total_cota_parking"])],
+        ["F1 drink residual", "Some of those parked customers", "That same weekend",
+         money(y2["total_cota_bar"] + y2["total_cota_daytime_bev"])],
+        ["Watch parties: Super Bowl, March Madness, New Year's Eve",
+         "Park customer", "Three nights a year", money(y2["total_seasonal"])],
+        ["Truck utilities, billed at cost", "Food-truck operator",
+         "Monthly. No markup, so it does not change profit.",
+         money(y2["total_utility_billed"])],
+        ["**Stabilized revenue**", "", "", f"**{money(y2['total_gross'])}**"],
+    ], widths=[2.2, 1.8, 1.6, 1.2])
+    b.para(
+        f"Intended pad terms are {money(m.TRUCK_PAD_RENT)} a month plus "
+        f"{pct(m.TRUCK_REV_SHARE_RATE, 0)} of the truck's food sales. No lease is signed. "
+        f"Steady-state occupancy is {pct(m.TRUCK_OCCUPANCY, 0)} of {m.TRUCK_SLOTS} pads. "
+        f"The evening bar is modelled at {m.BAR_WEEKDAY_CUSTOMERS} weekday customers and "
+        f"{m.BAR_WEEKEND_CUSTOMERS} weekend customers, at a check of "
+        f"{money(m.BAR_AVG_CHECK, cents=True)}. The beverage window is "
+        f"{pct(m.DAYTIME_BEVERAGE_ATTACH_RATE, 0)} of implied food-truck customers at "
+        f"{money(m.DAYTIME_BEVERAGE_AVG_PRICE, cents=True)}. Drink inventory is budgeted at "
+        f"{money(m.DRINK_INVENTORY_MONTHLY)} a month on average, not at a recipe percentage. "
+        "That is about "
+        f"{pct(y2['total_cogs'] / (y2['total_bar'] + y2['total_daytime_beverage'] + y2['total_cota_bar'] + y2['total_cota_daytime_bev'] + y2['total_seasonal']))} "
+        "of drink sales, which is below a typical 18–24% pour cost. It is the sponsor's "
+        "budget, and it should be read as thin.")
+    b.para(
+        "Suppliers for beer, liquor, and the soda window are not yet under "
+        "contract. The trucks are the food suppliers. The park does not cook. Waste is a "
+        f"year-round porta-potty, hand-wash station and dumpster at "
+        f"{money(m.WASTE_SERVICE_MONTHLY)} a month. A separate F1 sanitation crew is not "
+        "budgeted. The year-round units cover that weekend.")
+
+
+def outline_marketing(b, d):
+    b.pagebreak()
+    b.h1("6. Marketing & Sales")
+    b.para(
+        f"Marketing is budgeted at {money(m.FIXED_COSTS['marketing'])} a month. That is the "
+        "whole marketing line. It is not a campaign plan, and it is not a hired agency.")
+    b.para(
+        "The sales plan has three parts. First, sign food trucks. The model opens about half "
+        "leased and fills the four pads over the first two or three quarters, then holds "
+        f"occupancy at {pct(m.TRUCK_OCCUPANCY, 0)}. Second, the evening bar has to be found. "
+        "Year 1 bar and beverage sales follow a discovery ramp that starts well below the "
+        "run rate and reaches it late in the year. Third, the F1 weekend is a parking "
+        "operation the sponsor has already run once, in October 2026. It is not a marketing "
+        "program. It is one weekend of gate revenue.")
+    b.para(
+        "Nothing in the projection assumes a viral opening, a festival series, or parking "
+        "revenue from MotoGP, NASCAR, concerts or club dates. Those dates are on the "
+        "calendar and contribute zero parking revenue.")
+
+
+def outline_funding(b, d):
+    b.pagebreak()
+    b.h1("7. Funding Request")
+    ads = _ads()
+    fee = m.sba_7a_guarantee_fee(REQUESTED_LOAN)
+    note = m.sba_7a_note_amount(REQUESTED_LOAN)
+    product = m.LOAN_PRODUCTS["sba_7a"]
+    b.para(
+        f"The request is a {money(REQUESTED_LOAN)} {product['label']} loan, "
+        f"{product['amort_years']} years, at a placeholder rate of {pct(m.SBA_7A_RATE)} "
+        f"variable. The upfront guarantee fee is {pct(m.SBA_7A_GUARANTEE_FEE_RATE, 0)} of "
+        f"the {pct(m.SBA_7A_GUARANTEE_SHARE, 0)} guaranteed portion, {money(fee)}, and it is "
+        f"financed into the note. The note balance used for debt service is {money(note)}. "
+        f"The annual payment on that note is {money(ads)}, about {money(ads / 12)} a month. "
+        "This is not a quoted rate.")
+    b.para(
+        "SBA 7(a) and 504 loans typically require a personal guarantee. The sponsor's "
+        "preference is land collateral and no personal guarantee. That preference conflicts "
+        "with the usual SBA rule and is disclosed, not waived.")
+    b.h2("What the money is for")
+    b.para(
+        f"The itemized uses below total {money(m.LOAN_AMOUNT)}. They are the build-out, the "
+        "payoff of the existing line of credit, and a reserve. The requested check is "
+        f"{money(REQUESTED_LOAN)}. The {money(REQUESTED_LOAN - m.LOAN_AMOUNT)} above those "
+        "uses is for a sewer connection if that bid, rather than the septic allowance already "
+        "in the stack, is the one that gets built. Quotes are outstanding. Until one is "
+        "chosen, that remainder has no named line and is not modelled as extra construction.")
+    status_text = {"done": "Already incurred", "gated": "Budgeted; release gated",
+                   "tbd": "Amount TBD — quote pending", "not_started": "Not yet started"}
+    b.table(["Use", "Amount", "Status"],
+            [[label, money(amt), status_text.get(st, st)]
+             for label, amt, st in m.USE_OF_FUNDS]
+            + [["**Itemized uses**", f"**{money(m.TOTAL_PROJECT_COST)}**", ""],
+               ["Requested SBA 7(a) facility", money(REQUESTED_LOAN),
+                "Includes unassigned proceeds pending septic or sewer quotes"],
+               ["Unassigned above the itemized uses",
+                money(REQUESTED_LOAN - m.LOAN_AMOUNT),
+                "Not a modelled asset and not a change to the opening date"]],
+            widths=[3.6, 1.4, 1.8])
+    b.para(
+        f"Septic, {money(m.SEPTIC)}, is in the itemized uses and is gated. It is not released "
+        "to spend until the approval is in hand. A sewer connection is the alternative the "
+        "sponsor is pricing. The opening date stays "
+        f"{_month_name(m.OPENING_MONTH)} {m.OPENING_YEAR} either way.")
+    b.para(
+        f"A {money(500_000)} loan does not fund the itemized uses. It is not the request.")
+    b.h2("Capital already in place")
+    b.para(
+        "The table in the previous section is the sources and uses of this loan. "
+        "The figures below are capital the company already has. They are not a second "
+        f"check, and they are not added to the {money(REQUESTED_LOAN)} request.")
+    b.table(["Already in place", "Amount"], [
+        ["Land equity, already owned, not funded by this loan", money(m.LAND_PURCHASE_PRICE)],
+        ["Phase 0.5 site work, already spent, refinanced through the LOC payoff",
+         money(m.PHASE_0_5_TOTAL)],
+    ], widths=[4.6, 1.6])
+    b.para(
+        "The land basis is what the sponsor paid in a related-party transfer. It is not an "
+        "appraisal. Loan divided by that figure is not a loan-to-value.")
+    b.h2("Reserve before opening")
+    pre = d["pre"]
+    tracker = d["tracker"]
+    b.para(
+        f"The itemized reserve is {money(m.RESERVE_AND_SAFETY_CASH)}. Debt service starts "
+        f"at closing. The model charges {pre['months']} months of the itemized loan's "
+        f"payment, plus accounting, before the park opens. That burn is "
+        f"{money(pre['total_burn'])}, which leaves {money(pre['opening_balance'])} at "
+        f"opening against the itemized loan of {money(m.LOAN_AMOUNT)}.")
+    if pre["opening_balance"] < 0.25 * m.RESERVE_AND_SAFETY_CASH:
+        b.para(
+            f"The reserve is the thin point in this credit. {money(pre['total_burn'])} of "
+            f"the {money(m.RESERVE_AND_SAFETY_CASH)} is used before the first dollar of "
+            "revenue.", bold=True)
+    neg = [mo for mo in d["y1_months"] if mo["net_cash_flow"] < 0]
+    if neg:
+        shortfall = sum(abs(x["net_cash_flow"]) for x in neg)
+        worst = min(neg, key=lambda x: x["net_cash_flow"])
+        covered = pre["opening_balance"] >= shortfall
+        b.para(
+            f"On that itemized payment, {len(neg)} months of Year 1 have negative cash "
+            f"flow, totalling {money(shortfall)}. The worst month is "
+            f"{money(worst['net_cash_flow'])} in {_month_name(worst['month'])}. "
+            + (f"The reserve remaining at opening ({money(pre['opening_balance'])}) "
+               "covers that shortfall."
+               if covered else
+               f"The reserve remaining at opening ({money(pre['opening_balance'])}) "
+               "does not cover that shortfall on its own."))
+    sized_with_fee = m.sba_7a_annual_debt_service(round(m.LOAN_ASK))
+    b.para(
+        f"Those cash figures use the model's payment on the itemized principal, "
+        f"{money(m.ANNUAL_DEBT_SERVICE)} a year, before the guarantee fee. The same "
+        f"principal as an SBA 7(a), with the fee financed, is {money(sized_with_fee)} a "
+        f"year. The requested facility's payment is {money(ads)} a year. The "
+        f"{money(REQUESTED_LOAN - m.LOAN_AMOUNT)} above the itemized uses is not in that "
+        "reserve. If it is spent on a sewer connection, it does not fill the gap. If the "
+        "septic allowance already in the uses is what gets built, that remainder is extra "
+        "cash. The quotes that decide this are not in.")
+    if tracker["min_balance"] < 0:
+        b.para(
+            f"Across the multi-year projection on the itemized payment, the modelled cash "
+            f"balance reaches {money(tracker['min_balance'])} and is negative in "
+            f"{tracker['months_negative']} months.")
+
+
+def outline_projections(b, d):
+    b.pagebreak()
+    b.h1("8. Projections")
+    y1, y1_months = d["y1"], d["y1_months"]
+    y2_op = _year2()
+    ads = _ads()
+    monthly = ads / 12.0
+    end_month = m.operating_to_calendar_month(12)
+    b.para(
+        "Year 1 is shown month by month. Operations start "
+        f"{_month_name(m.OPENING_MONTH)} {m.OPENING_YEAR}, so the year runs from "
+        f"{_month_name(m.OPENING_MONTH)} through {_month_name(end_month)} "
+        f"{m.OPENING_YEAR + 1}, not from January. Pad lease-up and the discovery ramp on "
+        "the bar and the beverage window are inside these months. Year 2 is one annual "
+        f"total. Vendor sales and bar traffic are {pct(m.ANNUAL_GROWTH_RATE, 0)} above the "
+        f"flat run rate, pad rent is {pct(m.ANNUAL_RENT_GROWTH, 0)} higher, and wages, "
+        f"drink inventory and fixed operating costs are "
+        f"{pct(m.ANNUAL_COST_INFLATION, 0)} higher. Debt service does not inflate. There "
+        "is no management fee in either year. Profit after debt service is net operating "
+        "income minus the requested 7(a) payment. It is not cash flow after the smaller "
+        "itemized-loan payment.")
+    b.h2("Year 1, month by month")
+    rows = []
+    for mo in y1_months:
+        rows.append([
+            _month_name(mo["month"])[:3],
+            money(mo["total_gross_revenue"]),
+            money(mo["total_gross_revenue"] - mo["noi"]),
+            money(mo["noi"]),
+            ratio(mo["noi"] / monthly),
+        ])
+    rows.append([
+        "Year 1", money(y1["total_gross"]),
+        money(y1["total_gross"] - y1["total_noi"]),
+        money(y1["total_noi"]),
+        ratio(_dscr(y1["total_noi"])),
+    ])
+    b.table(["Month", "Revenue", "Operating cost", "NOI", "DSCR vs $750k 7(a)"],
+            rows, widths=[1.1, 1.3, 1.4, 1.3, 1.6])
+    b.h2("Year 2, annualized")
+    b.table(["", "Year 1", "Year 2"], [
+        ["Revenue", money(y1["total_gross"]), money(y2_op["total_gross"])],
+        ["Operating cost", money(y1["total_gross"] - y1["total_noi"]),
+         money(y2_op["total_gross"] - y2_op["total_noi"])],
+        ["Net operating income", money(y1["total_noi"]), money(y2_op["total_noi"])],
+        ["Debt service, $750,000 SBA 7(a), fee financed", money(ads), money(ads)],
+        ["Profit after that debt service",
+         money(y1["total_noi"] - ads), money(y2_op["total_noi"] - ads)],
+        ["DSCR", ratio(_dscr(y1["total_noi"])), ratio(_dscr(y2_op["total_noi"]))],
+    ], widths=[3.4, 1.5, 1.5])
+    b.note(
+        "Year 1 DSCR above uses the ramped year. The stabilized DSCR quoted in the "
+        f"executive summary, {ratio(_dscr(d['y2']['total_noi']))}, is the no-growth run "
+        f"rate. Year 2 in this table is higher because of the "
+        f"{pct(m.ANNUAL_GROWTH_RATE, 0)} growth and is the second operating year, not that "
+        "flat run rate. Operating cost is everything between revenue and NOI. It includes "
+        f"the {pct(m.REPLACEMENT_RESERVE_RATE, 0)} replacement reserve and excludes debt "
+        "service.")
+    b.h2("How the revenue was projected")
+    b.bullets([
+        f"Pad rent: {m.TRUCK_SLOTS} pads times {pct(m.TRUCK_OCCUPANCY, 0)} occupancy times "
+        f"{money(m.TRUCK_PAD_RENT)} a month. It does not move with the weather. Year 1 "
+        "starts about half leased.",
+        f"Percentage rent: {pct(m.TRUCK_REV_SHARE_RATE, 0)} of truck food sales. Sales start from "
+        f"{money(m.TRUCK_AVG_MONTHLY_SALES)} a month per truck and then lose "
+        f"{pct(m.WEEKDAY_MORNING_SALES_HAIRCUT, 1)} because the park opens at 10am. "
+        "Setting that haircut to zero would put the morning sales back. The bar is not "
+        "in the haircut.",
+        f"Evening bar: {m.BAR_WEEKDAY_CUSTOMERS} weekday and {m.BAR_WEEKEND_CUSTOMERS} "
+        f"weekend customers, check {money(m.BAR_AVG_CHECK, cents=True)}, times Austin "
+        "seasonality and a sports-calendar factor that averages about 1.00. Year 1 ramps "
+        "from a cold start.",
+        "Beverage window: a share of the people implied by truck food sales, at "
+        f"{money(m.DAYTIME_BEVERAGE_AVG_PRICE, cents=True)}. It falls with the morning haircut.",
+        f"Parking: {money(m.F1_WEEKEND_PARKING_REVENUE)} on the one F1 weekend. Every other "
+        "event is zero. Food-truck sales are not increased on event days.",
+        "Watch parties: Super Bowl, March Madness and New Year's Eve, as fixed add-ons.",
+        "Truck utilities are billed through at cost and do not change NOI.",
+    ])
+    b.h2("How the expenses were projected")
+    b.bullets([
+        f"Wages: {m.DAY_SHIFT_HOURS_PER_WEEK:.0f} day hours a week at "
+        f"{money(m.PARK_COVERAGE_HOURLY_WAGE, cents=True)} and "
+        f"{m.EVENING_SHIFT_HOURS_PER_WEEK:.0f} evening hours a week at "
+        f"{money(m.EVENING_SHIFT_HOURLY_WAGE, cents=True)}. No overtime. Burden is "
+        f"{pct(m.EMPLOYER_PAYROLL_BURDEN_RATE, 0)}.",
+        f"Drink inventory: {money(m.DRINK_INVENTORY_MONTHLY)} a month on average, higher "
+        "in busy months and lower in winter. Sales taxes and mixed-beverage taxes are on "
+        "top of that, taken out of tax-inclusive prices.",
+        f"Insurance {money(m.FIXED_COSTS['insurance'])} a month. Marketing "
+        f"{money(m.FIXED_COSTS['marketing'])} a month. Waste "
+        f"{money(m.WASTE_SERVICE_MONTHLY)} a month for a porta-potty, a hand-wash station "
+        "and a dumpster. Improvement property tax uses this parcel's own land-bill rate "
+        "on the real-property improvements only.",
+        f"Licenses and permits are {money(m.FIXED_COSTS['licenses_permits'])} a month and "
+        "are a placeholder, not a quote.",
+        f"The management fee is zero. The replacement reserve is "
+        f"{pct(m.REPLACEMENT_RESERVE_RATE, 0)} of revenue excluding the utility "
+        "pass-through.",
+    ])
+    b.para(
+        "These are projections. The park is not open and has no operating history. Wage "
+        "rates, insurance, the inventory budget and the morning-sales haircut are estimates.")
+
+
+def outline_appendix(b, d):
+    b.pagebreak()
+    b.h1("9. Appendix")
+    y2 = d["y2"]
+    cases = _noi_cases()
+    b.h2("DSCR by case, year and loan")
+    b.para(
+        "Coverage below is net operating income divided by the annual payment. For SBA "
+        f"7(a), the payment includes the {pct(m.SBA_7A_GUARANTEE_FEE_RATE, 0)} guarantee "
+        f"fee on the {pct(m.SBA_7A_GUARANTEE_SHARE, 0)} guaranteed portion, financed into "
+        "the note. The 504 blend does not include CDC fees. Year 2 includes "
+        f"{pct(m.ANNUAL_GROWTH_RATE, 0)} growth and "
+        f"{pct(m.ANNUAL_COST_INFLATION, 0)} cost inflation. The Bank case is a stress "
+        "case: lower traffic, half of the F1 parking, and 75% truck occupancy. It is not "
+        "a different management fee.")
+    rows = []
+    for case, label in (("base", "Base"), ("bank", "Bank"), ("no_cota", "No COTA")):
+        for year in (1, 2):
+            noi = cases[case][year]["noi"]
+            rows.append([
+                label, str(year), money(noi),
+                ratio(_dscr(noi, 750_000, "sba_7a")),
+                ratio(_dscr(noi, round(m.LOAN_ASK), "sba_7a")),
+                ratio(_dscr(noi, 750_000, "sba_504")),
+            ])
+    b.table(["Case", "Year", "NOI", "7(a) $750k", "7(a) sized ask", "504 $750k"],
+            rows, widths=[1.2, 0.6, 1.3, 1.2, 1.3, 1.2])
+    b.note(
+        f"The sized ask is {money(m.LOAN_ASK)}. A "
+        f"{m.LOAN_PRODUCTS['sba_7a']['dscr_min']:.2f}x test on the $750,000 7(a) payment "
+        f"of {money(_ads())} requires NOI of "
+        f"{money(m.LOAN_PRODUCTS['sba_7a']['dscr_min'] * _ads())}. Stabilized run-rate NOI "
+        f"is {money(y2['total_noi'])}.")
+    b.h2("Assumptions")
+    b.table(["Item", "Value", "Note"], [
+        ["Opening", f"{_month_name(m.OPENING_MONTH)} {m.OPENING_YEAR}",
+         "Unchanged. Quotes for septic or sewer are not in."],
+        ["Open hours", "10am daily. Mon–Thu to 9pm. Fri–Sun to 10pm.",
+         f"{m.PARK_COVERAGE_HOURS_PER_WEEK:.0f} staffed hours a week."],
+        ["Morning sales haircut", pct(m.WEEKDAY_MORNING_SALES_HAIRCUT, 1),
+         "Truck food sales and the beverage window only."],
+        ["F1 parking", money(m.F1_WEEKEND_PARKING_REVENUE),
+         "One weekend. All other events are $0."],
+        ["Management fee", pct(m.MANAGEMENT_FEE_RATE, 0), "Sponsor self-manages."],
+        ["Replacement reserve", pct(m.REPLACEMENT_RESERVE_RATE, 0),
+         "Of revenue excluding utility rebills."],
+        ["Insurance", money(m.FIXED_COSTS["insurance"]) + "/mo",
+         "Operating GL and liquor. Land policy is in the prepaid carry."],
+        ["Marketing", money(m.FIXED_COSTS["marketing"]) + "/mo", "The entire marketing budget."],
+        ["Waste", money(m.WASTE_SERVICE_MONTHLY) + "/mo",
+         "Porta-potty, hand-wash, dumpster. Midpoint of Austin quotes."],
+        ["Licenses", money(m.FIXED_COSTS["licenses_permits"]) + "/mo", "Placeholder."],
+        ["Drink inventory", money(m.DRINK_INVENTORY_MONTHLY) + "/mo average",
+         "Below a typical pour cost. Sponsor's budget."],
+    ], widths=[1.8, 2.4, 2.4])
+    b.h2("Build-out budget detail")
+    b.para(
+        "The forward uses, including septic, paving, the container bar, permits, "
+        "contingency and the reserve, are itemized in the Funding Request. The table "
+        f"below is the Phase 0.5 work already on the line of credit, "
+        f"{money(m.PHASE_0_5_TOTAL)} in total. Paying that line off and listing these "
+        "items again as new construction would count the same dollars twice. The TABC "
+        "Mixed Beverage Permit was paid from that line. It is not in this table and it "
+        "is not in the forward permits line.")
+    phase_status = {"done": "Already incurred", "in_progress": "In progress",
+                    "not_started": "Not yet started", "gated": "Budgeted; release gated"}
+    b.table(["Phase 0.5 item", "Amount", "Status"],
+            [[label, money(amt), phase_status.get(st, st)]
+             for label, amt, st in m.PHASE_0_5_CAPITAL_IMPROVEMENTS]
+            + [["**Phase 0.5 total**", f"**{money(m.PHASE_0_5_TOTAL)}**",
+                "Refinanced through the payoff. Not a second use."]],
+            widths=[3.4, 1.3, 2.1])
+    gravel = next(amt for label, amt, _st in m.PHASE_0_5_CAPITAL_IMPROVEMENTS
+                  if label == "Gravel")
+    b.para(
+        f"The forward paving line is asphalt at {money(m.PAVING_BUDGET)}. The gravel line "
+        f"above, {money(gravel)}, is the unspent alternate still sitting in the old "
+        "tracker. It is not a second paving project.")
+    b.h2("Documents still to attach")
+    b.bullets([
+        "Résumé and a statement of experience for Alok Macharla.",
+        "Personal financial statements, if a guaranty is required.",
+        "Operating agreements and member consent for this loan.",
+        "Deeds, survey, and the property-tax statement.",
+        "The septic quote and any sewer bid, with a note of which one will be built.",
+        "Vendor leases or letters of intent, when they exist.",
+        "TABC permit number, issue date and premises diagram.",
+        "Insurance binder, including liquor liability.",
+        "Sealed parking plan. The 200-car F1 figure is an observed count, not a stamped layout.",
+    ])
+    b.para(
+        "Projections in this plan are produced by the financial model, not typed. Revenue, "
+        "costs and NOI in the model reconcile. Actual results will differ. The park is not "
+        "open and has no operating history.")
+
+
 def main():
     out = sys.argv[1] if len(sys.argv) > 1 else "Del Valle Food Truck Park - Business Plan.docx"
     d = gather()
     # Format follows the extension: .md emits Markdown (used for Google Docs
     # upload, which Drive converts natively), anything else emits .docx.
     b = MarkdownBuilder() if out.lower().endswith(".md") else PlanBuilder()
-    cover(b, d)
-    exec_summary(b, d)
-    credit_strengths(b, d)
-    s1_transaction(b, d)
-    s2_repayment(b, d)
-    s3_collateral(b, d)
-    s4_management(b, d)
-    s5_schedule(b, d)
-    s6_vendors(b, d)
-    s7_market(b, d)
-    s8_projections(b, d)
-    s9_appendix(b, d)
+    b.title("BUSINESS PLAN & LOAN PROPOSAL",
+            "Del Valle Food Truck Park & Container Bar")
+    b.para("Prepared for Dave Wood and Sharon Corrigan, Nationwide Commercial Capital.",
+           italic=True, center=True)
+    b.para(f"13901 FM 812, Del Valle, Texas 78617  ·  "
+           f"{m.LAND_ACRES} deeded acres  ·  {date.today().strftime('%B %d, %Y')}",
+           italic=True, center=True)
+    outline_executive_summary(b, d)
+    outline_company(b, d)
+    outline_market(b, d)
+    outline_management(b, d)
+    outline_product(b, d)
+    outline_marketing(b, d)
+    outline_funding(b, d)
+    outline_projections(b, d)
+    outline_appendix(b, d)
     b.save(out)
+    ads = _ads()
     print(f"Wrote {out}")
     print(f"  Opening:        {_month_name(m.OPENING_MONTH)} {m.OPENING_YEAR}")
-    print(f"  Year 1 DSCR:    {d['y1']['total_noi'] / m.ANNUAL_DEBT_SERVICE:.2f}x")
-    print(f"  Stabilized:     {d['val']['dscr']:.2f}x")
-    print(f"  No-COTA DSCR:   {d['nocota']['total_noi'] / m.ANNUAL_DEBT_SERVICE:.2f}x")
+    print(f"  Year 1 DSCR:    {d['y1']['total_noi'] / ads:.2f}x")
+    print(f"  Stabilized:     {d['y2']['total_noi'] / ads:.2f}x")
+    print(f"  No-COTA DSCR:   {d['nocota']['total_noi'] / ads:.2f}x")
 
 
 if __name__ == "__main__":
