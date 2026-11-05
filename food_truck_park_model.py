@@ -13,13 +13,16 @@ Concept:
     (Texas PUC utility-resale rules: PURA Sec. 39.107 - resale at cost, no
     markup)
 
-Loan request: the sized bank term loan (fixed-payment, fully amortizing —
-rate/term are placeholders pending a quote; see LOAN_PRODUCTS). Base asphalt
-at 10% contingency is about $563,626, which holds a $40,000 reserve floor.
-USE_OF_FUNDS is that sources and uses: the $120,000 LOC payoff, gated septic,
+Loan request: a $1,000,000 SBA 7(a) term loan (fixed-payment, fully amortizing
+— rate/term are placeholders pending a quote; see LOAN_PRODUCTS). LOAN_AMOUNT
+is the $1,022,500 note with the guarantee fee financed. Reserve is the plug and
+stays above the $40,000 floor.
+USE_OF_FUNDS is that sources and uses: the $120,000 LOC payoff, $130,000 of
+personal funds repaid, one gated
+wastewater system (sewer or septic),
 paving, the container bar, GC, the health permit, six months of land carry,
-contingency, and the reserve. A $500,000 check does not cover it. $750,000
-is a sensitivity with unassigned proceeds. The owner's real "Phase 0.5
+contingency, the reserve, and the guarantee fee. A $500,000 check does not
+cover it. The owner's real "Phase 0.5
 Master Plan" cost tracker (Notion) totaled $80,100 of itemized, real
 vendor-quoted buildout, mostly already done or in progress; the $66,800
 of it actually drawn against that (now-being-paid-off) personal LOC lives
@@ -122,8 +125,8 @@ PHASE_0_5_CAPITAL_IMPROVEMENTS = [
 PHASE_0_5_TOTAL = sum(a for _, a, _ in PHASE_0_5_CAPITAL_IMPROVEMENTS)  # $66,800
 
 # --- Lender-ready v3 Sources & Uses ---
-# The loan ask is sized to the named uses, not held at $500,000. Named hard
-# costs (septic, paving, container bar, GC) plus contingency, the health
+# The ask is $1,000,000. Named hard costs (one wastewater system, paving,
+# container bar, GC) plus contingency, the health
 # permit, six months of vacant-land carry, and the $120,000 LOC payoff are
 # added first. Reserve & Safety Cash is the plug. If that plug would land
 # under RESERVE_FLOOR, the ask rises so the reserve equals the floor.
@@ -131,7 +134,8 @@ PHASE_0_5_TOTAL = sum(a for _, a, _ in PHASE_0_5_CAPITAL_IMPROVEMENTS)  # $66,80
 #
 # Locked 2026-09-30 values (these supersede the earlier $100k septic /
 # $14,796 land-carry / 12-month construction draft):
-#   septic $212,000, still gated (in the budget, not released to spend)
+#   septic quote $212,000; wastewater budget since raised to $350,000 for
+#   sewer or septic, still gated (in the budget, not released to spend)
 #   OSSF design $0 until a vendor is chosen
 #   paving asphalt $50,000 base, gravel $15,400 alternate
 #   container bar $50,000; GC allowance $50,000
@@ -139,7 +143,7 @@ PHASE_0_5_TOTAL = sum(a for _, a, _ in PHASE_0_5_CAPITAL_IMPROVEMENTS)  # $66,80
 #   contingency 10% Base / 15% Bank, on hard cost INCLUDING GC
 #   LOC payoff $120,000 drawn
 #   land carry = PID 984219 + PID 300451 + vacant-land insurance, 6 months prepaid
-#   Base asphalt @ 10% ask ≈ $563.6k; Bank asphalt @ 15% ask ≈ $581.7k
+#   Base and Bank both ask $1,000,000; the reserve absorbs the contingency change
 #
 # The $5,300 TABC Mixed Beverage permit is already paid under the old LOC
 # and stays inside the payoff. It is not in PHASE_0_5 (a liquor license is
@@ -160,11 +164,20 @@ OPENING_YEAR = 2027
 OPENING_MONTH = 3   # March; the window is March/April 2027
 
 LOC_PAYOFF_DRAWN = 120_000
-LOAN_ASK_BASE = 500_000       # prior round ask; the sized ask replaces it when uses don't fit
+# Owner's estimate of personal money spent or still to spend on getting
+# permits, on top of the LOC, for $250,000 in all. Includes forecast spend.
+# Not yet documented line by line, and it may overlap the $0 TBD soft-cost
+# lines below. Not capitalized until it is itemized.
+PERSONAL_FUNDS_REIMBURSEMENT = 130_000
+LOAN_ASK_BASE = 1_000_000       # the check requested; rises only if uses break the reserve floor
 RESERVE_FLOOR = 40_000        # cash reserve at close; do not cut contingency to hold this
 
-SEPTIC = 212_000
-SEPTIC_UNLOCKED = False       # gated: counted in the ask, not released to spend
+# One wastewater system: sewer or septic, never both. The budget is the low
+# end of the owner's $350,000-$400,000 range because contingency scales with
+# it, and $350,000 keeps the most reserve.
+WASTEWATER_BUDGET = 350_000
+SEPTIC_QUOTE = 212_000        # the one real quote so far; no sewer quote yet
+WASTEWATER_UNLOCKED = False   # gated: counted in the ask, not released to spend
 PAVING_BUDGET = 50_000        # BASE asphalt
 GRAVEL_ALT_BUDGET = 15_400    # alternate; not the default
 PAVING_MODE = "asphalt"
@@ -199,7 +212,9 @@ LAND_CARRY = LAND_CARRY_MONTHLY * LAND_CARRY_MONTHS_PREPAID  # $3,726
 LOC_PAYOFF_LABEL = (
     "Payoff of existing high-interest line of credit (Phase 0.5 & pre-loan soft costs)"
 )
-SEPTIC_LABEL = "Septic system installation"
+PERSONAL_FUNDS_LABEL = "Repayment of personal funds spent on permits and pre-opening costs"
+WASTEWATER_LABEL = "Wastewater system (sewer connection or septic, one only)"
+GUARANTEE_FEE_LABEL = "SBA guarantee fee (financed into the note)"
 BAR_LABEL = "Container bar buildout"
 GC_LABEL = "GC general conditions allowance (until bid)"
 LAND_CARRY_LABEL = "Land carry (vacant-land tax and insurance, 6 months prepaid)"
@@ -223,8 +238,8 @@ def paving_label(mode=None):
 
 
 def hard_cost_total(mode=None):
-    """Contingency base. Septic stays in the total while the gate is closed."""
-    return SEPTIC + paving_amount(mode) + BAR + GC_GENERAL_CONDITIONS_ALLOWANCE
+    """Contingency base. Wastewater stays in the total while the gate is closed."""
+    return WASTEWATER_BUDGET + paving_amount(mode) + BAR + GC_GENERAL_CONDITIONS_ALLOWANCE
 
 
 def contingency_amount(mode=None, rate=None):
@@ -242,7 +257,9 @@ def labeled_uses_excluding_reserve(mode=None, contingency_rate=None):
     rate = CONTINGENCY_RATE_BASE if contingency_rate is None else contingency_rate
     return [
         (LOC_PAYOFF_LABEL, LOC_PAYOFF_DRAWN, "done"),
-        (SEPTIC_LABEL, SEPTIC, "gated" if not SEPTIC_UNLOCKED else "not_started"),
+        (PERSONAL_FUNDS_LABEL, PERSONAL_FUNDS_REIMBURSEMENT, "not_started"),
+        (WASTEWATER_LABEL, WASTEWATER_BUDGET,
+         "gated" if not WASTEWATER_UNLOCKED else "not_started"),
         (paving_label(mode), paving_amount(mode), "not_started"),
         (BAR_LABEL, BAR, "not_started"),
         (GC_LABEL, GC_GENERAL_CONDITIONS_ALLOWANCE, "not_started"),
@@ -257,12 +274,30 @@ def labeled_uses_excluding_reserve(mode=None, contingency_rate=None):
     ]
 
 
+# SBA 7(a) guarantee fee: 3% of the 75% guaranteed portion, financed on top
+# of the requested check. The note is check + fee, so LOAN_AMOUNT and the
+# payment are on the note and the fee is a use of funds.
+SBA_7A_GUARANTEE_SHARE = 0.75
+SBA_7A_GUARANTEE_FEE_RATE = 0.03
+
+
+def sba_7a_guarantee_fee(loan_amount):
+    """3% of the 75% guaranteed portion. Does not change project proceeds."""
+    return loan_amount * SBA_7A_GUARANTEE_SHARE * SBA_7A_GUARANTEE_FEE_RATE
+
+
+def sba_7a_note_amount(loan_amount):
+    """Note balance if the guarantee fee is financed. Proceeds stay loan_amount."""
+    return loan_amount + sba_7a_guarantee_fee(loan_amount)
+
+
 def build_use_of_funds(mode=None, contingency_rate=None, ask=None):
     """Plug-first sources and uses.
 
     residual = ask − labeled uses. If residual is under RESERVE_FLOOR, the
     ask rises by the shortfall so the reserve equals the floor. Contingency
-    is an input, not the plug. ACE_CIVIL_RETAINER is excluded.
+    is an input, not the plug. ACE_CIVIL_RETAINER is excluded. The guarantee
+    fee is added after the plug, so total_project_cost is the note.
     """
     ask = LOAN_ASK_BASE if ask is None else ask
     rate = CONTINGENCY_RATE_BASE if contingency_rate is None else contingency_rate
@@ -274,10 +309,13 @@ def build_use_of_funds(mode=None, contingency_rate=None, ask=None):
         ask = labeled + RESERVE_FLOOR
         residual = RESERVE_FLOOR
         bumped = True
-    lines = list(lines) + [(RESERVE_LABEL, residual, "not_started")]
+    fee = sba_7a_guarantee_fee(ask)
+    lines = list(lines) + [(RESERVE_LABEL, residual, "not_started"),
+                           (GUARANTEE_FEE_LABEL, fee, "not_started")]
     return {
         "ask": ask,
         "ask_bumped": bumped,
+        "guarantee_fee": fee,
         "labeled_excluding_reserve": labeled,
         "residual_reserve": residual,
         "reserve_floor": RESERVE_FLOOR,
@@ -304,8 +342,9 @@ NEW_CASH_NEEDED = TOTAL_PROJECT_COST - ALREADY_SPENT
 
 # Placeholder terms pending a quote. 10% / 25 years is the SBA 7(a)
 # variable illustration (prime 7% + 3%). Product-level rates live in
-# LOAN_PRODUCTS. LOAN_AMOUNT tracks the sized ask.
+# LOAN_PRODUCTS. LOAN_AMOUNT is the note: the check plus the financed fee.
 LOAN_AMOUNT = TOTAL_PROJECT_COST
+REQUESTED_LOAN = LOAN_ASK     # the check the proposal requests
 LOAN_INTEREST_RATE = 0.10
 LOAN_TERM_YEARS = 25
 
@@ -379,6 +418,8 @@ LAND_VALUE = LAND_PURCHASE_PRICE  # kept for reference; use TOTAL_CAPITALIZED_BA
 _LOC_PAYOFF_AND_RESERVE_LABELS = {
     "Payoff of existing high-interest line of credit (Phase 0.5 & pre-loan soft costs)",
     "Reserve & Safety Cash",
+    GUARANTEE_FEE_LABEL,
+    PERSONAL_FUNDS_LABEL,
 }
 TOTAL_CAPITALIZED_BASIS = (
     LAND_PURCHASE_PRICE + PHASE_0_5_TOTAL
@@ -401,7 +442,7 @@ REAL_PROPERTY_IMPROVEMENT_LABELS = (
     "Signs", "Electrical", "Plumbing", "Telephone pole",
     "Full land clearing", "Yard Multi-Purpose Poles (set & anchor)",
     "Gravel", "Trash Cans", "Storage Shed (wooden, general)",
-    "Septic system installation",
+    WASTEWATER_LABEL,
     "Paved asphalt roads / internal access improvements",
     "Container bar buildout",
 )
@@ -422,13 +463,25 @@ SITE_PLAN_CUSTOMER_SPACES = 30
 # parking dollars. Those are F1_WEEKEND_PARKING_REVENUE.
 EVENT_PARKING_CARS_PER_DAY = 200
 EVENT_PARKING_SPACES = EVENT_PARKING_CARS_PER_DAY  # name older readers still use
-# One F1 weekend. Sid's estimate of the parking revenue for that weekend,
-# per year. Fri 90 + Sat 150 + Sun 200 = 440 cars. The implied gate price
-# is $20,000 / 440. The revenue line is this constant, so the total cannot
-# drift off $20,000. Every other event books $0. Sid's reason: no other
-# event has enough overflow to bring cars to the park.
+# One F1 weekend of parking revenue is a variable, not a known number. It
+# runs from $5,000 to $50,000 and is most likely $10,000-$15,000. Each band
+# is (low, high, probability); Monte Carlo draws from these. The weights are
+# an owner-judgment estimate with no operating history behind them.
+# The base case is the middle of the most likely band, not the mean: the
+# long right tail would lift the mean, and this model errs low on revenue.
+# Fri 90 + Sat 150 + Sun 200 = 440 cars; that crowd feeds the drink residual
+# and does not set the dollars. Every other event books $0. Sid's reason: no
+# other event has enough overflow to bring cars to the park.
 F1_PARKING_CARS_BY_DAY = (90, 150, 200)
-F1_WEEKEND_PARKING_REVENUE = 20_000
+F1_PARKING_MIN = 5_000
+F1_PARKING_MAX = 50_000
+F1_PARKING_BANDS = (
+    (5_000, 10_000, 0.20),
+    (10_000, 15_000, 0.50),
+    (15_000, 25_000, 0.20),
+    (25_000, 50_000, 0.10),
+)
+F1_WEEKEND_PARKING_REVENUE = 12_500
 F1_PARKING_PRICE_PER_CAR = F1_WEEKEND_PARKING_REVENUE / sum(F1_PARKING_CARS_BY_DAY)
 # Only F1 is a parking event. Other prices are zero on purpose.
 EVENT_PARKING_PRICE_PER_CAR = {
@@ -442,6 +495,19 @@ EVENT_PARKING_PRICE_PER_CAR = {
     "tier4_trackday": 0,
 }
 EVENTS_WITH_PARKING = ("tier1_f1",)
+# F1 sales boost on the park's normal crowd. Separate from the parked-car
+# drink residual below. The race weekend lifts drinks more than food. In the
+# two weeks before it, COTA staff and contractors add a slight lift. These
+# are the workers' spending at the park; park payroll does not change. All
+# four rates are estimates with no operating history behind them. The food
+# boost is small on purpose: Sid saw no food lift at the Oct 2026 F1 weekend,
+# before the park was finished. It assumes a finished park with more options.
+F1_WEEKEND_DAYS = 3
+F1_LEADUP_DAYS = 14
+F1_WEEKEND_DRINK_BOOST = 0.25
+F1_WEEKEND_FOOD_BOOST = 0.05
+F1_LEADUP_DRINK_BOOST = 0.05
+F1_LEADUP_FOOD_BOOST = 0.03
 # Residual drinks from cars that are otherwise just parking. 10% of cars
 # buy one alcohol drink at the everyday check (not the premium event
 # check). 10% of people in the car buy one non-alcohol drink at the
@@ -459,8 +525,8 @@ PEOPLE_PER_CAR = 2.5
 PARKING_UPKEEP_RATE = 0.05
 # Motor vehicle parking is an explicitly TAXABLE SERVICE in Texas (34 TAC
 # 3.315) at the full combined Del Valle/Travis County rate. Event lots
-# charge a round cash price at the gate (the F1 weekend is $20,000
-# tax-inclusive, not $20,000 + tax), so the
+# charge a round cash price at the gate (the F1 weekend figure is
+# tax-inclusive, not that figure + tax), so the
 # tax comes out of that price rather than being added on top - the same
 # tax-inclusive logic used for the bar. This was missing entirely before;
 # on a full COTA calendar it is a real five-figure annual cost.
@@ -475,11 +541,10 @@ PARKING_SALES_TAX_RATE = 0.0825
 # "very high performing events" scenario. The dashboard slider runs
 # 0.0-2.0 directly, so 1.0 reproduces the baseline calendar.
 COTA_IMPACT_MULTIPLIER_DEFAULT = 1.0
-# Food-truck sales do not rise because a COTA weekend is on the calendar.
 # The old lever added up to +20% truck sales in event months once the
-# slider passed 1.0. That spillover is retired. The slider still scales
-# parking, the drink residual, and event staffing cost. It does not
-# move pad rent or percentage rent.
+# slider passed 1.0. That spillover is retired. The slider scales parking,
+# the drink residual, event staffing cost, and the F1 sales boost
+# (f1_month_sales_boost). It does not move pad rent or occupancy.
 COTA_TRUCK_BOOST_MAX = 0.0
 
 # --- Food Truck Park ---
@@ -1061,10 +1126,12 @@ DUMPSTER_MONTHLY = 262
 WASTE_SERVICE_MONTHLY = (PORTA_POTTY_MONTHLY + HANDWASH_STATION_MONTHLY
                          + DUMPSTER_MONTHLY)
 FIXED_COSTS = {
-    "insurance": 400,                # operating GL + liquor liability. The vacant-land
+    "insurance": 675,                # one annual package, benchmark estimate pending a
+                                      # quote: GL $250, liquor $125, property $150,
+                                      # workers' comp $150. F1 parking is on this policy,
+                                      # with no separate event policy. The vacant-land
                                       # policy is $700/yr (~$58/mo), close to Sid's ~$63,
                                       # and it is in the prepaid land carry, not here.
-                                      # Sensitivity, not the base: $250 and $600.
     "water_bill": 150,               # estimate pending first bill
     "electric_bill": 350,            # estimate pending first bill (common-area: lights, TVs, misters, bar coolers)
     "septic": 100,                   # estimate - drainage beyond the rented porta-potty unit
@@ -1251,13 +1318,13 @@ LOAN_PRODUCTS = {
     },
 }
 DEFAULT_LOAN_PRODUCT = "sba_7a"
-LOAN_SIZE_SENSITIVITY = (500_000, 750_000)  # plus the sized ask, added at runtime
+LOAN_SIZE_SENSITIVITY = (500_000, 750_000)  # plus the ask, added at runtime
 DSCR_RATE_GRID = (0.085, 0.09, 0.095, 0.10, 0.105, 0.11, 0.115, 0.12)
 
 CRE_REVIEW_SUPERSESSION_BANNER = (
     "Lender-ready v3. The $500,000 round ask and the LOC-era memo figures "
-    "are superseded. The Base asphalt ask is sized to hold a $40,000 reserve "
-    f"floor (about ${LOAN_ASK:,.0f}). Septic is ${SEPTIC:,.0f} and gated. "
+    "are superseded. The Base asphalt ask holds at least a $40,000 reserve "
+    f"floor (about ${LOAN_ASK:,.0f}). Wastewater is ${WASTEWATER_BUDGET:,.0f} and gated. "
     "COTA is foundational: the no-COTA case is shown separately and is not "
     "treated as upside. Personal-guarantee preference is no-PG / land-only; "
     "SBA 7(a) and 504 typically still require a guaranty. No lender has been contacted."
@@ -1432,28 +1499,33 @@ def calc_seasonal_event_revenue(month, year_month=None, seasonal_pct=1.0):
 def calc_cota_event_revenue(event_list, parking_spaces=None,
                             daytime_beverage_attach_rate=None,
                             daytime_beverage_avg_price=None,
-                            impact_multiplier=1.0):
+                            impact_multiplier=1.0,
+                            f1_parking_revenue=None):
     """
     COTA days. Only the F1 weekend has parking.
 
-    Parking revenue on F1 is F1_WEEKEND_PARKING_REVENUE ($20,000), not
-    a recount of cars times a round gate price. The car list
+    Parking revenue on F1 is `f1_parking_revenue`, defaulting to
+    F1_WEEKEND_PARKING_REVENUE, not a recount of cars times a round gate
+    price. The car list
     F1_PARKING_CARS_BY_DAY is the crowd for the drink residual only.
     Every other tier adds nothing: no parking, no drink residual, no
     attendants, no porta-potties. `parking_spaces` is accepted so older
-    callers still run; it does not change the $20,000.
+    callers still run; it does not change the weekend dollars.
 
     `daytime_beverage_attach_rate` is ignored. The event attach is
     COTA_EVENT_BEV_ATTACH_PER_PERSON. `daytime_beverage_avg_price`
     overrides that residual's unit price when passed.
 
     `impact_multiplier` scales the F1 lines. 0.0 zeroes them. A non-F1
-    list stays zero at any multiplier. Food-truck sales are not here.
+    list stays zero at any multiplier. The F1 sales boost on the normal
+    crowd is not here. See f1_month_sales_boost().
     """
-    del parking_spaces  # F1 dollars are the weekend constant
+    del parking_spaces  # F1 dollars are the weekend figure
     del daytime_beverage_attach_rate  # event attach is its own constant
     bev_price = (daytime_beverage_avg_price if daytime_beverage_avg_price is not None
                  else DAYTIME_BEVERAGE_AVG_PRICE)
+    weekend_parking = (f1_parking_revenue if f1_parking_revenue is not None
+                       else F1_WEEKEND_PARKING_REVENUE)
     if not event_list or impact_multiplier <= 0:
         return {"parking": 0, "bar_uplift": 0, "daytime_bev_uplift": 0,
                 "gross": 0, "incremental_cost": 0, "net": 0}
@@ -1466,7 +1538,7 @@ def calc_cota_event_revenue(event_list, parking_spaces=None,
         if tier_key not in EVENTS_WITH_PARKING:
             continue
         tier = COTA_EVENT_TIERS[tier_key]
-        total_parking += F1_WEEKEND_PARKING_REVENUE
+        total_parking += weekend_parking
         for cars in F1_PARKING_CARS_BY_DAY:
             total_bar += cars * COTA_BAR_ATTACH_PER_CAR * BAR_AVG_CHECK
             attendees = cars * PEOPLE_PER_CAR
@@ -1482,6 +1554,44 @@ def calc_cota_event_revenue(event_list, parking_spaces=None,
     return {"parking": total_parking, "bar_uplift": total_bar,
             "daytime_bev_uplift": total_daytime_bev, "gross": gross,
             "incremental_cost": total_cost, "net": gross - total_cost}
+
+
+def f1_parking_expected_value():
+    """Probability-weighted F1 parking across F1_PARKING_BANDS."""
+    return sum((low + high) / 2 * weight for low, high, weight in F1_PARKING_BANDS)
+
+
+def draw_f1_parking_revenue(rng=random):
+    """One weekend's parking: pick a band by weight, then uniform inside it."""
+    low, high, _ = rng.choices(
+        F1_PARKING_BANDS, weights=[band[2] for band in F1_PARKING_BANDS])[0]
+    return rng.uniform(low, high)
+
+
+def f1_month_sales_boost(event_list, impact_multiplier=1.0):
+    """Lift on F1-month drink and food sales, as a share of the month.
+
+    Weekend and lead-up boosts are spread over the month's days, so this is
+    a monthly rate. Zero unless F1 is on the calendar. Scales with the COTA
+    impact slider, so 0.0 removes it and a delayed opening never gets it.
+    """
+    if "tier1_f1" not in (event_list or []) or impact_multiplier <= 0:
+        return {"drink": 0.0, "food": 0.0}
+    days = WEEKDAY_DAYS_PER_MONTH + WEEKEND_DAYS_PER_MONTH
+    drink = (F1_WEEKEND_DAYS * F1_WEEKEND_DRINK_BOOST
+             + F1_LEADUP_DAYS * F1_LEADUP_DRINK_BOOST) / days
+    food = (F1_WEEKEND_DAYS * F1_WEEKEND_FOOD_BOOST
+            + F1_LEADUP_DAYS * F1_LEADUP_FOOD_BOOST) / days
+    return {"drink": drink * impact_multiplier, "food": food * impact_multiplier}
+
+
+def _with_food_boost(trucks, food_boost):
+    """Truck result with percentage rent lifted. Pad rent does not move."""
+    share_income = trucks["share_income"] * (1 + food_boost)
+    gross = trucks["rent_income"] + share_income
+    return {**trucks, "share_income": share_income, "gross": gross,
+            "net": gross * TRUCK_MARGIN,
+            "truck_total_sales": trucks["truck_total_sales"] * (1 + food_boost)}
 
 
 def event_days(event_list):
@@ -1555,7 +1665,8 @@ def calc_monthly_total(weekday_customers, weekend_customers, month, year_month=N
                        daytime_beverage_attach_rate=None,
                        daytime_beverage_avg_price=None,
                        cota_impact_multiplier=1.0,
-                       cost_inflation_mult=1.0):
+                       cost_inflation_mult=1.0,
+                       f1_parking_revenue=None):
     """
     Full monthly calculation across all streams:
       1. Food truck rent+share  4. Seasonal watch parties
@@ -1565,8 +1676,11 @@ def calc_monthly_total(weekday_customers, weekend_customers, month, year_month=N
 
     `cota_impact_multiplier` (default 1.0) is the dashboard's "COTA Event
     Impact" slider. 0.0 zeroes parking, the drink residual, and event
-    cost. Values above 1.0 scale those same lines. They do not add
-    food-truck sales (COTA_TRUCK_BOOST_MAX is 0).
+    cost. Values above 1.0 scale those same lines, and the F1 sales
+    boost scales with them. The old spillover stays off
+    (COTA_TRUCK_BOOST_MAX is 0).
+
+    `f1_parking_revenue` overrides the F1 weekend's parking dollars.
     """
     if cota_events is not None:
         event_list = cota_events
@@ -1581,17 +1695,29 @@ def calc_monthly_total(weekday_customers, weekend_customers, month, year_month=N
     trucks = calc_truck_revenue(month, year_month, truck_slots, truck_rent,
                                 truck_share_rate, truck_avg_sales, truck_occupancy,
                                 event_month_boost)
-    bar_rev = calc_bar_revenue(weekday_customers, weekend_customers, month,
-                               year_month, avg_check)
+    f1_boost = f1_month_sales_boost(event_list, cota_impact_multiplier)
+    base_bar_rev = calc_bar_revenue(weekday_customers, weekend_customers, month,
+                                    year_month, avg_check)
     seasonal_rev = calc_seasonal_event_revenue(month, year_month, seasonal_pct)
-    daytime_bev_rev = calc_daytime_beverage_revenue(
+    # Beverage sales size off un-boosted truck traffic, so the food boost
+    # does not leak into drinks. Drinks get their own boost.
+    base_daytime_bev_rev = calc_daytime_beverage_revenue(
         trucks["truck_total_sales"], year_month,
         daytime_beverage_attach_rate, daytime_beverage_avg_price)
+    bar_lift = base_bar_rev * f1_boost["drink"]
+    daytime_bev_lift = base_daytime_bev_rev * f1_boost["drink"]
+    bar_rev = base_bar_rev + bar_lift
+    daytime_bev_rev = base_daytime_bev_rev + daytime_bev_lift
+    base_share_income = trucks["share_income"]
+    trucks = _with_food_boost(trucks, f1_boost["food"])
+    f1_sales_lift = (bar_lift + daytime_bev_lift
+                     + trucks["share_income"] - base_share_income)
 
     cota = calc_cota_event_revenue(
         event_list, daytime_beverage_attach_rate=daytime_beverage_attach_rate,
         daytime_beverage_avg_price=daytime_beverage_avg_price,
-        impact_multiplier=cota_impact_multiplier)
+        impact_multiplier=cota_impact_multiplier,
+        f1_parking_revenue=f1_parking_revenue)
 
     utilities = calc_utility_passthrough(trucks["trucks"])
 
@@ -1605,8 +1731,11 @@ def calc_monthly_total(weekday_customers, weekend_customers, month, year_month=N
     bar_like = bar_rev + cota["bar_uplift"] + seasonal_rev
     daytime_bev_like = daytime_bev_rev + cota["daytime_bev_uplift"]
     # Inventory is Sid's $2,000 average, not the recipe COGS rate. Taxes
-    # stay on the cash receipt. Shrinkage is inside the $2,000.
-    cogs = drink_inventory_cost(month, cost_inflation_mult)
+    # stay on the cash receipt. Shrinkage is inside the $2,000. That line is
+    # flat, so F1-boosted drinks carry their own recipe cost on top of it.
+    cogs = (drink_inventory_cost(month, cost_inflation_mult)
+            + bar_lift * COGS_RATE
+            + daytime_bev_lift * DAYTIME_BEVERAGE_COGS_RATE)
     grt, mb_sales_tax = alcohol_taxes_on_inclusive_receipts(bar_like)
     daytime_bev_cogs = 0.0
     daytime_bev_tax = daytime_bev_like * DAYTIME_BEVERAGE_SALES_TAX_RATE
@@ -1687,6 +1816,7 @@ def calc_monthly_total(weekday_customers, weekend_customers, month, year_month=N
         "total_gross_revenue": total_gross,
         "bar_variable_costs": bar_variable_costs,
         "cogs": cogs,
+        "f1_sales_lift": f1_sales_lift,
         "grt": grt,
         "mb_sales_tax": mb_sales_tax,
         "labor_wages": labor_wages,
@@ -1724,7 +1854,8 @@ def run_annual_projection(weekday_customers=None, weekend_customers=None, year=1
                           daytime_beverage_attach_rate=None,
                           daytime_beverage_avg_price=None,
                           cota_impact_multiplier=1.0,
-                          cost_inflation_mult=1.0):
+                          cost_inflation_mult=1.0,
+                          f1_parking_revenue=None):
     """
     Full 12-month projection. Returns (months_list, annual_dict).
     Year 1 applies the truck and bar ramps; Year 2+ is steady state.
@@ -1751,6 +1882,7 @@ def run_annual_projection(weekday_customers=None, weekend_customers=None, year=1
             truck_occupancy, seasonal_pct,
             daytime_beverage_attach_rate, daytime_beverage_avg_price,
             cota_impact_multiplier, cost_inflation_mult,
+            f1_parking_revenue=f1_parking_revenue,
         )
         months.append(result)
 
@@ -1811,6 +1943,7 @@ def summarize_annual(months, loan_year=1):
         "total_cc_processing": sum(m["cc_processing"] for m in months),
         "total_shrinkage": sum(m["shrinkage"] for m in months),
         "total_cogs": sum(m["cogs"] for m in months),
+        "total_f1_sales_lift": sum(m["f1_sales_lift"] for m in months),
         "total_grt": sum(m["grt"] for m in months),
         "total_mb_sales_tax": sum(m["mb_sales_tax"] for m in months),
         "total_daytime_beverage_cogs": sum(m["daytime_beverage_cogs"] for m in months),
@@ -1840,7 +1973,8 @@ def run_multi_year_projection(base_weekday_customers=None, base_weekend_customer
                               truck_occupancy=None, seasonal_pct=1.0,
                               daytime_beverage_attach_rate=None,
                               daytime_beverage_avg_price=None,
-                              cota_impact_multiplier=1.0):
+                              cota_impact_multiplier=1.0,
+                              f1_parking_revenue=None):
     """
     Year 1 with ramps; Year 2+ steady state with growth and cost inflation.
     Returns list of (year, months, annual) tuples.
@@ -1869,6 +2003,7 @@ def run_multi_year_projection(base_weekday_customers=None, base_weekend_customer
             daytime_beverage_avg_price=daytime_beverage_avg_price,
             cota_impact_multiplier=cota_impact_multiplier,
             cost_inflation_mult=cost_mult,
+            f1_parking_revenue=f1_parking_revenue,
         )
 
         # Inflation is already inside each opex line and each wage line.
@@ -1911,6 +2046,7 @@ MONTE_CARLO_SPEC = (
     {"name": "n_concerts", "distribution": "weighted_discrete", "values": (2, 3, 3, 4, 4, 4, 5, 6)},
     {"name": "n_festivals", "distribution": "weighted_discrete", "values": (1, 2, 2, 2, 3)},
     {"name": "n_gt", "distribution": "weighted_discrete", "values": (0, 1, 1, 2, 2)},
+    {"name": "f1_parking_revenue", "distribution": "weighted_bands", "bands": F1_PARKING_BANDS},
     {"name": "truck_slots", "distribution": "held_fixed"},
     {"name": "truck_pad_rent", "distribution": "held_fixed"},
     {"name": "truck_rev_share", "distribution": "held_fixed"},
@@ -1938,7 +2074,9 @@ def run_monte_carlo(n_simulations=10_000, seed=MONTE_CARLO_DEFAULT_SEED,
     """
     Randomized Year 1 scenarios. Varies: truck sales, truck occupancy
     (vacancy), weekday/weekend bar traffic and check, COTA event mix,
-    seasonal event strength, and the daytime-beverage attach rate.
+    seasonal event strength, the daytime-beverage attach rate, and F1
+    parking (drawn from F1_PARKING_BANDS, so the dashboard's F1 parking
+    slider does not set it here).
     Truck COUNT, rent, and revenue share are held FIXED across every
     simulation (built slots + contracted terms, not uncertain) - lease-up
     risk is expressed through occupancy instead. The COTA impact multiplier
@@ -1988,6 +2126,7 @@ def run_monte_carlo(n_simulations=10_000, seed=MONTE_CARLO_DEFAULT_SEED,
         n_concerts = random.choice(_mc_spec("n_concerts")["values"])
         n_festivals = random.choice(_mc_spec("n_festivals")["values"])
         n_gt = random.choice(_mc_spec("n_gt")["values"])
+        f1_parking = draw_f1_parking_revenue()
         override = {m: [] for m in range(1, 13)}
         override[10].append("tier1_f1")
         override[4].append("tier2_motogp")
@@ -2011,6 +2150,7 @@ def run_monte_carlo(n_simulations=10_000, seed=MONTE_CARLO_DEFAULT_SEED,
             daytime_beverage_attach_rate=dbev_attach,
             daytime_beverage_avg_price=_dbev_price,
             cota_impact_multiplier=base_cota_impact_multiplier,
+            f1_parking_revenue=f1_parking,
         )
 
         results.append({
@@ -2022,6 +2162,7 @@ def run_monte_carlo(n_simulations=10_000, seed=MONTE_CARLO_DEFAULT_SEED,
             "bar_custs_weekend": we_custs,
             "truck_occupancy": truck_occ,
             "daytime_beverage_attach_rate": dbev_attach,
+            "f1_parking_revenue": f1_parking,
         })
 
     results.sort(key=lambda x: x["nut_coverage"])
@@ -2495,7 +2636,7 @@ def run_reserve_options(min_balance_target=None, all_years=None, verbose=False):
         return _amortization_payment(loan, LOAN_INTEREST_RATE, LOAN_TERM_YEARS) * PRE_OPEN_MONTHS
 
     def floor_option(floor):
-        loan = labeled + floor
+        loan = sba_7a_note_amount(labeled + floor)
         return _reserve_option(
             "higher_floor", "Higher reserve floor (borrowed)", loan, floor,
             pi_from_close(loan), all_years, noi, target,
@@ -2506,7 +2647,7 @@ def run_reserve_options(min_balance_target=None, all_years=None, verbose=False):
         pi_from_close(LOAN_AMOUNT), all_years, noi, target,
         note="P&I from closing on the full loan.")
 
-    lo, hi = RESERVE_FLOOR, RESERVE_FLOOR + 1_000_000
+    lo, hi = RESERVE_AND_SAFETY_CASH, RESERVE_AND_SAFETY_CASH + 1_000_000
     if floor_option(lo)["min_balance"] >= target:
         hi = lo
     for _ in range(80):
@@ -2752,7 +2893,7 @@ DEPRECIATION_15YR_ITEMS = [
     "Signs", "Electrical", "Plumbing", "Telephone pole",
     "Full land clearing", "Yard Multi-Purpose Poles (set & anchor)",
     "Gravel", "Trash Cans", "Storage Shed (wooden, general)",
-    "Septic system installation",
+    WASTEWATER_LABEL,
     "Paved asphalt roads / internal access improvements",
     "Container bar buildout",
 ]
@@ -3275,7 +3416,8 @@ def run_cre_sensitivity_grid(revenue_deltas=(-0.10, 0.0, 0.10),
                              truck_occupancy=None, seasonal_pct=1.0,
                              daytime_beverage_attach_rate=None,
                              daytime_beverage_avg_price=None,
-                             cota_impact_multiplier=1.0):
+                             cota_impact_multiplier=1.0,
+                             f1_parking_revenue=None):
     """
     Unlevered IRR grid: revenue scenario x exit cap rate, for the CRE tab's
     sensitivity table. Scales bar traffic, avg check, and truck avg sales
@@ -3304,6 +3446,7 @@ def run_cre_sensitivity_grid(revenue_deltas=(-0.10, 0.0, 0.10),
             daytime_beverage_attach_rate=daytime_beverage_attach_rate,
             daytime_beverage_avg_price=daytime_beverage_avg_price,
             cota_impact_multiplier=cota_impact_multiplier,
+            f1_parking_revenue=f1_parking_revenue,
             years=hold_years + 1,
         )
         for cap in exit_cap_rates:
@@ -3448,24 +3591,6 @@ def annual_debt_service_for_product(loan_amount, product_key):
     }
 
 
-# SBA 7(a) guarantee fee for the DSCR report. 3% of the 75% guaranteed
-# portion. Financed into the note, so the payment is higher than the
-# fee-free payment in annual_debt_service_for_product(). Not added to
-# LOAN_AMOUNT, the monthly nut, or the sized ask.
-SBA_7A_GUARANTEE_SHARE = 0.75
-SBA_7A_GUARANTEE_FEE_RATE = 0.03
-
-
-def sba_7a_guarantee_fee(loan_amount):
-    """3% of the 75% guaranteed portion. Does not change project proceeds."""
-    return loan_amount * SBA_7A_GUARANTEE_SHARE * SBA_7A_GUARANTEE_FEE_RATE
-
-
-def sba_7a_note_amount(loan_amount):
-    """Note balance if the guarantee fee is financed. Proceeds stay loan_amount."""
-    return loan_amount + sba_7a_guarantee_fee(loan_amount)
-
-
 def sba_7a_annual_debt_service(loan_amount, rate=None, years=None):
     """Annual debt service on the fee-financed 7(a) note. 10% / 25 years."""
     rate = SBA_7A_RATE if rate is None else rate
@@ -3545,9 +3670,9 @@ def _noi_cases(years=2):
 
 
 def loan_sizes_for_sensitivity(extra=()):
-    """$500k (does not fund the uses), the sized Base ask, $750k, plus extras."""
-    sizes = [500_000, round(LOAN_ASK), 750_000]
-    for amount in extra:
+    """$500k (does not fund the uses), the Base ask, plus extras, no repeats."""
+    sizes = [500_000, round(LOAN_ASK)]
+    for amount in (*LOAN_SIZE_SENSITIVITY, *extra):
         if amount not in sizes:
             sizes.append(amount)
     return tuple(sizes)
@@ -3558,7 +3683,7 @@ def run_loan_size_dscr(years=(1, 2), products=("sba_7a", "sba_504", "conventiona
     """NOI and DSCR by case, year, product, and loan size.
 
     NOI does not change with the loan size: unassigned proceeds (the gap
-    between a $750k check and the sized ask, or a $500k check that does not
+    above the Base ask, or a $500k check that does not
     cover uses) are cash, not extra taxable improvements. DSCR uses that
     same NOI over the product's debt service at that amount.
 
@@ -3598,8 +3723,9 @@ def run_loan_size_dscr(years=(1, 2), products=("sba_7a", "sba_504", "conventiona
         "sized_ask": sized["ask"],
         "reserve_floor": RESERVE_FLOOR,
         "note_500k": "Debt-service sensitivity only. Uses plus the $40k floor do not fit in $500,000.",
-        "note_750k": ("Sensitivity. Proceeds above the sized ask have no named use "
-                      "unless scope is added."),
+        "note_request": ("The requested facility. It funds one wastewater system, sewer or "
+                         "septic, repays the LOC and personal funds, and holds the reserve. "
+                         "Quotes are pending."),
     }
 
 
@@ -3674,6 +3800,8 @@ def build_construction_draw_schedule(use_of_funds=None, interest_rate=None):
     rate = LOAN_INTEREST_RATE if interest_rate is None else interest_rate
     lines = {label: amount for label, amount, _status in su["use_of_funds"]}
     close_draw = (lines.get(LOC_PAYOFF_LABEL, 0)
+                  + lines.get(PERSONAL_FUNDS_LABEL, 0)
+                  + lines.get(GUARANTEE_FEE_LABEL, 0)
                   + lines.get(PERMITS_AND_SOFT_COSTS_LABEL, 0)
                   + lines.get(LAND_CARRY_LABEL, 0)
                   + soft_tbd_total())
@@ -3770,7 +3898,8 @@ def equity_bridge():
     new_capex = sum(amount for label, amount, _status in USE_OF_FUNDS
                     if label not in _LOC_PAYOFF_AND_RESERVE_LABELS)
     sources = [
-        {"line": "Bank term loan (sized ask)", "amount": su["ask"], "role": "source"},
+        {"line": "Bank term loan (note, guarantee fee financed)",
+         "amount": su["total_project_cost"], "role": "source"},
         {"line": "Land equity (related-party basis, outside this loan)",
          "amount": LAND_PURCHASE_PRICE, "role": "source"},
         {"line": "ACE civil retainer (sunk, already paid, not a source of this close)",
@@ -3781,15 +3910,17 @@ def equity_bridge():
     return {
         "sources": sources,
         "uses": uses,
-        "loan_sources": su["ask"],
+        "loan_sources": LOAN_AMOUNT,
         "uses_total": su["total_project_cost"],
-        "ties": abs(su["ask"] - su["total_project_cost"]) < 1e-6,
+        "ties": abs(LOAN_AMOUNT - su["total_project_cost"]) < 1e-6,
         "new_capex": new_capex,
         "capitalized_basis": TOTAL_CAPITALIZED_BASIS,
         "property_equity": PROPERTY_EQUITY,
         "reserve": RESERVE_AND_SAFETY_CASH,
         "total_economic_equity": TOTAL_ECONOMIC_EQUITY,
-        "economic_equity_identity": LAND_PURCHASE_PRICE + PHASE_0_5_TOTAL - LOC_PAYOFF_DRAWN,
+        "economic_equity_identity": (LAND_PURCHASE_PRICE + PHASE_0_5_TOTAL
+                                     - LOC_PAYOFF_DRAWN - PERSONAL_FUNDS_REIMBURSEMENT
+                                     - su["guarantee_fee"]),
     }
 
 
@@ -3818,7 +3949,8 @@ def export_assumptions_rows():
          "Removed so wages are not double counted."),
         ("Manager salary", MANAGER_ANNUAL_SALARY, "wage fix",
          "Cash. Lodging is provided and not expensed."),
-        ("Septic", SEPTIC, "patch", "Gated. ACE/Hunter comparable. In the ask."),
+        ("Wastewater (sewer or septic)", WASTEWATER_BUDGET, "patch",
+         f"Gated. One system only. Septic quote ${SEPTIC_QUOTE:,.0f}; no sewer quote yet."),
         ("OSSF design", OSSF_DESIGN, "patch", "$0 until a vendor is chosen."),
         ("Paving base / gravel alt", f"{PAVING_BUDGET} / {GRAVEL_ALT_BUDGET}", "patch",
          "Asphalt is the default."),
@@ -3830,10 +3962,12 @@ def export_assumptions_rows():
         ("Contingency base / bank", f"{CONTINGENCY_RATE_BASE:.0%} / {CONTINGENCY_RATE_BANK:.0%}",
          "patch", "Of hard cost including GC. Not cut to hold the reserve."),
         ("LOC drawn", LOC_PAYOFF_DRAWN, "patch", ""),
+        ("Personal funds repaid", PERSONAL_FUNDS_REIMBURSEMENT, "review",
+         "Owner estimate, includes forecast spend. Not yet documented."),
         ("Land carry prepaid", LAND_CARRY, "patch",
          "PID 984219 + PID 300451 + $700 vacant insurance, 6 months."),
         ("Reserve floor", RESERVE_FLOOR, "patch", "Held by sizing the ask."),
-        ("Sized Base ask", LOAN_ASK, "patch", "Asphalt, 10% contingency."),
+        ("Base ask", LOAN_ASK, "patch", "Asphalt, 10% contingency. Reserve is the plug."),
         ("Construction months", CONSTRUCTION_PERIOD_MONTHS, "patch",
          "Post-permit build. Draw window."),
         ("Months to open", MONTHS_TO_OPEN, "patch",
@@ -3848,15 +3982,22 @@ def export_assumptions_rows():
          "Draws are independent. See MONTE_CARLO_SPEC."),
         ("COTA role", "event parking", "review",
          "No-COTA is an explicit case. F1 agreement through 2034. "
-         "Drink residual is small. Food-truck sales are not lifted."),
+         "Drink residual is small. Only F1 carries a sales boost."),
         ("Event parking cars per peak day", EVENT_PARKING_CARS_PER_DAY, "review",
          "Low end of the Oct 23-25 2026 F1 count (200-300). Not the 30 site-plan stalls."),
         ("F1 weekend parking revenue", F1_WEEKEND_PARKING_REVENUE, "review",
-         "Sid's estimate for the one F1 weekend. Every other event is $0."),
+         f"Middle of the most likely band. Range ${F1_PARKING_MIN:,.0f}-${F1_PARKING_MAX:,.0f}. "
+         "Every other event is $0."),
+        ("F1 weekend drink / food boost",
+         f"{F1_WEEKEND_DRINK_BOOST:.0%} / {F1_WEEKEND_FOOD_BOOST:.0%}", "review",
+         f"Estimate. {F1_LEADUP_DAYS}-day lead-up adds "
+         f"{F1_LEADUP_DRINK_BOOST:.0%} / {F1_LEADUP_FOOD_BOOST:.0%}."),
         ("Site-plan customer spaces", SITE_PLAN_CUSTOMER_SPACES, "review",
          "Hunter sizing. Not event inventory and not a revenue line."),
-        ("750k loan", 750_000, "sensitivity",
-         "No named use for proceeds above the sized ask."),
+        ("500k loan", 500_000, "sensitivity",
+         "Debt-service sensitivity only. Does not fund the itemized uses."),
+        ("Requested loan", REQUESTED_LOAN, "review",
+         "Fully itemized. One wastewater system. Quotes pending."),
     ]
     return [{"name": n, "value": v, "source": s, "notes": note} for n, v, s, note in rows]
 

@@ -541,7 +541,7 @@ def credit_strengths(b, d):
          "A consequence of a high land basis, which is itself collateral strength. The "
          "transaction is driven by coverage and low leverage, not accretive leverage."],
         ["Septic release is gated", "Section 1",
-         f"The {money(m.SEPTIC)} septic quote is in the request but is not released to "
+         f"The {money(m.SEPTIC_QUOTE)} septic quote is in the request but is not released to "
          "spend until its approval gate clears."],
         ["Opening date is an estimate", "Section 5",
          f"{_month_name(m.OPENING_MONTH)} {m.OPENING_YEAR} assumes "
@@ -579,7 +579,7 @@ def s1_transaction(b, d):
         f"Refinance of existing line of credit — {money(_use('Payoff'))}. Initial site work "
         "was financed with a personal line of credit at 12.5%. Retiring it with term debt "
         "replaces revolving personal debt with amortizing business debt.",
-        f"Septic system — {money(_use('Septic'))}. A real vendor quote. Required for "
+        f"Septic system — {money(_use('Wastewater'))}. A real vendor quote. Required for "
         "permanent restrooms and full pad servicing; the largest remaining construction item "
         "and a precondition to operating at capacity. Counted in the request but gated: not "
         "released to spend until its approval clears.",
@@ -719,7 +719,7 @@ def s2_repayment(b, d):
             widths=[1.5, 1.0, 1.3, 0.8, 1.0, 0.9])
     b.note("NOI here is operating Year 2 of the multi-year projection, which includes "
            "growth and cost inflation, so it differs slightly from the steady-state figure "
-           f"above. {d['loan_sizes']['note_500k']} {d['loan_sizes']['note_750k']}")
+           f"above. {d['loan_sizes']['note_500k']} {d['loan_sizes']['note_request']}")
 
     b.h2("Interest Rate Sensitivity")
     b.para("The rate is not yet quoted. Stabilized coverage across a candidate range:")
@@ -1431,6 +1431,10 @@ def _mc_row(spec):
         return [name, kind, ", ".join(str(v) for v in spec["values"]), "—"]
     if "sigma" in spec:
         return [name, kind, f"sigma {spec['sigma']}", f"{spec['low']} – {spec['high']}"]
+    if "bands" in spec:
+        bands = ", ".join(f"{money(low)}–{money(high)}: {pct(weight, 0)}"
+                          for low, high, weight in spec["bands"])
+        return [name, kind, bands, f"{money(spec['bands'][0][0])} – {money(spec['bands'][-1][1])}"]
     return [name, kind, "—", "—"]
 
 
@@ -1547,9 +1551,22 @@ def s9_appendix(b, d):
 
 
 # The facility this proposal asks Nationwide Commercial Capital to consider.
-# The engine's LOAN_AMOUNT remains the itemized uses. Debt service below is
-# the model's SBA 7(a) payment, including the guarantee fee.
-REQUESTED_LOAN = 750_000
+# LOAN_AMOUNT is the note, this check plus the financed guarantee fee. Debt
+# service below is the model's SBA 7(a) payment on that note.
+REQUESTED_LOAN = m.REQUESTED_LOAN
+
+
+def _short_loan():
+    """Column label for the requested loan."""
+    return f"${REQUESTED_LOAN / 1_000_000:g}M"
+
+
+def _f1_parking_range():
+    """The F1 parking figure with its range, for lender-facing text."""
+    likely = max(m.F1_PARKING_BANDS, key=lambda band: band[2])
+    return (f"{money(m.F1_WEEKEND_PARKING_REVENUE)}, the middle of the most likely "
+            f"{money(likely[0])} to {money(likely[1])} range. The full range is "
+            f"{money(m.F1_PARKING_MIN)} to {money(m.F1_PARKING_MAX)}")
 
 
 def _ads(amount=None, product="sba_7a"):
@@ -1579,15 +1596,17 @@ def outline_executive_summary(b, d):
     b.pagebreak()
     b.h1("1. Executive Summary")
     b.para(
-        "JVAM Capital LLC requests a $750,000 SBA 7(a) loan to finish a food truck "
+        f"JVAM Capital LLC requests a {money(REQUESTED_LOAN)} SBA 7(a) loan to finish a food truck "
         "park and container bar at 13901 FM 812, Del Valle, Texas, on land the company "
         "already owns free and clear, directly across FM 812 from Circuit of the Americas.")
     b.para(
-        f"The itemized uses in this plan total {money(m.LOAN_AMOUNT)}. That stack already "
-        f"includes a gated septic allowance of {money(m.SEPTIC)}. The requested facility is "
-        f"{money(REQUESTED_LOAN)}. The difference, {money(REQUESTED_LOAN - m.LOAN_AMOUNT)}, "
-        "is not assigned to a line item. The sponsor is waiting on quotes for septic versus "
-        "a sewer connection. Those quotes are not in the model, and the opening date is "
+        f"The {money(REQUESTED_LOAN)} is fully itemized. It includes "
+        f"{money(m.WASTEWATER_BUDGET)} for one wastewater system, a sewer connection or "
+        f"septic, not both, {money(m.LOC_PAYOFF_DRAWN + m.PERSONAL_FUNDS_REIMBURSEMENT)} to "
+        "repay the existing line of credit and the sponsor's personal funds, "
+        f"{money(m.CONTINGENCY_BUDGET)} of contingency, and a "
+        f"{money(m.RESERVE_AND_SAFETY_CASH)} reserve. The sponsor is waiting on quotes to "
+        "choose the system. Those quotes are not in the model, and the opening date is "
         f"not changed. Opening is {_month_name(m.OPENING_MONTH)} {m.OPENING_YEAR}.")
     b.para(
         f"On the current projections, stabilized net operating income is "
@@ -1599,8 +1618,8 @@ def outline_executive_summary(b, d):
         f"{pct(m.REPLACEMENT_RESERVE_RATE, 0)} replacement reserve is still deducted.")
     b.para(
         "The principal operating risk is reliance on one Formula 1 weekend for event "
-        f"parking. That weekend is modelled at {money(m.F1_WEEKEND_PARKING_REVENUE)}. No "
-        "other COTA event is given parking revenue or a food-sales uplift. There is no "
+        f"parking. That weekend is modelled at {_f1_parking_range()}. No "
+        "other COTA event is given parking revenue or a sales boost. There is no "
         "contract with COTA.")
 
 
@@ -1647,8 +1666,8 @@ def outline_market(b, d):
         f"Everyday customer parking on the site plan is {m.SITE_PLAN_CUSTOMER_SPACES} spaces. "
         "Those spaces earn no parking revenue. The Formula 1 peak-day count of "
         f"{m.EVENT_PARKING_CARS_PER_DAY} cars is what the sponsor observed in October 2026, "
-        "not a stamped stall layout. The parking dollars in this plan are the flat "
-        f"{money(m.F1_WEEKEND_PARKING_REVENUE)} weekend.")
+        "not a stamped stall layout. The parking dollars in this plan are a weekend "
+        f"estimate of {_f1_parking_range()}.")
     b.para(
         "The local need is a permanent place for food trucks with utilities, a restroom "
         "solution, and a drink stand, plus a legal place to park during the largest race "
@@ -1660,12 +1679,20 @@ def outline_market(b, d):
     b.h2("Event calendar")
     b.para(
         "Twelve COTA-area dates are on the calendar. Only the Formula 1 weekend produces "
-        f"parking revenue, and that revenue is a flat {money(m.F1_WEEKEND_PARKING_REVENUE)}. "
+        f"parking revenue, modelled at {_f1_parking_range()}. "
         "MotoGP, NASCAR, endurance races, concerts and festivals are on the calendar and "
-        "are modelled at zero parking and zero food-sales uplift. The sponsor's experience "
-        "at the October 2026 F1 weekend was that overflow from the other events does not "
-        "reach this site, and that F1 itself did not lift food sales. A small drink residual "
-        "is still modelled on the F1 cars. It is not a second business.")
+        "are modelled at zero parking and zero sales boost. The sponsor's experience at the "
+        "October 2026 F1 weekend was that overflow from the other events does not reach "
+        "this site. F1 month carries a small sales boost: "
+        f"{pct(m.F1_WEEKEND_DRINK_BOOST, 0)} on drinks and "
+        f"{pct(m.F1_WEEKEND_FOOD_BOOST, 0)} on food for the three race days, and "
+        f"{pct(m.F1_LEADUP_DRINK_BOOST, 0)} and {pct(m.F1_LEADUP_FOOD_BOOST, 0)} for the "
+        f"{m.F1_LEADUP_DAYS} days before, when COTA staff and contractors are on site. "
+        "These rates are estimates, not measured results. The sponsor saw no food-sales "
+        "lift at the October 2026 F1 weekend, before the park was finished. The food boost "
+        "is kept small and assumes a finished park with more food options. A small drink "
+        "residual is also "
+        "modelled on the F1 cars. It is not a second business.")
     rows = []
     for key, tier in m.COTA_EVENT_TIERS.items():
         count = sum(1 for month in m.COTA_EVENTS_BY_MONTH.values() for k in month if k == key)
@@ -1834,28 +1861,25 @@ def outline_funding(b, d):
         "with the usual SBA rule and is disclosed, not waived.")
     b.h2("What the money is for")
     b.para(
-        f"The itemized uses below total {money(m.LOAN_AMOUNT)}. They are the build-out, the "
-        "payoff of the existing line of credit, and a reserve. The requested check is "
-        f"{money(REQUESTED_LOAN)}. The {money(REQUESTED_LOAN - m.LOAN_AMOUNT)} above those "
-        "uses is for a sewer connection if that bid, rather than the septic allowance already "
-        "in the stack, is the one that gets built. Quotes are outstanding. Until one is "
-        "chosen, that remainder has no named line and is not modelled as extra construction.")
+        f"The {money(REQUESTED_LOAN)} check funds the build-out, the payoff of the existing "
+        f"line of credit, {money(m.PERSONAL_FUNDS_REIMBURSEMENT)} of the sponsor's personal "
+        "funds spent or to be spent on permits, and a reserve. That repayment is an estimate "
+        "and is subject to documentation and to SBA use-of-proceeds rules. The financed guarantee fee brings the note to "
+        f"{money(m.LOAN_AMOUNT)}. The wastewater line is one system only, a sewer connection "
+        f"or septic. It is a budget of {money(m.WASTEWATER_BUDGET)}, not a quote. The "
+        f"septic quote in hand is {money(m.SEPTIC_QUOTE)}. A sewer quote is outstanding.")
     status_text = {"done": "Already incurred", "gated": "Budgeted; release gated",
                    "tbd": "Amount TBD — quote pending", "not_started": "Not yet started"}
     b.table(["Use", "Amount", "Status"],
             [[label, money(amt), status_text.get(st, st)]
              for label, amt, st in m.USE_OF_FUNDS]
-            + [["**Itemized uses**", f"**{money(m.TOTAL_PROJECT_COST)}**", ""],
-               ["Requested SBA 7(a) facility", money(REQUESTED_LOAN),
-                "Includes unassigned proceeds pending septic or sewer quotes"],
-               ["Unassigned above the itemized uses",
-                money(REQUESTED_LOAN - m.LOAN_AMOUNT),
-                "Not a modelled asset and not a change to the opening date"]],
+            + [["**Total note**", f"**{money(m.TOTAL_PROJECT_COST)}**", ""],
+               ["Requested SBA 7(a) check, before the financed fee",
+                money(REQUESTED_LOAN), "Fully itemized above"]],
             widths=[3.6, 1.4, 1.8])
     b.para(
-        f"Septic, {money(m.SEPTIC)}, is in the itemized uses and is gated. It is not released "
-        "to spend until the approval is in hand. A sewer connection is the alternative the "
-        "sponsor is pricing. The opening date stays "
+        "The wastewater line is gated. It is not released to spend until the approval is "
+        "in hand. The opening date stays "
         f"{_month_name(m.OPENING_MONTH)} {m.OPENING_YEAR} either way.")
     b.para(
         f"A {money(500_000)} loan does not fund the itemized uses. It is not the request.")
@@ -1876,11 +1900,11 @@ def outline_funding(b, d):
     pre = d["pre"]
     tracker = d["tracker"]
     b.para(
-        f"The itemized reserve is {money(m.RESERVE_AND_SAFETY_CASH)}. Debt service starts "
-        f"at closing. The model charges {pre['months']} months of the itemized loan's "
+        f"The reserve is {money(m.RESERVE_AND_SAFETY_CASH)}. Debt service starts "
+        f"at closing. The model charges {pre['months']} months of the loan "
         f"payment, plus accounting, before the park opens. That burn is "
         f"{money(pre['total_burn'])}, which leaves {money(pre['opening_balance'])} at "
-        f"opening against the itemized loan of {money(m.LOAN_AMOUNT)}.")
+        "opening.")
     if pre["opening_balance"] < 0.25 * m.RESERVE_AND_SAFETY_CASH:
         b.para(
             f"The reserve is the thin point in this credit. {money(pre['total_burn'])} of "
@@ -1892,7 +1916,7 @@ def outline_funding(b, d):
         worst = min(neg, key=lambda x: x["net_cash_flow"])
         covered = pre["opening_balance"] >= shortfall
         b.para(
-            f"On that itemized payment, {len(neg)} months of Year 1 have negative cash "
+            f"After debt service, {len(neg)} months of Year 1 have negative cash "
             f"flow, totalling {money(shortfall)}. The worst month is "
             f"{money(worst['net_cash_flow'])} in {_month_name(worst['month'])}. "
             + (f"The reserve remaining at opening ({money(pre['opening_balance'])}) "
@@ -1900,19 +1924,13 @@ def outline_funding(b, d):
                if covered else
                f"The reserve remaining at opening ({money(pre['opening_balance'])}) "
                "does not cover that shortfall on its own."))
-    sized_with_fee = m.sba_7a_annual_debt_service(round(m.LOAN_ASK))
     b.para(
-        f"Those cash figures use the model's payment on the itemized principal, "
-        f"{money(m.ANNUAL_DEBT_SERVICE)} a year, before the guarantee fee. The same "
-        f"principal as an SBA 7(a), with the fee financed, is {money(sized_with_fee)} a "
-        f"year. The requested facility's payment is {money(ads)} a year. The "
-        f"{money(REQUESTED_LOAN - m.LOAN_AMOUNT)} above the itemized uses is not in that "
-        "reserve. If it is spent on a sewer connection, it does not fill the gap. If the "
-        "septic allowance already in the uses is what gets built, that remainder is extra "
-        "cash. The quotes that decide this are not in.")
+        f"Those cash figures use the full payment of {money(m.ANNUAL_DEBT_SERVICE)} a year, "
+        "with the guarantee fee financed. They assume the whole wastewater budget and "
+        "contingency are spent. Any part left unspent stays in the company as cash.")
     if tracker["min_balance"] < 0:
         b.para(
-            f"Across the multi-year projection on the itemized payment, the modelled cash "
+            f"Across the multi-year projection, the modelled cash "
             f"balance reaches {money(tracker['min_balance'])} and is negative in "
             f"{tracker['months_negative']} months.")
 
@@ -1954,7 +1972,7 @@ def outline_projections(b, d):
         money(y1["total_noi"]),
         ratio(_dscr(y1["total_noi"])),
     ])
-    b.table(["Month", "Revenue", "Operating cost", "NOI", "DSCR vs $750k 7(a)"],
+    b.table(["Month", "Revenue", "Operating cost", "NOI", f"DSCR vs {_short_loan()} 7(a)"],
             rows, widths=[1.1, 1.3, 1.4, 1.3, 1.6])
     b.h2("Year 2, annualized")
     b.table(["", "Year 1", "Year 2"], [
@@ -1962,7 +1980,7 @@ def outline_projections(b, d):
         ["Operating cost", money(y1["total_gross"] - y1["total_noi"]),
          money(y2_op["total_gross"] - y2_op["total_noi"])],
         ["Net operating income", money(y1["total_noi"]), money(y2_op["total_noi"])],
-        ["Debt service, $750,000 SBA 7(a), fee financed", money(ads), money(ads)],
+        [f"Debt service, {money(REQUESTED_LOAN)} SBA 7(a), fee financed", money(ads), money(ads)],
         ["Profit after that debt service",
          money(y1["total_noi"] - ads), money(y2_op["total_noi"] - ads)],
         ["DSCR", ratio(_dscr(y1["total_noi"])), ratio(_dscr(y2_op["total_noi"]))],
@@ -1991,8 +2009,12 @@ def outline_projections(b, d):
         "from a cold start.",
         "Beverage window: a share of the people implied by truck food sales, at "
         f"{money(m.DAYTIME_BEVERAGE_AVG_PRICE, cents=True)}. It falls with the morning haircut.",
-        f"Parking: {money(m.F1_WEEKEND_PARKING_REVENUE)} on the one F1 weekend. Every other "
-        "event is zero. Food-truck sales are not increased on event days.",
+        f"Parking: {_f1_parking_range()}, on the one F1 weekend. Every other event is zero.",
+        f"F1 sales boost: drink sales in October rise "
+        f"{pct(m.f1_month_sales_boost(['tier1_f1'])['drink'], 1)} and truck percentage rent "
+        f"rises {pct(m.f1_month_sales_boost(['tier1_f1'])['food'], 1)} across the month, "
+        "from the race weekend and the two weeks before it. Boosted drinks carry their own "
+        "inventory cost. No other event gets a boost.",
         "Watch parties: Super Bowl, March Madness and New Year's Eve, as fixed add-ons.",
         "Truck utilities are billed through at cost and do not change NOI.",
     ])
@@ -2043,33 +2065,36 @@ def outline_appendix(b, d):
             noi = cases[case][year]["noi"]
             rows.append([
                 label, str(year), money(noi),
-                ratio(_dscr(noi, 750_000, "sba_7a")),
-                ratio(_dscr(noi, round(m.LOAN_ASK), "sba_7a")),
-                ratio(_dscr(noi, 750_000, "sba_504")),
+                ratio(_dscr(noi, REQUESTED_LOAN, "sba_7a")),
+                ratio(_dscr(noi, REQUESTED_LOAN, "sba_504")),
             ])
-    b.table(["Case", "Year", "NOI", "7(a) $750k", "7(a) sized ask", "504 $750k"],
-            rows, widths=[1.2, 0.6, 1.3, 1.2, 1.3, 1.2])
+    b.table(["Case", "Year", "NOI", f"7(a) {_short_loan()}", f"504 {_short_loan()}"],
+            rows, widths=[1.4, 0.8, 1.6, 1.5, 1.5])
     b.note(
-        f"The sized ask is {money(m.LOAN_ASK)}. A "
-        f"{m.LOAN_PRODUCTS['sba_7a']['dscr_min']:.2f}x test on the $750,000 7(a) payment "
+        f"A {m.LOAN_PRODUCTS['sba_7a']['dscr_min']:.2f}x test on the {money(REQUESTED_LOAN)} 7(a) payment "
         f"of {money(_ads())} requires NOI of "
         f"{money(m.LOAN_PRODUCTS['sba_7a']['dscr_min'] * _ads())}. Stabilized run-rate NOI "
         f"is {money(y2['total_noi'])}.")
     b.h2("Assumptions")
     b.table(["Item", "Value", "Note"], [
         ["Opening", f"{_month_name(m.OPENING_MONTH)} {m.OPENING_YEAR}",
-         "Unchanged. Quotes for septic or sewer are not in."],
+         "Unchanged. Sewer or septic is not yet chosen."],
         ["Open hours", "10am daily. Mon–Thu to 9pm. Fri–Sun to 10pm.",
          f"{m.PARK_COVERAGE_HOURS_PER_WEEK:.0f} staffed hours a week."],
         ["Morning sales haircut", pct(m.WEEKDAY_MORNING_SALES_HAIRCUT, 1),
          "Truck food sales and the beverage window only."],
         ["F1 parking", money(m.F1_WEEKEND_PARKING_REVENUE),
-         "One weekend. All other events are $0."],
+         f"One weekend. Range {money(m.F1_PARKING_MIN)} to {money(m.F1_PARKING_MAX)}. "
+         "All other events are $0."],
+        ["F1 sales boost", f"{pct(m.F1_WEEKEND_DRINK_BOOST, 0)} drinks, "
+         f"{pct(m.F1_WEEKEND_FOOD_BOOST, 0)} food",
+         f"Race weekend. {m.F1_LEADUP_DAYS}-day lead-up is "
+         f"{pct(m.F1_LEADUP_DRINK_BOOST, 0)} and {pct(m.F1_LEADUP_FOOD_BOOST, 0)}. Estimates."],
         ["Management fee", pct(m.MANAGEMENT_FEE_RATE, 0), "Sponsor self-manages."],
         ["Replacement reserve", pct(m.REPLACEMENT_RESERVE_RATE, 0),
          "Of revenue excluding utility rebills."],
         ["Insurance", money(m.FIXED_COSTS["insurance"]) + "/mo",
-         "Operating GL and liquor. Land policy is in the prepaid carry."],
+         "Benchmark estimate, not a quote. One annual policy: GL, liquor, property, workers' comp. Land policy is in the prepaid carry."],
         ["Marketing", money(m.FIXED_COSTS["marketing"]) + "/mo", "The entire marketing budget."],
         ["Waste", money(m.WASTE_SERVICE_MONTHLY) + "/mo",
          "Porta-potty, hand-wash, dumpster. Midpoint of Austin quotes."],
@@ -2079,7 +2104,7 @@ def outline_appendix(b, d):
     ], widths=[1.8, 2.4, 2.4])
     b.h2("Build-out budget detail")
     b.para(
-        "The forward uses, including septic, paving, the container bar, permits, "
+        "The forward uses, including wastewater, paving, the container bar, permits, "
         "contingency and the reserve, are itemized in the Funding Request. The table "
         f"below is the Phase 0.5 work already on the line of credit, "
         f"{money(m.PHASE_0_5_TOTAL)} in total. Paying that line off and listing these "
@@ -2106,7 +2131,7 @@ def outline_appendix(b, d):
         "Personal financial statements, if a guaranty is required.",
         "Operating agreements and member consent for this loan.",
         "Deeds, survey, and the property-tax statement.",
-        "The septic quote and any sewer bid, with a note of which one will be built.",
+        "The septic quote and the sewer bid, with a note of which one system will be built.",
         "Vendor leases or letters of intent, when they exist.",
         "TABC permit number, issue date and premises diagram.",
         "Insurance binder, including liquor liability.",

@@ -11,10 +11,9 @@ plus an all-day soda/juice/water/coffee stand) on the 4.432-acre property at
 sports bar plan. This is the leanest concept modeled for the site,
 financed via a bank term loan (fixed-payment, fully amortizing — placeholder
 terms pending an actual bank quote). The buildout started smaller and
-personal-LOC-financed (~$81,600); the next phase (septic, paving, payoff of
-the existing personal LOC, and remaining construction) is funded by a loan
-**sized to its itemized uses** — about $563.6K in the Base case — rather than
-the earlier round $500,000. See "Financing" below.
+personal-LOC-financed (~$81,600); the next phase (one wastewater system,
+paving, payoff of the existing personal LOC, and remaining construction) is
+funded by a **$1,000,000** SBA 7(a) request. See "Financing" below.
 
 ## Commands
 
@@ -115,22 +114,29 @@ Two core files, strict separation of concerns, plus a document generator:
   business plan (see Commands). Like the dashboard, it holds no calculation
   logic; it only formats engine output and conditional narrative.
 
-### Financing: sized bank term loan, fixed-payment amortizing (v3)
+### Financing: $1,000,000 SBA 7(a), fixed-payment amortizing (v5)
 
-Lender-ready v3 sizes the ask instead of holding a $500,000 round number.
-Base asphalt at 10% contingency is about **$563,626**. Bank asphalt at 15%
-is about **$581,726**. Both leave a **$40,000** reserve floor. Contingency
-is 10%/15% of hard cost including the $50,000 GC allowance, and it is not
-cut to force the old ask. Septic is **$212,000** and gated. OSSF design is
-$0 until a vendor is chosen. Health permit is $1,700. The $3,000 ACE
-retainer is already paid and is not a use. Land carry is PID 984219
+The ask is **$1,000,000** (`LOAN_ASK` / `REQUESTED_LOAN`) in Base and Bank.
+`LOAN_AMOUNT` is the **$1,022,500** note: the check plus the $22,500 guarantee
+fee, which is a use of funds (`GUARANTEE_FEE_LABEL`), financed, and not
+capitalized. `LOC_PAYOFF_DRAWN` ($120,000) plus
+`PERSONAL_FUNDS_REIMBURSEMENT` ($130,000) is the $250,000 payoff. The personal
+line is the owner's estimate, includes forecast spend, may overlap the $0 TBD
+lines, and is not capitalized until it is itemized. SBA rules on repaying
+owners are unconfirmed. Wastewater is one line,
+`WASTEWATER_BUDGET` ($350,000, sewer or septic, never both), gated by
+`WASTEWATER_UNLOCKED`. The owner's range was $350,000-$400,000. `SEPTIC_QUOTE` ($212,000) is the only real quote so far.
+Reserve is the plug: $194,574 Base, $169,574 Bank, both above the
+`RESERVE_FLOOR` ($40,000). If uses break the floor, the ask rises.
+Contingency is 10%/15% of hard cost including the $50,000 GC allowance. OSSF
+design is $0 until a vendor is chosen. Health permit is $1,700. The $3,000
+ACE retainer is already paid and is not a use. Land carry is PID 984219
 ($2,289.23) + PID 300451 ($4,459.57) + $700 vacant-land insurance, rounded
 to $621/month and prepaid for 6 months ($3,726). Entitlement is 5 months,
 `CONSTRUCTION_PERIOD_MONTHS` is 1, and `MONTHS_TO_OPEN` is 6 (open March
 2027, the March/April window). IRR delays cash flows by `MONTHS_TO_OPEN`,
-not by the 1-month build alone. A $500,000 loan and a $750,000 loan are
-debt-service sensitivities: $500,000 does not fund the uses, and $750,000
-has no named use for the extra proceeds. DSCR is shown for SBA 7(a) at 10%
+not by the 1-month build alone. A $500,000 loan is a debt-service
+sensitivity and does not fund the uses. DSCR is shown for SBA 7(a) at 10%
 variable / 25 years, an SBA 504 blend (50% bank at about 7.5% and 40% CDC
 at 6.97%, both 25 years), and a conventional placeholder at 9.5%.
 
@@ -415,7 +421,7 @@ default) reproduces today's baseline calendar exactly:
   returns all-zero regardless of what's on the calendar) — "as if COTA
   didn't exist."
 - **`2.0x`** doubles COTA event parking, the small drink residual, and
-  event staffing cost. It does not lift food-truck sales.
+  event staffing cost. It also scales the F1 sales boost, but not pad rent or occupancy.
   `COTA_TRUCK_BOOST_MAX` is 0. Everyday daytime-beverage revenue still
   rides on `truck_total_sales`. Event parking is a separate line and is
   zero in months with no event.
@@ -493,10 +499,32 @@ On COTA event days the forecast books parking, not a drink spike.
 Peak-day capacity is `EVENT_PARKING_CARS_PER_DAY` (200, the low end of
 the Oct 23-25 2026 F1 count of 200-300). The site plan's
 `SITE_PLAN_CUSTOMER_SPACES` (30) are everyday customer stalls and are
-not a revenue line. Only F1 books parking, and that revenue is
-`F1_WEEKEND_PARKING_REVENUE` ($20,000 for the one weekend). The car
-curve (90 / 150 / 200) sizes the F1 drink residual only. Every other
-event is $0 parking, $0 drink residual, and $0 attendants/porta-potties.
+not a revenue line. Only F1 books parking. That revenue is a variable
+from `F1_PARKING_MIN` ($5,000) to `F1_PARKING_MAX` ($50,000), weighted by
+`F1_PARKING_BANDS` toward $10,000-$15,000. `F1_WEEKEND_PARKING_REVENUE`
+($12,500, the middle of that band) is the deterministic base, on purpose
+below the $15,500 weighted mean. Pass `f1_parking_revenue` to override it;
+the sidebar slider does. Monte Carlo draws it with
+`draw_f1_parking_revenue()`, so the slider does not set it there. Named
+scenarios keep the base. The car curve (90 / 150 / 200) sizes the F1 drink
+residual only. Every other event is $0 parking, $0 drink residual, and $0
+attendants/porta-potties.
+
+F1 also lifts normal sales through `f1_month_sales_boost()`: weekend drinks
+25% and food 5%, and a 14-day lead-up of 5% and 3% for COTA staff and
+contractors (customers, not park payroll; labor does not change). The food
+rate is small on purpose: Sid saw no food lift at the Oct 2026 weekend,
+before the park was finished, and the owner expects a little once a nicer
+park has more options. Those rates spread over the month, so October is
++4.8% on drinks and +1.9% on percentage rent. Pad rent does not move. Daytime beverages use un-boosted
+truck traffic so the food boost does not leak into drinks. Boosted drinks
+add `COGS_RATE` / `DAYTIME_BEVERAGE_COGS_RATE` cost because the $2,000
+inventory line is flat. The boost lives in `bar_revenue`,
+`daytime_beverage_revenue`, and `truck_share`, not `cota["gross"]`; read it
+from `f1_sales_lift` / `total_f1_sales_lift`. It needs `tier1_f1` on the
+calendar and scales with `cota_impact_multiplier`. `COTA_TRUCK_BOOST_MAX`
+stays 0.
+
 Parking is `cota_parking`, the existing PropCo line.
 Drink residual is `COTA_BAR_ATTACH_PER_CAR` (10% of cars, one everyday
 check) plus `COTA_EVENT_BEV_ATTACH_PER_PERSON` (10% of people in the
@@ -516,7 +544,8 @@ Labor does not scale with the check. The evening bartender is an hourly
 wage (`EVENING_BARTENDER_WAGE`), so a higher cocktail check does not raise
 her pay. Cocktails still carry a skill/speed requirement the prepackaged
 plan avoided, and the crew is still light. The
-`FIXED_COSTS["insurance"]` estimate ($900/mo) is flagged in-line for
+`FIXED_COSTS["insurance"]` estimate ($675/mo, one annual package with no
+separate F1 event policy, pending a quote) is flagged in-line for
 revisiting now that the bar pours cocktails rather than only prepackaged
 items.
 

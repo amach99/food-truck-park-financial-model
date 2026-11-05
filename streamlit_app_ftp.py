@@ -98,8 +98,14 @@ cota_impact_multiplier = st.sidebar.slider(
     help="0.0x = COTA has no effect — event parking and the small drink "
          "residual both go to zero, as if the event calendar didn't exist. "
          "1.0x (default) is the baseline calendar. 2.0x doubles event "
-         "parking, the drink residual, and event staffing cost. It does "
-         "not add food-truck sales.")
+         "parking, the drink residual, event staffing cost, and the F1 "
+         "food and drink sales boost.")
+f1_parking_revenue = st.sidebar.slider(
+    "F1 Weekend Parking", model.F1_PARKING_MIN, model.F1_PARKING_MAX,
+    model.F1_WEEKEND_PARKING_REVENUE, step=500, format="$%d",
+    help="Parking revenue for the one F1 weekend. Most likely $10,000-"
+         "$15,000. The Monte Carlo tab draws this from its weighted "
+         "range, so this slider does not set it there.")
 projection_view = st.sidebar.radio(
     "Projection View",
     ["Year 1 (with ramps)", "Steady state (no ramps)"],
@@ -125,7 +131,7 @@ mc_sims = st.sidebar.selectbox("Simulations", [1000, 5000, 10000], index=1)
 # =============================================================================
 @st.cache_data
 def get_annual(wd_custs, we_custs, check, slots, t_rent, t_share, t_sales, t_occ, seasonal,
-               dbev_attach, dbev_price, cota_impact=1.0, yr=1):
+               dbev_attach, dbev_price, cota_impact=1.0, yr=1, f1_parking=None):
     return model.run_annual_projection(
         wd_custs, we_custs, year=yr, avg_check=check,
         truck_slots=slots, truck_rent=t_rent,
@@ -134,12 +140,13 @@ def get_annual(wd_custs, we_custs, check, slots, t_rent, t_share, t_sales, t_occ
         daytime_beverage_attach_rate=dbev_attach,
         daytime_beverage_avg_price=dbev_price,
         cota_impact_multiplier=cota_impact,
+        f1_parking_revenue=f1_parking,
     )
 
 
 @st.cache_data
 def get_multi_year(wd_custs, we_custs, check, slots, t_rent, t_share, t_sales, t_occ, seasonal,
-                   dbev_attach, dbev_price, cota_impact=1.0, years=3):
+                   dbev_attach, dbev_price, cota_impact=1.0, years=3, f1_parking=None):
     return model.run_multi_year_projection(
         wd_custs, we_custs, years=years, base_check=check,
         truck_slots=slots, truck_rent=t_rent,
@@ -148,6 +155,7 @@ def get_multi_year(wd_custs, we_custs, check, slots, t_rent, t_share, t_sales, t
         daytime_beverage_attach_rate=dbev_attach,
         daytime_beverage_avg_price=dbev_price,
         cota_impact_multiplier=cota_impact,
+        f1_parking_revenue=f1_parking,
     )
 
 
@@ -205,7 +213,7 @@ months, annual = get_annual(weekday_customers, weekend_customers, avg_check,
                             truck_slots, truck_rent, truck_share, truck_sales,
                             truck_occupancy, seasonal_pct,
                             daytime_bev_attach, daytime_bev_price,
-                            cota_impact_multiplier, yr=projection_year)
+                            cota_impact_multiplier, f1_parking=f1_parking_revenue, yr=projection_year)
 df = months_to_df(months)
 
 
@@ -420,6 +428,7 @@ with tabs[2]:
             truck_share_rate=truck_share, truck_avg_sales=truck_sales,
             truck_occupancy=truck_occupancy,
             cota_impact_multiplier=cota_impact_multiplier,
+            f1_parking_revenue=f1_parking_revenue,
         )
         slot_rows.append({
             "Trucks": slots,
@@ -464,6 +473,7 @@ with tabs[2]:
                 truck_share_rate=truck_share, truck_avg_sales=sales,
                 truck_occupancy=truck_occupancy,
                 cota_impact_multiplier=cota_impact_multiplier,
+                f1_parking_revenue=f1_parking_revenue,
             )
             row[f"{slots} trucks"] = f"{ann['avg_monthly_nut_coverage']:.2f}x"
         grid_rows.append(row)
@@ -482,6 +492,7 @@ with tabs[2]:
             truck_share_rate=truck_share, truck_avg_sales=truck_sales,
             truck_occupancy=truck_occupancy,
             cota_impact_multiplier=cota_impact_multiplier,
+            f1_parking_revenue=f1_parking_revenue,
         )
         bar_rows.append({
             "Weekday/Weekend Customers": f"{wd} / {we}",
@@ -500,6 +511,7 @@ with tabs[2]:
             truck_share_rate=truck_share, truck_avg_sales=truck_sales,
             truck_occupancy=occ,
             cota_impact_multiplier=cota_impact_multiplier,
+            f1_parking_revenue=f1_parking_revenue,
         )
         occ_rows.append({
             "Occupancy": f"{occ:.0%}",
@@ -582,6 +594,9 @@ with tabs[4]:
                 spread = str(row.get("sigma", ""))
             elif "values" in row:
                 spread = ", ".join(str(v) for v in row["values"])
+            elif "bands" in row:
+                spread = ", ".join(f"${low:,}-${high:,}: {weight:.0%}"
+                                   for low, high, weight in row["bands"])
             else:
                 spread = "held fixed at the sidebar value"
             spec_rows.append({
@@ -737,7 +752,7 @@ with tabs[6]:
                                truck_slots, truck_rent, truck_share, truck_sales,
                                truck_occupancy, seasonal_pct,
                                daytime_bev_attach, daytime_bev_price,
-                               cota_impact_multiplier)
+                               cota_impact_multiplier, f1_parking=f1_parking_revenue)
 
     my_rows = []
     for yr, months_data, ann in all_years:
@@ -1014,7 +1029,7 @@ with tabs[8]:
     lt4.metric("Remaining to Spend", fmt_dollar(model.NEW_CASH_NEEDED))
 
     st.markdown("---")
-    st.subheader(f"Use of Funds — ${model.LOAN_ASK:,.0f} sized ask")
+    st.subheader(f"Use of Funds — ${model.LOAN_ASK:,.0f} ask")
     status_labels = {
         "done": "✅ Done",
         "in_progress": "🔧 In Progress",
@@ -1028,11 +1043,13 @@ with tabs[8]:
     st.dataframe(use_df, use_container_width=True, hide_index=True)
     st.markdown(f"**Total: {fmt_dollar(model.TOTAL_PROJECT_COST)}**")
     st.caption(
-        "The ask is sized so Reserve & Safety Cash equals the "
+        f"The ${model.LOAN_ASK:,.0f} check plus the financed guarantee fee is the "
+        f"note. Reserve & Safety Cash is the plug, above the "
         f"${model.RESERVE_FLOOR:,.0f} floor. Contingency is "
         f"{model.CONTINGENCY_RATE_BASE:.0%} of hard cost including GC "
         f"(${model.CONTINGENCY_BUDGET:,.0f}) and is not cut to hit a round number. "
-        f"Septic is ${model.SEPTIC:,.0f} and gated. Health permit is "
+        f"Wastewater is ${model.WASTEWATER_BUDGET:,.0f} for one system, sewer or "
+        f"septic, and is gated. Health permit is "
         f"${model.HEALTH_LICENSE:,.0f}. The $5,300 TABC permit is already paid "
         "and sits inside the $120,000 LOC payoff. The $3,000 ACE retainer is "
         "already paid and is not a forward use. Paving default is the "
@@ -1434,7 +1451,7 @@ with tabs[10]:
                             truck_slots, truck_rent, truck_share, truck_sales,
                             truck_occupancy, seasonal_pct,
                             daytime_bev_attach, daytime_bev_price,
-                            cota_impact_multiplier, yr=2)
+                            cota_impact_multiplier, f1_parking=f1_parking_revenue, yr=2)
         _mo = lambda k: fmt_dollar(_ss[k] / 12) + "/mo"
         _alcohol_margin = 1 - model.VARIABLE_COST_RATE
         _parking_margin = 1 - model.PARKING_UPKEEP_RATE - model.PARKING_SALES_TAX_RATE
@@ -1474,9 +1491,9 @@ with tabs[10]:
              f"on a peak day (low end of the Oct 2026 F1 count of 200-300; "
              f"the site plan's {model.SITE_PLAN_CUSTOMER_SPACES} customer stalls "
              f"are not this line). Only F1 is booked, at "
-             f"${model.F1_WEEKEND_PARKING_REVENUE:,.0f} for the weekend "
-             f"(Fri 90 / Sat 150 / Sun 200 cars, implied "
-             f"${model.F1_PARKING_PRICE_PER_CAR:.2f}/car). Every other event "
+             f"${f1_parking_revenue:,.0f} for the weekend "
+             f"(Fri 90 / Sat 150 / Sun 200 cars; the range is "
+             f"${model.F1_PARKING_MIN:,.0f}-${model.F1_PARKING_MAX:,.0f}). Every other event "
              f"is $0 parking, $0 drink residual, and $0 lot crew. A small F1 "
              f"drink residual is {model.COTA_BAR_ATTACH_PER_CAR:.0%} of those "
              f"cars at the everyday check.",
@@ -1672,7 +1689,7 @@ with tabs[11]:
                          truck_slots, truck_rent, truck_share, truck_sales,
                          truck_occupancy, seasonal_pct,
                          daytime_bev_attach, daytime_bev_price,
-                         cota_impact_multiplier, yr=2)
+                         cota_impact_multiplier, f1_parking=f1_parking_revenue, yr=2)
     st.caption("All figures below are the **stabilized (steady-state) run rate** "
                "at the current sidebar inputs, regardless of the sidebar's "
                "Projection View toggle — CRE valuation is done off stabilized "
@@ -1741,7 +1758,7 @@ with tabs[11]:
 
     uses_df = pd.DataFrame(model.USE_OF_FUNDS, columns=["Use", "Amount", "Status"])
     uses_df["Amount"] = uses_df["Amount"].apply(fmt_dollar)
-    st.markdown("**Uses of the sized loan**")
+    st.markdown("**Uses of the loan**")
     st.dataframe(uses_df, use_container_width=True, hide_index=True)
     st.caption(
         f"Bank-case contingency at {model.CONTINGENCY_RATE_BANK:.0%} sizes a "
@@ -1779,7 +1796,7 @@ with tabs[11]:
         "case": "Case", "year": "Year", "product_label": "Product",
     })[["Case", "Year", "Loan", "Product", "NOI", "ADS", "DSCR"]]
     st.dataframe(show, use_container_width=True, hide_index=True)
-    st.caption(dscr_pkg["note_500k"] + " " + dscr_pkg["note_750k"]
+    st.caption(dscr_pkg["note_500k"] + " " + dscr_pkg["note_request"]
                + " 7(a) is 10% variable / 25 years. 504 is a 50/40 blend "
                "(bank ~7.5%, CDC 6.97%), both 25 years, fees not included. "
                "Both SBA products typically require a personal guarantee.")
@@ -1970,7 +1987,7 @@ with tabs[11]:
         truck_slots, truck_rent, truck_share, truck_sales,
         truck_occupancy, seasonal_pct,
         daytime_bev_attach, daytime_bev_price,
-        cota_impact_multiplier, years=model.HOLD_PERIOD_YEARS + 1)
+        cota_impact_multiplier, f1_parking=f1_parking_revenue, years=model.HOLD_PERIOD_YEARS + 1)
     rate_rows = model.run_rate_sensitivity_analysis(
         annual=stab, base_years=rate_sensitivity_years, exit_cap_rate=cap_rate)
     rate_df = pd.DataFrame(rate_rows)
@@ -2008,7 +2025,7 @@ with tabs[11]:
                                 truck_slots, truck_rent, truck_share, truck_sales,
                                 truck_occupancy, seasonal_pct,
                                 daytime_bev_attach, daytime_bev_price,
-                                cota_impact_multiplier, years=hold_years + 1)
+                                cota_impact_multiplier, f1_parking=f1_parking_revenue, years=hold_years + 1)
     returns = model.run_returns_analysis(
         hold_years=hold_years, exit_cap_rate=exit_cap_rate,
         sale_cost_pct=sale_cost_pct, discount_rate=discount_pct,
@@ -2069,6 +2086,7 @@ with tabs[11]:
         daytime_beverage_attach_rate=daytime_bev_attach,
         daytime_beverage_avg_price=daytime_bev_price,
         cota_impact_multiplier=cota_impact_multiplier,
+        f1_parking_revenue=f1_parking_revenue,
     )
     grid_df = pd.DataFrame(grid)
     cap_cols = [c for c in grid_df.columns if c != "revenue_delta"]

@@ -17,6 +17,8 @@ correctly. Two classes of bug motivated most of this file:
 Run with:  pytest -q
 """
 
+import random
+
 import pytest
 
 import food_truck_park_model as m
@@ -199,29 +201,29 @@ def test_cota_impact_multiplier_default_leaves_annual_projection_unchanged():
     assert without_arg == with_default
 
 
-def test_cota_impact_multiplier_zero_removes_cota_but_not_truck_boost():
-    """At 0%, COTA revenue disappears entirely and food trucks see NO boost
-    (event_month_boost only applies above baseline, multiplier > 1.0)."""
+def test_cota_impact_multiplier_zero_removes_cota_and_the_f1_sales_boost():
+    """At 0%, COTA revenue disappears, and so does the F1 sales boost.
+    Pad rent does not move."""
     _, off = m.run_annual_projection(year=2, cota_impact_multiplier=0.0)
     _, baseline = m.run_annual_projection(year=2)
     assert off["total_cota_parking"] == 0
     assert off["total_cota_bar"] == 0
     assert off["total_cota_daytime_bev"] == 0
     assert off["total_cota_cost"] == 0
-    assert off["total_trucks"] == pytest.approx(baseline["total_trucks"])
+    assert off["total_f1_sales_lift"] == 0
+    assert off["total_truck_rent"] == pytest.approx(baseline["total_truck_rent"])
+    assert off["total_truck_share"] < baseline["total_truck_share"]
     assert off["total_gross"] < baseline["total_gross"]
 
 
-def test_cota_impact_above_baseline_scales_parking_not_food_sales():
-    """Above 1.0, parking and the drink residual scale. Food-truck sales
-    do not. The old +20% event spillover into truck food is retired."""
+def test_cota_impact_above_baseline_scales_f1_lines_not_pad_rent():
+    """Above 1.0, parking, the drink residual, and the F1 sales boost scale.
+    The old +20% spillover stays retired, so occupancy and pad rent do not."""
     _, baseline = m.run_annual_projection(year=2)
     _, high = m.run_annual_projection(year=2, cota_impact_multiplier=2.0)
     assert m.COTA_TRUCK_BOOST_MAX == 0.0
-    assert high["total_trucks"] == pytest.approx(baseline["total_trucks"])
     assert high["total_truck_rent"] == pytest.approx(baseline["total_truck_rent"])
-    assert high["total_truck_share"] == pytest.approx(baseline["total_truck_share"])
-    assert high["total_daytime_beverage"] == pytest.approx(baseline["total_daytime_beverage"])
+    assert high["total_f1_sales_lift"] == pytest.approx(baseline["total_f1_sales_lift"] * 2)
     assert high["total_cota_parking"] == pytest.approx(baseline["total_cota_parking"] * 2)
     assert high["total_cota_bar"] == pytest.approx(baseline["total_cota_bar"] * 2)
 
@@ -640,6 +642,8 @@ def test_yield_on_cost_includes_land():
     loc_payoff_and_reserve = {
         "Payoff of existing high-interest line of credit (Phase 0.5 & pre-loan soft costs)",
         "Reserve & Safety Cash",
+        m.GUARANTEE_FEE_LABEL,
+        m.PERSONAL_FUNDS_LABEL,
     }
     real_new_loan_capex = sum(
         a for label, a, _ in m.USE_OF_FUNDS if label not in loc_payoff_and_reserve)
@@ -871,10 +875,11 @@ def test_equity_schedule_rows_sum():
         rows["Total economic equity"])
     assert rows["Property equity"] == pytest.approx(m.PROPERTY_EQUITY)
     assert rows["Total economic equity"] == pytest.approx(m.TOTAL_ECONOMIC_EQUITY)
-    # Land + Phase 0.5 − the LOC payoff. True while every non-LOC, non-reserve
-    # use is capitalized.
+    # Land + Phase 0.5 − the LOC payoff − the financed fee. True while every
+    # other non-LOC, non-reserve use is capitalized.
     assert rows["Total economic equity"] == pytest.approx(
-        m.LAND_PURCHASE_PRICE + m.PHASE_0_5_TOTAL - m.LOC_PAYOFF_DRAWN)
+        m.LAND_PURCHASE_PRICE + m.PHASE_0_5_TOTAL - m.LOC_PAYOFF_DRAWN
+        - m.PERSONAL_FUNDS_REIMBURSEMENT - m.sba_7a_guarantee_fee(m.LOAN_ASK))
     assert rows["Property equity"] == pytest.approx(
         rows["Total economic equity"] - m.RESERVE_AND_SAFETY_CASH)
     assert rows["Property equity"] != rows["Total economic equity"]
@@ -883,7 +888,7 @@ def test_equity_schedule_rows_sum():
 def test_opening_cash_derives_from_sources_and_uses():
     assert m.OPENING_MONTH == 3 and m.OPENING_YEAR == 2027
     assert m.PRE_OPEN_MONTHS == m.MONTHS_TO_OPEN == 6
-    assert m.RESERVE_AND_SAFETY_CASH == m.RESERVE_FLOOR == 40_000
+    assert m.RESERVE_AND_SAFETY_CASH >= m.RESERVE_FLOOR == 40_000
     # Land tax and vacant insurance are in LAND_CARRY, not in this burn.
     assert "property_tax" not in m.PRE_OPEN_COST_KEYS
     assert "insurance" not in m.PRE_OPEN_COST_KEYS
@@ -960,14 +965,15 @@ def test_revenue_mix_keeps_pad_rent_separate_from_event_parking():
     assert "transactional" in mix["event_parking_label"]
 
 
-def test_only_f1_books_parking_and_the_weekend_is_20000():
-    """Sid's figure is $20,000 for the one F1 weekend. Other events have
-    no overflow, so parking, the drink residual, and lot staffing are zero.
+def test_only_f1_books_parking_at_the_most_likely_weekend_figure():
+    """The base F1 weekend is the middle of the most likely band. Other events
+    have no overflow, so parking, the drink residual, and lot staffing are zero.
     January has no event. The 30 site-plan stalls are not this line."""
     assert m.SITE_PLAN_CUSTOMER_SPACES == 30
     assert m.F1_PARKING_CARS_BY_DAY == (90, 150, 200)
-    assert m.F1_WEEKEND_PARKING_REVENUE == 20_000
-    assert sum(m.F1_PARKING_CARS_BY_DAY) * m.F1_PARKING_PRICE_PER_CAR == pytest.approx(20_000)
+    assert m.F1_WEEKEND_PARKING_REVENUE == 12_500
+    assert (sum(m.F1_PARKING_CARS_BY_DAY) * m.F1_PARKING_PRICE_PER_CAR
+            == pytest.approx(m.F1_WEEKEND_PARKING_REVENUE))
     assert m.EVENTS_WITH_PARKING == ("tier1_f1",)
     for key, tier in m.COTA_EVENT_TIERS.items():
         assert tier["parking_price"] == m.EVENT_PARKING_PRICE_PER_CAR[key]
@@ -982,7 +988,7 @@ def test_only_f1_books_parking_and_the_weekend_is_20000():
 
     f1 = m.calc_cota_event_revenue(["tier1_f1"])
     cars = sum(m.F1_PARKING_CARS_BY_DAY)
-    assert f1["parking"] == pytest.approx(20_000)
+    assert f1["parking"] == pytest.approx(m.F1_WEEKEND_PARKING_REVENUE)
     assert f1["incremental_cost"] == 0
     assert m.F1_EVENT_SANITATION == 0
     assert f1["bar_uplift"] == pytest.approx(
@@ -991,7 +997,7 @@ def test_only_f1_books_parking_and_the_weekend_is_20000():
 
     # October also has a GT weekend. That weekend adds no parking.
     october = m.calc_monthly_total(20, 58, 10)
-    assert october["cota_parking"] == pytest.approx(20_000)
+    assert october["cota_parking"] == pytest.approx(m.F1_WEEKEND_PARKING_REVENUE)
     march = m.calc_monthly_total(20, 58, 3)  # NASCAR only
     assert march["cota_parking"] == 0
     assert march["cota_bar_uplift"] == 0
@@ -1006,17 +1012,19 @@ def test_only_f1_books_parking_and_the_weekend_is_20000():
     assert "event_parking_revenue" not in october
 
 
-def test_sba_7a_guarantee_fee_is_financed_for_dscr_only():
-    """3% of the 75% guaranteed portion, added to the note. The sized ask
-    and the operating payment do not include it."""
-    loan = 750_000
+def test_sba_7a_guarantee_fee_is_financed_into_the_loan():
+    """3% of the 75% guaranteed portion, added to the note. The $1,000,000
+    request is the check; LOAN_AMOUNT and the payment are on the note."""
+    loan = 1_000_000
     fee = m.sba_7a_guarantee_fee(loan)
     assert fee == pytest.approx(loan * 0.75 * 0.03)
     note = m.sba_7a_note_amount(loan)
     assert note == pytest.approx(loan + fee)
     ads = m.sba_7a_annual_debt_service(loan)
     assert ads == pytest.approx(m._amortization_payment(note, 0.10, 25) * 12)
-    assert m.LOAN_AMOUNT == 563_626
+    assert m.LOAN_ASK == loan
+    assert m.LOAN_AMOUNT == pytest.approx(note)
+    assert m.ANNUAL_DEBT_SERVICE == pytest.approx(ads)
     assert m.OPENING_MONTH == 3
     assert m.OPENING_YEAR == 2027
 
@@ -1073,27 +1081,47 @@ def test_time_to_open_is_six_months_and_the_build_is_one_month():
     assert m.RETURNS_DELAY_MONTHS == 6
 
 
-def test_sized_ask_holds_forty_thousand_reserve_floor():
-    """Base asphalt @ 10% ≈ $563.6k. Bank asphalt @ 15% ≈ $581.7k.
-    The floor is held by raising the ask, not by cutting contingency."""
+def test_1m_ask_is_fully_allocated_and_clears_the_reserve_floor():
+    """Reserve is the plug under a $1,000,000 check, in Base and Bank. The
+    guarantee fee sits on top of the check, so uses sum to the note."""
     base = m.build_use_of_funds()
-    assert base["labeled_excluding_reserve"] == 523_626
-    assert base["ask"] == 563_626
-    assert base["residual_reserve"] == m.RESERVE_FLOOR == 40_000
-    assert base["ask_bumped"] is True
-    assert base["contingency"] == pytest.approx(36_200)
+    assert base["labeled_excluding_reserve"] == pytest.approx(805_426)
+    assert base["ask"] == 1_000_000
+    assert base["residual_reserve"] == pytest.approx(194_574)
+    assert base["residual_reserve"] > m.RESERVE_FLOOR == 40_000
+    assert base["ask_bumped"] is False
+    assert base["contingency"] == pytest.approx(50_000)
     bank = m.build_use_of_funds(contingency_rate=m.CONTINGENCY_RATE_BANK)
-    assert bank["ask"] == 581_726
-    assert bank["contingency"] == pytest.approx(54_300)
-    assert bank["residual_reserve"] == 40_000
-    assert sum(a for _, a, _ in base["use_of_funds"]) == base["ask"]
+    assert bank["ask"] == 1_000_000
+    assert bank["contingency"] == pytest.approx(75_000)
+    assert bank["residual_reserve"] == pytest.approx(169_574)
+    assert sum(a for _, a, _ in base["use_of_funds"]) == pytest.approx(
+        m.sba_7a_note_amount(base["ask"]))
 
 
-def test_contingency_includes_gc_and_septic_stays_gated():
-    hard = m.SEPTIC + m.PAVING_BUDGET + m.BAR + m.GC_GENERAL_CONDITIONS_ALLOWANCE
-    assert m.hard_cost_total() == hard == 362_000
-    assert m.SEPTIC == 212_000
-    assert m.SEPTIC_UNLOCKED is False
+def test_one_wastewater_line_and_no_unallocated_money():
+    labels = [label for label, _, _ in m.USE_OF_FUNDS]
+    assert labels.count(m.WASTEWATER_LABEL) == 1
+    assert not any("septic system" in label.lower() and label != m.WASTEWATER_LABEL
+                   for label in labels)
+    assert m.WASTEWATER_BUDGET == 350_000
+    assert m.SEPTIC_QUOTE == 212_000
+    assert not hasattr(m, "REQUESTED_LOAN_SEWER_AND_BUFFER")
+    assert m.TOTAL_PROJECT_COST == pytest.approx(m.LOAN_AMOUNT)
+
+
+def test_guarantee_fee_is_not_a_capital_asset():
+    new_capex = m.TOTAL_CAPITALIZED_BASIS - m.LAND_PURCHASE_PRICE - m.PHASE_0_5_TOTAL
+    su = m.build_use_of_funds()
+    assert new_capex == pytest.approx(
+        su["hard_cost_total"] + su["contingency"] + m.HEALTH_LICENSE + m.LAND_CARRY)
+
+
+def test_contingency_includes_gc_and_wastewater_stays_gated():
+    hard = (m.WASTEWATER_BUDGET + m.PAVING_BUDGET + m.BAR
+            + m.GC_GENERAL_CONDITIONS_ALLOWANCE)
+    assert m.hard_cost_total() == hard == 500_000
+    assert m.WASTEWATER_UNLOCKED is False
     assert m.contingency_amount() == pytest.approx(0.10 * hard)
     assert m.OSSF_DESIGN == 0
 
@@ -1107,10 +1135,9 @@ def test_ace_retainer_and_tabc_are_not_forward_uses():
 
 def test_gravel_alternative_rebuilds_the_ask():
     gravel = m.build_use_of_funds(mode="gravel")
-    assert gravel["hard_cost_total"] == 212_000 + 15_400 + 50_000 + 50_000
-    assert gravel["residual_reserve"] == 40_000
-    assert gravel["ask"] == gravel["labeled_excluding_reserve"] + 40_000
-    assert gravel["ask"] < m.LOAN_ASK
+    assert gravel["hard_cost_total"] == 350_000 + 15_400 + 50_000 + 50_000
+    assert gravel["ask"] == m.LOAN_ASK
+    assert gravel["residual_reserve"] > m.RESERVE_AND_SAFETY_CASH
 
 
 def test_reserve_floor_bumps_a_too_small_ask():
@@ -1149,9 +1176,9 @@ def test_morning_open_cuts_food_sales_not_pad_rent_or_the_bar():
 
 
 def test_labor_is_the_same_on_an_f1_day():
-    """F1 does not add a bartender hour or an extra body. Food sales
-    are not lifted either: October percentage rent matches April, and
-    both months have seasonality 1.00."""
+    """F1 does not add a bartender hour or an extra body. Pad rent does
+    not move. October percentage rent is above April only by the F1 food
+    boost, and both months have seasonality 1.00."""
     january = m.calc_scheduled_labor([], month=1)
     october = m.calc_scheduled_labor(m.COTA_EVENTS_BY_MONTH[10], month=10)
     assert october["labor_wages"] == pytest.approx(january["labor_wages"])
@@ -1161,7 +1188,8 @@ def test_labor_is_the_same_on_an_f1_day():
     months, _ = m.run_annual_projection(year=2)
     april = next(r for r in months if r["month"] == 4)
     october_m = next(r for r in months if r["month"] == 10)
-    assert october_m["truck_share"] == pytest.approx(april["truck_share"])
+    food = m.f1_month_sales_boost(m.COTA_EVENTS_BY_MONTH[10])["food"]
+    assert october_m["truck_share"] == pytest.approx(april["truck_share"] * (1 + food))
     assert october_m["truck_rent"] == pytest.approx(april["truck_rent"])
 
 
@@ -1174,9 +1202,10 @@ def test_no_cota_noi_is_below_base_and_is_a_named_scenario():
     assert scenario["total_noi"] < base["total_noi"]
 
 
-def test_product_dscr_504_payment_is_below_7a_and_750k_is_worse():
+def test_product_dscr_504_payment_is_below_7a():
     pkg = m.run_loan_size_dscr()
     sized = round(m.LOAN_ASK)
+    assert [size for size in m.loan_sizes_for_sensitivity()].count(sized) == 1
 
     def cell(case, year, amount, product):
         return next(row for row in pkg["rows"]
@@ -1185,14 +1214,12 @@ def test_product_dscr_504_payment_is_below_7a_and_750k_is_worse():
 
     base_7a = cell("base", 2, sized, "sba_7a")
     base_504 = cell("base", 2, sized, "sba_504")
-    base_750 = cell("base", 2, 750_000, "sba_7a")
     nocota = cell("no_cota", 2, sized, "sba_7a")
     assert base_504["annual_debt_service"] < base_7a["annual_debt_service"]
     assert base_504["dscr"] > base_7a["dscr"]
-    assert base_750["dscr"] < base_7a["dscr"]
     assert nocota["noi"] < base_7a["noi"]
     assert cell("base", 2, 500_000, "sba_7a")["fits_uses"] is False
-    assert base_750["unassigned_proceeds"] > 0
+    assert base_7a["unassigned_proceeds"] == 0
     assert base_7a["dscr"] == pytest.approx(base_7a["noi"] / base_7a["annual_debt_service"])
 
 
@@ -1201,8 +1228,8 @@ def test_dscr_matrix_keeps_base_and_bank_apart():
     base = matrix["lender_base"][2]["going_concern"][0.10]
     bank = matrix["bank_case"][2]["going_concern"][0.10]
     assert bank < base
-    assert matrix["loan_amount_base"] == 563_626
-    assert matrix["loan_amount_bank"] == 581_726
+    assert matrix["loan_amount_base"] == 1_000_000
+    assert matrix["loan_amount_bank"] == 1_000_000
     assert matrix["meta"]["contingency_base"] == 0.10
     assert m.build_use_of_funds()["contingency_rate"] == 0.10
 
@@ -1345,7 +1372,8 @@ def test_reserve_options_leave_the_defaults_alone():
 def test_solved_options_hit_the_liquidity_target(reserve_options):
     target = m.run_reserve_options()["min_balance_target"]
     for key in ("higher_floor", "sponsor_cash"):
-        assert reserve_options[key]["min_balance"] == pytest.approx(target, abs=1.0)
+        assert reserve_options[key]["min_balance"] >= target - 1.0
+        assert reserve_options[key]["gap_to_target"] == pytest.approx(0, abs=1.0)
 
 
 def test_higher_floor_costs_more_than_sponsor_cash(reserve_options):
@@ -1355,9 +1383,9 @@ def test_higher_floor_costs_more_than_sponsor_cash(reserve_options):
     floor = reserve_options["higher_floor"]
     sponsor = reserve_options["sponsor_cash"]
     extra_debt = floor["loan_amount"] - cur["loan_amount"]
-    assert extra_debt > sponsor["sponsor_cash"] > 0
+    assert extra_debt >= sponsor["sponsor_cash"] >= 0
     assert sponsor["loan_amount"] == pytest.approx(cur["loan_amount"])
-    assert floor["stabilized_dscr"] < cur["stabilized_dscr"]
+    assert floor["stabilized_dscr"] <= cur["stabilized_dscr"]
     assert sponsor["stabilized_dscr"] == pytest.approx(cur["stabilized_dscr"])
 
 
@@ -1372,3 +1400,146 @@ def test_interest_only_cuts_the_pre_opening_burn(reserve_options):
         assert row["monthly_payment"] == pytest.approx(cur["monthly_payment"])
         assert row["min_balance"] - cur["min_balance"] == pytest.approx(
             cur["pre_open_burn"] - row["pre_open_burn"])
+
+
+# --- F1 parking range and F1 sales boost ---
+
+def test_f1_parking_bands_cover_the_range_and_favor_10_to_15k():
+    bands = m.F1_PARKING_BANDS
+    assert bands[0][0] == m.F1_PARKING_MIN == 5_000
+    assert bands[-1][1] == m.F1_PARKING_MAX == 50_000
+    assert sum(weight for _, _, weight in bands) == pytest.approx(1.0)
+    for (_, high, _), (low, _, _) in zip(bands, bands[1:]):
+        assert high == low
+    likely = max(bands, key=lambda band: band[2])
+    assert likely[:2] == (10_000, 15_000)
+    assert likely[2] > 0.5 - 1e-9
+    assert likely[0] <= m.F1_WEEKEND_PARKING_REVENUE <= likely[1]
+
+
+def test_f1_parking_draws_stay_in_range_and_land_mostly_in_the_likely_band():
+    rng = random.Random(7)
+    draws = [m.draw_f1_parking_revenue(rng) for _ in range(20_000)]
+    assert min(draws) >= m.F1_PARKING_MIN
+    assert max(draws) <= m.F1_PARKING_MAX
+    likely = sum(10_000 <= d < 15_000 for d in draws) / len(draws)
+    assert likely == pytest.approx(0.50, abs=0.02)
+    assert sum(draws) / len(draws) == pytest.approx(
+        m.f1_parking_expected_value(), rel=0.02)
+
+
+def test_f1_parking_override_moves_parking_and_its_costs_only_in_october():
+    low = m.calc_monthly_total(20, 58, 10, f1_parking_revenue=5_000)
+    high = m.calc_monthly_total(20, 58, 10, f1_parking_revenue=50_000)
+    assert low["cota_parking"] == pytest.approx(5_000)
+    assert high["cota_parking"] == pytest.approx(50_000)
+    assert high["noi"] > low["noi"]
+    assert high["noi"] - low["noi"] < 45_000  # upkeep and sales tax come out
+    april = m.calc_monthly_total(20, 58, 4, f1_parking_revenue=50_000)
+    assert april["cota_parking"] == 0
+    assert m.calc_cota_event_revenue(
+        ["tier1_f1"], f1_parking_revenue=30_000, impact_multiplier=0.5
+    )["parking"] == pytest.approx(15_000)
+
+
+def test_f1_parking_override_reaches_annual_and_multi_year():
+    _, low = m.run_annual_projection(year=2, f1_parking_revenue=5_000)
+    _, high = m.run_annual_projection(year=2, f1_parking_revenue=50_000)
+    assert low["total_cota_parking"] == pytest.approx(5_000)
+    assert high["total_cota_parking"] == pytest.approx(50_000)
+    years = m.run_multi_year_projection(years=2, f1_parking_revenue=50_000)
+    assert all(annual["total_cota_parking"] == pytest.approx(50_000)
+               for _, _, annual in years)
+
+
+def test_monte_carlo_draws_f1_parking_within_the_range():
+    results = m.run_monte_carlo(n_simulations=300)
+    parking = [row["f1_parking_revenue"] for row in results]
+    assert min(parking) >= m.F1_PARKING_MIN
+    assert max(parking) <= m.F1_PARKING_MAX
+    assert len(set(parking)) > 100
+    assert m._mc_spec("f1_parking_revenue")["distribution"] == "weighted_bands"
+
+
+def test_f1_boost_favors_drinks_and_is_small():
+    boost = m.f1_month_sales_boost(["tier1_f1"])
+    assert boost["drink"] > boost["food"] > 0
+    assert m.F1_WEEKEND_DRINK_BOOST > m.F1_WEEKEND_FOOD_BOOST
+    assert m.F1_LEADUP_DRINK_BOOST > m.F1_LEADUP_FOOD_BOOST
+    assert m.F1_LEADUP_DRINK_BOOST < m.F1_WEEKEND_DRINK_BOOST
+    assert boost["drink"] < 0.10
+
+
+def test_f1_boost_needs_f1_on_the_calendar():
+    none = {"drink": 0.0, "food": 0.0}
+    assert m.f1_month_sales_boost([]) == none
+    assert m.f1_month_sales_boost(["tier2_motogp"]) == none
+    assert m.f1_month_sales_boost(["tier1_f1"], impact_multiplier=0.0) == none
+    full = m.f1_month_sales_boost(["tier1_f1"])
+    half = m.f1_month_sales_boost(["tier1_f1"], impact_multiplier=0.5)
+    assert half["drink"] == pytest.approx(full["drink"] / 2)
+
+
+def test_f1_boost_lifts_october_lines_without_touching_pad_rent():
+    calendar = m.COTA_EVENTS_BY_MONTH[10]
+    without = [t for t in calendar if t != "tier1_f1"]
+    with_f1 = m.calc_monthly_total(20, 58, 10, cota_events=calendar)
+    no_f1 = m.calc_monthly_total(20, 58, 10, cota_events=without)
+    boost = m.f1_month_sales_boost(calendar)
+    assert with_f1["bar_revenue"] == pytest.approx(
+        no_f1["bar_revenue"] * (1 + boost["drink"]))
+    assert with_f1["daytime_beverage_revenue"] == pytest.approx(
+        no_f1["daytime_beverage_revenue"] * (1 + boost["drink"]))
+    assert with_f1["truck_share"] == pytest.approx(
+        no_f1["truck_share"] * (1 + boost["food"]))
+    assert with_f1["truck_rent"] == pytest.approx(no_f1["truck_rent"])
+
+
+def test_f1_boost_drinks_carry_inventory_cost():
+    """The $2,000 inventory line is flat, so boosted drinks need their own cost."""
+    calendar = m.COTA_EVENTS_BY_MONTH[10]
+    without = [t for t in calendar if t != "tier1_f1"]
+    with_f1 = m.calc_monthly_total(20, 58, 10, cota_events=calendar)
+    no_f1 = m.calc_monthly_total(20, 58, 10, cota_events=without)
+    bar_lift = with_f1["bar_revenue"] - no_f1["bar_revenue"]
+    bev_lift = with_f1["daytime_beverage_revenue"] - no_f1["daytime_beverage_revenue"]
+    assert with_f1["cogs"] - no_f1["cogs"] == pytest.approx(
+        bar_lift * m.COGS_RATE + bev_lift * m.DAYTIME_BEVERAGE_COGS_RATE)
+    assert with_f1["f1_sales_lift"] == pytest.approx(
+        bar_lift + bev_lift + with_f1["truck_share"] - no_f1["truck_share"])
+    assert no_f1["f1_sales_lift"] == 0
+
+
+def test_f1_sales_lift_is_summed_and_drops_out_with_no_f1():
+    _, annual = m.run_annual_projection(year=2)
+    assert annual["total_f1_sales_lift"] > 0
+    no_f1 = {month: [t for t in m.COTA_EVENTS_BY_MONTH[month] if t != "tier1_f1"]
+             for month in range(1, 13)}
+    _, stripped = m.run_annual_projection(year=2, cota_events_override=no_f1)
+    assert stripped["total_f1_sales_lift"] == 0
+    assert annual["total_noi"] > stripped["total_noi"]
+
+
+def test_1m_request_is_the_ask_and_names_its_uses():
+    sizes = m.run_loan_size_dscr()
+    assert m.REQUESTED_LOAN == m.LOAN_ASK == 1_000_000
+    assert "sewer" in sizes["note_request"].lower()
+    assert "personal funds" in sizes["note_request"].lower()
+
+
+def test_250k_payoff_is_the_loc_plus_personal_funds_and_is_not_capitalized():
+    uses = {label: amount for label, amount, _ in m.USE_OF_FUNDS}
+    assert uses[m.LOC_PAYOFF_LABEL] == m.LOC_PAYOFF_DRAWN == 120_000
+    assert uses[m.PERSONAL_FUNDS_LABEL] == m.PERSONAL_FUNDS_REIMBURSEMENT == 130_000
+    assert m.LOC_PAYOFF_DRAWN + m.PERSONAL_FUNDS_REIMBURSEMENT == 250_000
+    su = m.build_use_of_funds()
+    assert m.TOTAL_CAPITALIZED_BASIS == pytest.approx(
+        m.LAND_PURCHASE_PRICE + m.PHASE_0_5_TOTAL + su["hard_cost_total"]
+        + su["contingency"] + m.HEALTH_LICENSE + m.LAND_CARRY)
+    assert m.build_construction_draw_schedule()["months"][0]["draw"] >= 250_000
+
+
+def test_insurance_is_one_annual_package_with_no_f1_event_policy():
+    assert m.FIXED_COSTS["insurance"] == 675
+    october = m.calc_monthly_total(20, 58, 10)
+    assert october["cota_incremental_cost"] == 0
